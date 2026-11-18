@@ -35,6 +35,7 @@ from app.models.document_draft import DocumentDraft
 from app.models.drive import DriveItem
 from app.models.file import File
 from app.models.user import User
+from app.services import presentation_styles as styles_service
 from app.services.dataflow_nodes import param, port, table_frame
 from app.services.slide_sanitizer import sanitize_document_draft_content_json
 
@@ -247,10 +248,20 @@ def _slide(spec: dict[str, Any]) -> dict[str, Any]:
                        "width": 520 if image else 840, "height": 360, "style": {"fontSize": 24, "color": "#2d2d2d", "textAlign": "left", "lineHeight": 1.4}})
     if image.startswith("data:image/"):
         blocks.append({"id": str(uuid.uuid4()), "type": "image", "content": image, "x": 610, "y": 140, "width": 290, "height": 290, "style": {}})
-    slide: dict[str, Any] = {"id": str(uuid.uuid4()), "title": title or "Slide", "blocks": blocks}
+    slide: dict[str, Any] = {"id": str(uuid.uuid4()), "title": title or "Slide", "blocks": blocks, "backgroundColor": "#FFFFFF"}
     if spec.get("notes"):
         slide["notes"] = str(spec["notes"])
     return slide
+
+
+def _style_param(params: dict[str, Any]) -> dict[str, Any]:
+    raw = params.get("style")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw) if raw.strip() else {}
+        except ValueError:
+            raise HTTPException(status_code=422, detail="style non è JSON valido")
+    return styles_service.normalize_style(raw) if isinstance(raw, dict) else {}
 
 
 def _slides_param(params: dict[str, Any]) -> list[dict[str, Any]]:
@@ -442,10 +453,14 @@ async def documents_create_document(ctx: ActionContext, p: dict[str, Any]) -> di
 
 
 @action("create_presentation", "documents", "Crea presentazione", 'Crea una presentazione 16:9. «slides» è una lista JSON di {"title", "body" | "bullets": [...], "notes"?, "image"?: "data:image/png;base64,…"}.',
-        params=[TITLE, param("slides", "CODE", "Slide (JSON)", '[{"title": "Titolo", "bullets": ["Punto 1", "Punto 2"]}]'), PARENT, SESSION],
+        params=[TITLE, param("slides", "CODE", "Slide (JSON)", '[{"title": "Titolo", "bullets": ["Punto 1", "Punto 2"]}]'),
+                param("style", "CODE", "Stile (JSON, opzionale)", '{"background": "#FFFFFF", "title": {"fontFamily": "Georgia", "fontSize": 40, "color": "#1A1A2E"}, "body": {"fontSize": 24}}', required=False), PARENT, SESSION],
         inputs=[port("slides", "ANY", "Slide", required=False)], outputs=DOC_OUT, side_effects="creates")
 async def documents_create_presentation(ctx: ActionContext, p: dict[str, Any]) -> dict[str, Any]:
     slides = _slides_param(p) or [_slide({"title": _text(p, "title")})]
+    style = _style_param(p)
+    if style:
+        slides, _ = styles_service.apply_style(slides, style, 960, 540)
     return await _create_draft(ctx, title=_text(p, "title"), doc_type="presentation", content={"type": "presentation_v2", "format": "16:9", "slides": slides},
                                parent_id=p.get("parent_id"), session_id=p.get("session_id"))
 
@@ -509,6 +524,40 @@ async def documents_add_slides(ctx: ActionContext, p: dict[str, Any]) -> dict[st
     slides[at:at] = new
     await _save_content(ctx, draft, {**c, "slides": slides})
     return {"document_id": str(draft.id), "slide_count": len(slides)}
+
+
+@action("style_presentation", "documents", "Stile e sfondo delle slide",
+        "Imposta sfondo, carattere, dimensione e colori di titoli/testo (e accento) su una presentazione esistente: su tutte le slide o solo su quelle indicate. "
+        "Usalo per «sfondo bianco», «cambia font», «stile uniforme»: non disegnare riquadri sopra le slide. Con «Salva come stile» lo stile resta disponibile nell'editor. "
+        '«style» è JSON, ogni chiave è opzionale: {"background": "#FFFFFF", "title": {"fontFamily": "Georgia", "fontSize": 40, "color": "#1A1A2E", "fontWeight": "bold"}, "body": {"fontFamily": "Inter", "fontSize": 24, "color": "#2D2D2D"}, "accent": "#E85C8D"}.',
+        params=[DOC_ID, param("style", "CODE", "Stile (JSON)", '{"background": "#FFFFFF"}'),
+                param("slide_numbers", "STRING", "Slide (numeri da 1, es. 1,3,5; vuoto = tutte)", "", required=False),
+                param("save_as", "STRING", "Salva come stile (nome, opzionale)", "", required=False)],
+        inputs=[DOC_ID_IN], outputs=[port("document_id", "ANY", "ID documento"), port("slides_changed", "ANY", "Slide modificate")], side_effects="modifies")
+async def documents_style_presentation(ctx: ActionContext, p: dict[str, Any]) -> dict[str, Any]:
+    draft = await _own_draft(ctx, _uuid(p.get("document_id"), "document_id"), "presentation")
+    style = _style_param(p)
+    if not style:
+        raise HTTPException(status_code=422, detail="Stile vuoto: indica almeno uno sfondo, un colore o un carattere")
+    c = _content(draft)
+    slides = list(c.get("slides") or [])
+    ids: list[str] | None = None
+    wanted = _text(p, "slide_numbers").strip()
+    if wanted:
+        numbers = {int(n) for n in re.findall(r"\d+", wanted)}
+        ids = [str(s.get("id")) for i, s in enumerate(slides) if (i + 1) in numbers]
+        if not ids:
+            raise HTTPException(status_code=422, detail="Nessuna slide con questi numeri")
+    from app.services.presentation_themes import theme_from_deck
+    dims = {"16:9": (960, 540), "4:3": (800, 600)}.get(str(c.get("format") or "16:9"), (960, 540))
+    new_slides, changed = styles_service.apply_style(slides, style, dims[0], dims[1], theme_from_deck(c.get("theme")), ids)
+    await _save_content(ctx, draft, {**c, "slides": new_slides})
+    name = _text(p, "save_as").strip()[:120]
+    if name:
+        from app.models.presentation_style import PresentationStyle
+        ctx.db.add(PresentationStyle(tenant_id=ctx.teacher.tenant_id, owner_user_id=ctx.teacher.id, name=name, style_json=style))
+        await ctx.db.commit()
+    return {"document_id": str(draft.id), "slides_changed": changed}
 
 
 @action("sheet_append_rows", "documents", "Aggiungi righe alla tabella", "Accoda righe a un foglio di calcolo, da una tabella collegata o da «rows». Con «Salta intestazione» la prima riga non viene scritta (utile per tabelle che hanno già l'intestazione).",

@@ -1,3 +1,4 @@
+import { collaboratorColor, type Collaborator } from '@/lib/collaborators'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { ColorPicker } from '@/components/ui/ColorPicker'
 import * as XLSX from 'xlsx'
@@ -37,7 +38,6 @@ type Point = { x: number; y: number }
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
 const ANCHORS: Anchor[] = ['top', 'right', 'bottom', 'left']
 type LockInfo = { userId: string; userType: string }
-type Collaborator = { id: string; name: string; role: 'teacher' | 'student'; avatarUrl?: string }
 type RemoteCursor = { userId: string; label: string; color: string; x: number; y: number; updatedAt: number }
 
 /** `by`/`at`: who created the item and when (ms); `eb`/`et`: who last edited it. They feed the board report. */
@@ -138,17 +138,9 @@ const DEFAULT_TEXT_STYLE: CanvasTextStyle = {
 }
 
 const POSTIT_PALETTE = ['#fef9c3', '#fce7f3', '#dbeafe', '#dcfce7', '#ffedd5', '#ede9fe', '#fecaca', '#e0f2fe']
-const COLLABORATOR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#ea580c', '#059669', '#0891b2', '#4f46e5', '#be123c']
-
 // ─── Template definitions ─────────────────────────────────────────────────────
 
 function mkId() { return crypto.randomUUID() }
-
-function collaboratorColor(userId: string): string {
-  let hash = 0
-  for (let index = 0; index < userId.length; index += 1) hash = ((hash << 5) - hash + userId.charCodeAt(index)) | 0
-  return COLLABORATOR_COLORS[Math.abs(hash) % COLLABORATOR_COLORS.length]
-}
 
 function jwtSubject(token: string | null): string {
   if (!token) return ''

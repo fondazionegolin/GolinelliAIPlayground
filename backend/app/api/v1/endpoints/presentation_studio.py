@@ -5,6 +5,7 @@ See app.services.presentation_studio for the workflow rationale.
 import asyncio
 import json
 import logging
+from uuid import UUID
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, status
@@ -15,10 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import StudentOrTeacher, get_student_or_teacher
 from app.api.v1.endpoints.llm import _extract_json_object, get_ui_language, safe_track_usage
 from app.core.database import AsyncSessionLocal, get_db
+from app.models.presentation_style import PresentationStyle
 from app.models.session import Class, Session
 from app.services import background_jobs, model_roles, model_selection
 from app.services import presentation_agents as agents
 from app.services import presentation_studio as studio
+from app.services import presentation_styles as styles_service
 from app.services.credit_service import credit_service
 from app.services.education_level import get_school_grade_instruction
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
@@ -523,3 +526,93 @@ async def new_slide(
     rendered = render_outline_slide(outline_slide, payload.index, payload.dims.width, payload.dims.height, theme)
     check_and_fix_slides([rendered], payload.dims.width, payload.dims.height, theme)
     return {"slide": rendered}
+
+
+# ── Saved slide styles ───────────────────────────────────────────────────────
+
+class StyleBody(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    style: dict
+
+
+class ApplyStyleRequest(BaseModel):
+    slides: list[dict] = Field(max_length=200)
+    style: dict
+    slide_ids: Optional[list[str]] = None  # None = whole deck
+    theme: Optional[dict] = None
+    dims: Dims = Field(default_factory=Dims)
+
+
+def _style_owner_filter(auth: StudentOrTeacher):
+    if auth.is_student:
+        return PresentationStyle.owner_student_id == auth.student.id
+    return PresentationStyle.owner_user_id == auth.teacher.id
+
+
+def _style_out(row: PresentationStyle) -> dict:
+    return {"id": str(row.id), "name": row.name, "style": row.style_json or {},
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None}
+
+
+async def _own_style(db: AsyncSession, auth: StudentOrTeacher, style_id: str) -> PresentationStyle:
+    try:
+        key = UUID(style_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Stile non trovato")
+    row = (await db.execute(select(PresentationStyle).where(PresentationStyle.id == key, _style_owner_filter(auth)))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Stile non trovato")
+    return row
+
+
+@router.get("/styles")
+async def list_styles(db: Annotated[AsyncSession, Depends(get_db)], auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
+    rows = (await db.execute(select(PresentationStyle).where(_style_owner_filter(auth)).order_by(PresentationStyle.updated_at.desc()).limit(100))).scalars().all()
+    return {"styles": [_style_out(row) for row in rows], "fonts": styles_service.STYLE_PRESET_FONTS}
+
+
+@router.post("/styles")
+async def create_style(payload: StyleBody, db: Annotated[AsyncSession, Depends(get_db)], auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
+    style = styles_service.normalize_style(payload.style)
+    if not style:
+        raise HTTPException(status_code=422, detail="Lo stile è vuoto: scegli almeno uno sfondo, un colore o un carattere")
+    tenant_id = auth.student.tenant_id if auth.is_student else auth.teacher.tenant_id
+    row = PresentationStyle(tenant_id=tenant_id, name=payload.name.strip()[:120], style_json=style,
+                            owner_student_id=auth.student.id if auth.is_student else None,
+                            owner_user_id=None if auth.is_student else auth.teacher.id)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _style_out(row)
+
+
+@router.put("/styles/{style_id}")
+async def update_style(style_id: str, payload: StyleBody, db: Annotated[AsyncSession, Depends(get_db)], auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
+    row = await _own_style(db, auth, style_id)
+    style = styles_service.normalize_style(payload.style)
+    if not style:
+        raise HTTPException(status_code=422, detail="Lo stile è vuoto: scegli almeno uno sfondo, un colore o un carattere")
+    row.name = payload.name.strip()[:120]
+    row.style_json = style
+    await db.commit()
+    await db.refresh(row)
+    return _style_out(row)
+
+
+@router.delete("/styles/{style_id}")
+async def delete_style(style_id: str, db: Annotated[AsyncSession, Depends(get_db)], auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
+    row = await _own_style(db, auth, style_id)
+    await db.delete(row)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/apply-style")
+async def apply_style(payload: ApplyStyleRequest, auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
+    """Deterministic and free: background / fonts / sizes / colours onto one slide, a selection or the deck."""
+    style = styles_service.normalize_style(payload.style)
+    if not style:
+        raise HTTPException(status_code=422, detail="Lo stile è vuoto")
+    slides, changed = styles_service.apply_style(payload.slides, style, payload.dims.width, payload.dims.height,
+                                                theme_from_deck(payload.theme), payload.slide_ids)
+    return {"slides": slides, "changed": changed, "style": style}

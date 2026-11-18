@@ -24,6 +24,8 @@ class Board(Base):
     labels_json = Column(JSONB, default=list, nullable=False)  # [{id, name, color}]
     sprints_json = Column(JSONB, default=list, nullable=False)  # [{id, name, goal, start_date, end_date}]
     auto_sprint_weekly = Column(Boolean, nullable=False, default=False)
+    external_people_json = Column(JSONB, default=list, nullable=False)  # [{id, name}] people without a platform account
+    auto_label = Column(Boolean, nullable=False, default=False)  # AI clusters/labels new tasks automatically
     created_by_display_name = Column(String(256), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

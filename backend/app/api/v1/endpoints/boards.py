@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -106,8 +107,14 @@ class BoardSprint(BaseModel):
 
 
 class Assignee(BaseModel):
-    kind: str  # teacher|student
-    id: str
+    kind: str  # teacher|student|external
+    id: Optional[str] = None
+    name: Optional[str] = None  # only used to create a new external person (kind=external, no id)
+
+
+class ExternalPerson(BaseModel):
+    id: Optional[str] = None
+    name: str
 
 
 class BoardCreate(BaseModel):
@@ -127,6 +134,8 @@ class BoardUpdate(BaseModel):
     labels: Optional[list[BoardLabel]] = None
     sprints: Optional[list[BoardSprint]] = None
     auto_sprint_weekly: Optional[bool] = None
+    external_people: Optional[list[ExternalPerson]] = None
+    auto_label: Optional[bool] = None
     visibility: Optional[str] = None
     students_can_edit: Optional[bool] = None
     session_id: Optional[str] = None
@@ -162,6 +171,10 @@ class CardUpdate(BaseModel):
     story_points: Optional[int] = None
     card_type: Optional[str] = None
     sprint_id: Optional[str] = None
+
+
+class AutoLabelRequest(BaseModel):
+    mode: str = "unlabeled"  # unlabeled = only tasks without labels, all = re-analyse every task
 
 
 class BoardAiMessage(BaseModel):
@@ -334,6 +347,8 @@ def _serialize_board(
         "labels": _normalize_labels(board.labels_json),
         "sprints": _normalize_sprints(board.sprints_json),
         "auto_sprint_weekly": bool(board.auto_sprint_weekly),
+        "external_people": _normalize_external(board.external_people_json),
+        "auto_label": bool(board.auto_label),
         "visibility": board.visibility,
         "students_can_edit": bool(board.students_can_edit),
         "created_by_display_name": board.created_by_display_name,
@@ -441,23 +456,57 @@ async def _board_members(db: AsyncSession, board: Board) -> list[dict]:
     teachers = list((await db.execute(
         select(User).where(User.id.in_(teacher_ids)).order_by(User.first_name, User.last_name)
     )).scalars().all()) if teacher_ids else []
+    direct_teachers = {s.user_id for s in shares if s.user_id}
+    direct_students = {s.student_id for s in shares if s.student_id}
     return (
-        [{"kind": "teacher", "id": str(u.id), "name": _user_name(u)} for u in teachers]
-        + [{"kind": "student", "id": str(s.id), "name": s.nickname} for s in students]
+        [{"kind": "teacher", "id": str(u.id), "name": _user_name(u),
+          **({"owner": True} if u.id == board.owner_user_id else {}), **({"direct": True} if u.id in direct_teachers else {})} for u in teachers]
+        + [{"kind": "student", "id": str(s.id), "name": s.nickname,
+            **({"owner": True} if s.id == board.owner_student_id else {}), **({"direct": True} if s.id in direct_students else {})} for s in students]
+        + [{"kind": "external", "id": p["id"], "name": p["name"]} for p in _normalize_external(board.external_people_json)]
     )
 
 
 async def _validate_assignees(db: AsyncSession, board: Board, assignees: list[Assignee]) -> list[dict]:
+    """Assignees are people who can see the board, or external people named by whoever edits the task
+    (kind=external + name creates the person on the board the first time)."""
     if not assignees:
         return []
-    members = {(m["kind"], m["id"]): m for m in await _board_members(db, board)}
+    members = {(m["kind"], m["id"]): {k: m[k] for k in ("kind", "id", "name")} for m in await _board_members(db, board)}
+    external = _normalize_external(board.external_people_json)
+    by_name = {p["name"].lower(): p for p in external}
+    created = False
     out: list[dict] = []
     for item in assignees[:12]:
-        member = members.get((item.kind, item.id))
+        member = members.get((item.kind, item.id or ""))
+        if member is None and item.kind == "external" and (item.name or "").strip():
+            name = re.sub(r"\s+", " ", item.name.strip())[:60]
+            person = by_name.get(name.lower())
+            if person is None:
+                person = {"id": f"ext_{uuid.uuid4().hex[:8]}", "name": name}
+                external.append(person)
+                by_name[name.lower()] = person
+                created = True
+            member = {"kind": "external", "id": person["id"], "name": person["name"]}
         if member is None:
             raise HTTPException(status_code=400, detail="Assegnatario non valido per questa board")
         if member not in out:
             out.append(member)
+    if created:
+        board.external_people_json = external[:40]
+    return out
+
+
+def _normalize_external(people: list[dict] | None) -> list[dict]:
+    out: list[dict] = []
+    seen: set[str] = set()
+    for person in (people or [])[:40]:
+        name = re.sub(r"\s+", " ", str((person or {}).get("name") or "")).strip()[:60]
+        if not name or name.lower() in seen:
+            continue
+        pid = str((person or {}).get("id") or "").strip()[:48] or f"ext_{uuid.uuid4().hex[:8]}"
+        seen.add(name.lower())
+        out.append({"id": pid, "name": name})
     return out
 
 
@@ -607,6 +656,8 @@ async def create_board(
         sprints_json=[{"id": "spr_1", "name": "Sprint 1", "goal": "", "start_date": None, "end_date": None}] if body.template_key == "scrum" else [],
         visibility=visibility,
         students_can_edit=bool(body.students_can_edit),
+        auto_label=True,  # built by hand, no AI backlog: tasks get clustered and labelled automatically
+        external_people_json=[],
     )
     db.add(board)
     await db.commit()
@@ -694,6 +745,24 @@ async def update_board(
         board.sprints_json = sprints
     if body.auto_sprint_weekly is not None:
         board.auto_sprint_weekly = body.auto_sprint_weekly
+    if body.auto_label is not None:
+        board.auto_label = body.auto_label
+    if body.external_people is not None:
+        people = _normalize_external([p.dict() for p in body.external_people])
+        valid_ids = {p["id"] for p in people}
+        previous = {p["id"]: p for p in _normalize_external(board.external_people_json)}
+        renamed = {p["id"]: p["name"] for p in people if p["id"] in previous and previous[p["id"]]["name"] != p["name"]}
+        removed = set(previous) - valid_ids
+        if removed or renamed:
+            cards = (await db.execute(select(BoardCard).where(BoardCard.board_id == board.id))).scalars().all()
+            for card in cards:
+                current = card.assignees or []
+                if any(a.get("kind") == "external" and (a.get("id") in removed or a.get("id") in renamed) for a in current):
+                    card.assignees = [
+                        {**a, "name": renamed.get(a.get("id"), a.get("name"))} for a in current
+                        if not (a.get("kind") == "external" and a.get("id") in removed)
+                    ]
+        board.external_people_json = people
     if board.auto_sprint_weekly:
         board.sprints_json = ensure_weekly_sprints(
             _normalize_sprints(board.sprints_json), datetime.now(ZoneInfo("Europe/Rome")).date()
@@ -956,6 +1025,128 @@ async def delete_card(
     await db.delete(card)
     await db.commit()
     return None
+
+
+_IMAGE_SIGNATURES = {
+    b"\x89PNG\r\n\x1a\n": "png", b"\xff\xd8\xff": "jpg", b"GIF87a": "gif", b"GIF89a": "gif",
+}
+BOARD_IMAGE_MAX_BYTES = 6 * 1024 * 1024
+
+
+def _sniff_image(data: bytes) -> Optional[str]:
+    for signature, ext in _IMAGE_SIGNATURES.items():
+        if data.startswith(signature):
+            return ext
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+@router.post("/{board_id}/images", status_code=201)
+async def upload_card_image(
+    board_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    file: UploadFile = File(...),
+):
+    """A picture pasted into a task description. Stored as a public upload; the description keeps a markdown link."""
+    board, share = await _get_board_for_actor(db, board_id, actor)
+    if not _can_edit_board(board, actor, share):
+        raise HTTPException(status_code=403, detail="Modifica non consentita")
+    data = await file.read()
+    if len(data) > BOARD_IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Immagine troppo grande (max 6 MB)")
+    ext = _sniff_image(data)
+    if ext is None:
+        raise HTTPException(status_code=400, detail="Formato non supportato: usa PNG, JPG, GIF o WebP")
+    folder = Path("uploads") / "board_images" / str(board.id)
+    folder.mkdir(parents=True, exist_ok=True)
+    name = f"{uuid.uuid4().hex}.{ext}"
+    (folder / name).write_bytes(data)
+    return {"url": f"/uploads/board_images/{board.id}/{name}"}
+
+
+AUTO_LABEL_BATCH = 60
+
+
+async def run_auto_label(db: AsyncSession, actor: StudentOrTeacher, board: Board, mode: str) -> dict:
+    """Cluster tasks by theme and label them (e.g. 3D, Code, UI). Reuses the board's labels, adds new short ones
+    only when several tasks share a theme, and applies everything deterministically."""
+    all_cards = (await db.execute(
+        select(BoardCard).where(BoardCard.board_id == board.id).order_by(BoardCard.created_at)
+    )).scalars().all()
+    targets = [c for c in all_cards if mode == "all" or not (c.labels or [])][:AUTO_LABEL_BATCH]
+    if not targets:
+        return {"cards_labeled": 0, "labels_created": 0}
+    await _require_credits(db, actor, 0.002)
+    labels = _normalize_labels(board.labels_json)
+    view = [{"id": str(c.id), "title": c.title, "description": re.sub(r"!\[[^\]]*\]\([^)]*\)", "", c.description or "")[:300]} for c in targets]
+    system_prompt = "Sei un analista di progetto. Rispondi solo con JSON valido, compatto, senza Markdown."
+    user_prompt = (
+        f"Board: {board.title}\nEtichette già esistenti: {json.dumps([l['name'] for l in labels], ensure_ascii=False)}\n"
+        f"Task da analizzare:\n{json.dumps(view, ensure_ascii=False)}\n\n"
+        "Raggruppa i task per ambito di lavoro (cluster) e assegna a ciascuno da 1 a 3 etichette brevi (1-2 parole, nella lingua dei task, "
+        "es. «3D», «Code», «UI», «Dati», «Test», «Documentazione», «Grafica», «Hardware»). Riusa le etichette esistenti quando "
+        "descrivono il task; crea una nuova etichetta solo se riguarda almeno 2 task o è chiaramente distinta. "
+        "Al massimo 8 etichette nuove, nomi diversi tra loro. Ogni task deve ricevere almeno un'etichetta.\n"
+        'Schema: {"new_labels":[{"name":"3D","color":"#rrggbb"}],"assignments":[{"id":"<id task>","labels":["3D","Code"]}]}'
+    )
+    try:
+        response = await LLMService().generate(
+            messages=[{"role": "user", "content": user_prompt}], system_prompt=system_prompt,
+            temperature=0.1, max_tokens=4000, allow_web_search=False,
+        )
+        data = extract_json(response.content or "")
+    except Exception as exc:
+        logger.warning("Board auto-label failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Analisi dei task non riuscita, riprova")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="Analisi dei task non riuscita, riprova")
+    by_name = {l["name"].lower(): l for l in labels}
+    created = 0
+    for raw in (data.get("new_labels") or [])[:8]:
+        name = re.sub(r"\s+", " ", str((raw or {}).get("name") or "")).strip()[:40]
+        if not name or name.lower() in by_name or len(labels) >= 20:
+            continue
+        color = str((raw or {}).get("color") or "")
+        label = {"id": f"lbl_{uuid.uuid4().hex[:8]}", "name": name,
+                 "color": color if HEX_COLOR.match(color) else LABEL_COLORS[len(labels) % len(LABEL_COLORS)]}
+        labels.append(label)
+        by_name[name.lower()] = label
+        created += 1
+    by_id = {str(c.id): c for c in targets}
+    labeled = 0
+    for item in data.get("assignments") or []:
+        card = by_id.get(str((item or {}).get("id") or ""))
+        if card is None:
+            continue
+        ids = [by_name[str(n).strip().lower()]["id"] for n in (item.get("labels") or []) if str(n).strip().lower() in by_name][:3]
+        if not ids:
+            continue
+        merged = list(dict.fromkeys([*(card.labels or []), *ids])) if mode != "all" else ids
+        card.labels = merged[:6]
+        card.last_actor_display_name = _actor_name(actor)
+        labeled += 1
+    board.labels_json = labels
+    await db.commit()
+    await _track_llm_usage(db, actor, response, "board_auto_label", board.id)
+    return {"cards_labeled": labeled, "labels_created": created}
+
+
+@router.post("/{board_id}/auto-label")
+async def auto_label_cards(
+    board_id: str,
+    body: AutoLabelRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    board, share = await _get_board_for_actor(db, board_id, actor)
+    if not _can_edit_board(board, actor, share):
+        raise HTTPException(status_code=403, detail="Modifica non consentita")
+    result = await run_auto_label(db, actor, board, "all" if body.mode == "all" else "unlabeled")
+    cards = (await db.execute(select(BoardCard).where(BoardCard.board_id == board.id).order_by(BoardCard.created_at, BoardCard.sort_order))).scalars().all()
+    await db.refresh(board)
+    return {**result, "board": _serialize_board(board, cards, actor, share)}
 
 
 @router.post("/{board_id}/cards/bulk", status_code=201)

@@ -1,10 +1,10 @@
 import { SectionHeading } from '@/design/primitives/SectionHeading'
-import { useEffect, useMemo, useState, useRef, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { boardsApi, type BackgroundJob, type BoardCardFields, type BoardSprintInput } from '@/lib/api'
 import { findActiveJob, notifyJobsChanged, useTicker, waitForJob } from '@/lib/backgroundJobs'
-import { ArrowLeft, CalendarRange, Check, GanttChartSquare, Edit2, FileUp, GripVertical, KanbanSquare, LayoutTemplate, Loader2, Lock, Palette, Plus, Share2, Sparkles, Tags, Trash2, UserRound, Users, X } from '@/components/icons'
+import { ArrowLeft, CalendarRange, Check, CheckSquare, Square, ListChecks, GanttChartSquare, Edit2, FileUp, GripVertical, KanbanSquare, LayoutTemplate, Loader2, Lock, Palette, Plus, Share2, Sparkles, Tags, Trash2, UserRound, Users, X } from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
 import { Button, SearchPill } from '@/design'
 import {
@@ -20,10 +20,13 @@ import BoardShareDialog from './BoardShareDialog'
 import BoardLabelsDialog, { type BoardLabel } from './BoardLabelsDialog'
 import BoardSprintsDialog, { type BoardSprint } from './BoardSprintsDialog'
 import BoardTimeline, { formatSprintDates, sprintStatus } from './BoardTimeline'
+import BoardCardDetail from './BoardCardDetail'
+import PresenceAvatars from '@/components/PresenceAvatars'
+import { useResourcePresence } from '@/hooks/useResourcePresence'
+import { AddColumnTile, AssigneePicker, AssigneeStack, Avatar, DescriptionEditor, DescriptionView, assigneeFields, descriptionHasContent, memberKey, type Member } from './BoardCardParts'
 import { tl } from '@/i18n/tl'
 
 type BoardColumn = { id: string; label: string; hint: string; color: string }
-type Member = { kind: 'teacher' | 'student'; id: string; name: string }
 type Priority = 'alta' | 'media' | 'bassa'
 type CardType = 'epic' | 'story' | 'task'
 type BoardCard = {
@@ -53,6 +56,8 @@ type Board = {
   labels?: BoardLabel[]
   sprints?: BoardSprint[]
   auto_sprint_weekly?: boolean
+  external_people?: { id: string; name: string }[]
+  auto_label?: boolean
   shared_with_me?: boolean
   me?: { kind: 'teacher' | 'student'; id: string } | null
   title: string
@@ -75,6 +80,8 @@ type BoardPatch = {
   labels?: { id?: string; name: string; color?: string }[]
   sprints?: BoardSprintInput[]
   auto_sprint_weekly?: boolean
+  external_people?: { id?: string; name: string }[]
+  auto_label?: boolean
   visibility?: 'private' | 'session_shared'
   students_can_edit?: boolean
   session_id?: string
@@ -116,7 +123,7 @@ function draftToFields(draft: CardDraft): BoardCardFields {
     description: draft.description.trim(),
     color: draft.color,
     labels: draft.labels,
-    assignees: draft.assignees.map(({ kind, id }) => ({ kind, id })),
+    assignees: assigneeFields(draft.assignees),
     priority: draft.priority || null,
     story_points: Number.isFinite(points) && points > 0 ? points : null,
     sprint_id: draft.sprintId || null,
@@ -124,10 +131,6 @@ function draftToFields(draft: CardDraft): BoardCardFields {
 }
 
 
-
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || '?'
-}
 
 export default function BoardManager({ sessionId, isStudent = false }: { sessionId?: string; isStudent?: boolean }) {
   const { toast } = useToast()
@@ -160,9 +163,10 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   const [editingColumnLabel, setEditingColumnLabel] = useState('')
   const [columnToDelete, setColumnToDelete] = useState<{ columnId: string; targetId: string } | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [editingCardId, setEditingCardId] = useState<string | null>(null)
   const [openCardId, setOpenCardId] = useState<string | null>(null)
-  const [editDraft, setEditDraft] = useState<CardDraft>(emptyDraft())
+  const [selectMode, setSelectMode] = useState(false)
+  const [pickedIds, setPickedIds] = useState<Set<string>>(() => new Set())
+  const [bulkTarget, setBulkTarget] = useState('')
   const [labelFilter, setLabelFilter] = useState<string | null>(null)
   const [mineOnly, setMineOnly] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -223,6 +227,48 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   })
   const labelById = useMemo(() => Object.fromEntries(labels.map((label) => [label.id, label])), [labels])
   const openCard = cards.find((card) => card.id === openCardId) || null
+  const boardPresence = useResourcePresence('board', board?.id, isStudent ? 'student' : 'teacher')
+  // Who the board is shared with (direct shares + the class), shown in the header; external people are only named, not shared with.
+  const sharedPeople = useMemo(() => members.filter((member) => member.direct), [members])
+  const sharedWithClass = board?.visibility === 'session_shared'
+  const isShared = sharedPeople.length > 0 || sharedWithClass
+
+  // AI clustering/labelling of the tasks (3D, Code, UI…): automatic a few seconds after tasks are added, or on demand.
+  const [autoLabeling, setAutoLabeling] = useState(false)
+  const autoLabelTimer = useRef<number | null>(null)
+  const autoLabelBoardId = useRef<string | null>(null)
+  autoLabelBoardId.current = board?.id ?? null
+  useEffect(() => () => { if (autoLabelTimer.current) window.clearTimeout(autoLabelTimer.current) }, [])
+  const runAutoLabel = async (mode: 'unlabeled' | 'all', silent = false) => {
+    const boardId = autoLabelBoardId.current
+    if (!boardId) return
+    setAutoLabeling(true)
+    try {
+      const { data } = await boardsApi.autoLabel(boardId, mode)
+      queryClient.setQueryData(['board', boardId], data.board)
+      queryClient.invalidateQueries({ queryKey: ['boards'] })
+      if (!silent || data.cards_labeled) {
+        toast({
+          title: data.cards_labeled ? tl("Task raggruppati ed etichettati") : tl("Nessun task da etichettare"),
+          description: data.cards_labeled ? tl("{0} task etichettati, {1} nuove etichette.", data.cards_labeled, data.labels_created) : undefined,
+        })
+      }
+    } catch (error: any) {
+      if (!silent) toast({ title: tl("Analisi non riuscita"), description: error?.response?.data?.detail || tl("Riprova tra poco."), variant: 'destructive' })
+    } finally {
+      setAutoLabeling(false)
+    }
+  }
+  const scheduleAutoLabel = () => {
+    if (!board?.auto_label || !board.can_edit) return
+    if (autoLabelTimer.current) window.clearTimeout(autoLabelTimer.current)
+    autoLabelTimer.current = window.setTimeout(() => { void runAutoLabel('unlabeled', true) }, 3500)
+  }
+  const labelCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    cards.forEach((card) => (card.labels || []).forEach((id) => { counts[id] = (counts[id] || 0) + 1 }))
+    return counts
+  }, [cards])
   const activeMobileColumnId = columns.some((column) => column.id === mobileColumnId) ? mobileColumnId : columns[0]?.id
 
   const createBoard = useMutation({
@@ -254,6 +300,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
         cards: res.data.cards ?? current?.cards ?? [],
       }))
       queryClient.invalidateQueries({ queryKey: ['board', board!.id] })
+      queryClient.invalidateQueries({ queryKey: ['board-members', board!.id] })
       queryClient.invalidateQueries({ queryKey: ['boards', sessionId] })
     },
   })
@@ -340,6 +387,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       setInlineColumnId(null)
       queryClient.invalidateQueries({ queryKey: ['board', board!.id] })
       queryClient.invalidateQueries({ queryKey: ['boards'] })
+      scheduleAutoLabel()
     },
     onError: (error: any) => {
       toast({
@@ -358,18 +406,39 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
     },
   })
 
-  const updateCard = useMutation({
-    mutationFn: ({ cardId, draft }: { cardId: string; draft: CardDraft }) =>
-      boardsApi.updateCard(board!.id, cardId, draftToFields(draft)),
-    onSuccess: () => {
-      setEditingCardId(null)
+  const exitSelectMode = () => { setSelectMode(false); setPickedIds(new Set()); setBulkTarget('') }
+  const togglePicked = (ids: string[], on?: boolean) => setPickedIds((prev) => {
+    const next = new Set(prev)
+    const add = on ?? ids.some((id) => !next.has(id))
+    ids.forEach((id) => (add ? next.add(id) : next.delete(id)))
+    return next
+  })
+  const moveMany = useMutation({
+    mutationFn: ({ ids, columnId }: { ids: string[]; columnId: string }) => Promise.all(ids.map((cardId) => boardsApi.updateCard(board!.id, cardId, { column_id: columnId }))),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['board', board!.id] })
       queryClient.invalidateQueries({ queryKey: ['boards'] })
-      toast({ title: tl("Task aggiornato") })
+      toast({ title: tl("{0} task spostati", String(vars.ids.length)) })
+      exitSelectMode()
+    },
+    onError: (error: any) => {
+      queryClient.invalidateQueries({ queryKey: ['board', board!.id] })
+      toast({ title: tl("Spostamento non riuscito"), description: error?.response?.data?.detail || tl("Riprova tra poco."), variant: 'destructive' })
+    },
+  })
+
+  // Task fields are edited in place and saved as soon as they change (no edit mode).
+  const patchCard = useMutation({
+    mutationFn: ({ cardId, fields }: { cardId: string; fields: BoardCardFields }) => boardsApi.updateCard(board!.id, cardId, fields),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['board', board!.id] })
+      queryClient.invalidateQueries({ queryKey: ['board-members', board!.id] })
+      queryClient.invalidateQueries({ queryKey: ['boards'] })
+      scheduleAutoLabel()
     },
     onError: (error: any) => {
       toast({
-        title: tl("Impossibile modificare il task"),
+        title: tl("Modifica non salvata"),
         description: error?.response?.data?.detail || tl("Riprova tra poco."),
         variant: 'destructive',
       })
@@ -379,7 +448,6 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   const deleteCard = useMutation({
     mutationFn: (cardId: string) => boardsApi.deleteCard(board!.id, cardId),
     onSuccess: () => {
-      setEditingCardId(null)
       queryClient.invalidateQueries({ queryKey: ['board', board!.id] })
       queryClient.invalidateQueries({ queryKey: ['boards'] })
       toast({ title: tl("Task eliminato") })
@@ -393,34 +461,22 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
     },
   })
 
-  const startEditingCard = (card: BoardCard) => {
-    setEditingCardId(card.id)
-    setEditDraft({
-      title: card.title,
-      description: card.description || '',
-      color: card.color || TASK_COLORS[0],
-      labels: card.labels || [],
-      assignees: card.assignees || [],
-      priority: card.priority || '',
-      storyPoints: card.story_points ? String(card.story_points) : '',
-      sprintId: card.sprint_id || '',
-    })
-  }
-
-  const addColumn = () => {
+  const addColumn = (label?: string) => {
     if (!board?.can_manage || columns.length >= 12) return
     const column: BoardColumn = {
       id: `col_${Date.now().toString(36)}`,
-      label: tl("Nuova colonna"),
+      label: label || tl("Nuova colonna"),
       hint: '',
       color: TASK_COLORS[columns.length % TASK_COLORS.length],
     }
     updateBoard.mutate({ columns: [...columns, column] }, {
       onSuccess: () => {
         if (isMobile) setMobileColumnId(column.id)
-        cancelColumnEdit.current = false
-        setEditingColumnId(column.id)
-        setEditingColumnLabel(column.label)
+        if (!label) {
+          cancelColumnEdit.current = false
+          setEditingColumnId(column.id)
+          setEditingColumnLabel(column.label)
+        }
       },
     })
   }
@@ -716,6 +772,16 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                   aria-label={tl("Cerca nelle task della board")}
                   className="min-w-0 flex-1 sm:w-[260px] sm:flex-none"
                 />
+                {board.can_edit && viewMode === 'board' && (
+                  <button
+                    type="button"
+                    onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+                    aria-pressed={selectMode}
+                    className={`inline-flex h-11 items-center gap-1 rounded-xl border px-3 text-xs font-bold md:h-9 ${selectMode ? 'border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <ListChecks className="h-4 w-4" /> {tl("Seleziona")}
+                  </button>
+                )}
                 {board.me && (
                   <button
                     type="button"
@@ -726,27 +792,52 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     <UserRound className="h-4 w-4" /> {tl("I miei task")}
                   </button>
                 )}
-                {(labels.length > 0 || board.can_manage) && (
+                {(labels.length > 0 || board.can_edit) && (
                   <div className="group relative">
                     <button type="button" onClick={() => setLabelsMenuOpen((open) => !open)} aria-expanded={labelsMenuOpen} aria-label={tl("Filtra per etichetta")} className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 hover:bg-slate-50 md:h-9 md:w-9 ${labelFilter ? 'border-slate-500 bg-slate-100' : 'border-slate-200'}`} title={tl("Etichette")}>
-                      <Tags className="h-4 w-4" />
+                      {autoLabeling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tags className="h-4 w-4" />}
                     </button>
                     <div className={`${labelsMenuOpen ? 'block' : 'hidden group-hover:block group-focus-within:block'} absolute right-0 top-full z-30 min-w-44 pt-1`}>
                       <div className="rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg" role="group" aria-label={tl("Etichette")}>
                         {labels.map((label) => (
                           <button key={label.id} type="button" aria-pressed={labelFilter === label.id} onClick={() => { setLabelFilter(labelFilter === label.id ? null : label.id); setLabelsMenuOpen(false) }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-slate-100 ${labelFilter === label.id ? 'font-bold text-slate-900' : 'text-slate-600'}`}>
-                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: label.color }} />{label.name}
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: label.color }} />{label.name}<span className="ml-auto pl-3 text-[10px] font-medium text-slate-400">{labelCounts[label.id] || 0}</span>
                           </button>
                         ))}
                         {board.can_manage && <button type="button" onClick={() => { setLabelsMenuOpen(false); setLabelsOpen(true) }} className="w-full rounded-lg border-t border-slate-100 px-2 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-100">{tl("Gestisci etichette")}</button>}
+                        {board.can_edit && cards.length > 0 && (
+                          <div className="mt-1 space-y-0.5 border-t border-slate-100 pt-1">
+                            <button type="button" disabled={autoLabeling} onClick={() => { setLabelsMenuOpen(false); void runAutoLabel('unlabeled') }} className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                              <Sparkles className="h-3.5 w-3.5" /> {tl("Raggruppa ed etichetta i task con l’IA")}
+                            </button>
+                            <button type="button" disabled={autoLabeling} onClick={() => { setLabelsMenuOpen(false); void runAutoLabel('all') }} className="w-full rounded-lg px-2 py-1.5 pl-7 text-left text-[11px] text-slate-500 hover:bg-slate-50 disabled:opacity-50">
+                              {tl("Rianalizza anche quelli già etichettati")}
+                            </button>
+                            {board.can_manage && (
+                              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50">
+                                <input type="checkbox" checked={Boolean(board.auto_label)} onChange={(event) => updateBoard.mutate({ auto_label: event.target.checked })} />
+                                {tl("Etichetta automaticamente i nuovi task")}
+                              </label>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                 )}
+                <PresenceAvatars people={boardPresence.others} />
+                {isShared && (
+                  <div className="hidden h-9 shrink-0 items-center gap-1.5 rounded-xl bg-violet-50 px-2 text-[11px] font-bold text-violet-700 sm:inline-flex" aria-label={tl("Condivisa con")}>
+                    <Users className="h-3.5 w-3.5" />
+                    <span>{tl("Condivisa con")}</span>
+                    {sharedWithClass && <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] text-white" title={board.session_title || undefined}>{tl("Tutta la classe")}</span>}
+                    <span className="flex flex-wrap gap-1">{sharedPeople.map((person) => <Avatar key={memberKey(person)} person={person} ringClass="ring-violet-50" />)}</span>
+                  </div>
+                )}
                 {board.can_manage && (
-                  <button type="button" onClick={() => setShareOpen(true)} className="inline-flex h-11 w-11 items-center justify-center gap-1 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 md:h-9 md:w-auto md:px-3" title={tl("Condividi")}>
+                  <button type="button" onClick={() => setShareOpen(true)} className={`inline-flex h-11 w-11 items-center justify-center gap-1 rounded-xl border text-sm font-bold md:h-9 md:w-auto md:px-3 ${isShared ? 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`} title={isShared ? tl("Condivisione") : tl("Condividi")}>
                     {board.visibility === 'session_shared' ? <Share2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                    <span className="hidden md:inline">{tl("Condividi")}</span>
+                    <span className="hidden md:inline">{isShared ? tl("Condivisa") : tl("Condividi")}</span>
                   </button>
                 )}
               </div>
@@ -794,7 +885,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 columns={columns}
                 canManage={Boolean(board.can_manage)}
                 onManageSprints={() => setSprintsOpen(true)}
-                onOpenCard={(id) => { setOpenCardId(id); setEditingCardId(null) }}
+                onOpenCard={(id) => setOpenCardId(id)}
               />
             ) : <>
             {isMobile && <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2" aria-label={tl("Colonne board")}>
@@ -802,7 +893,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
               {board.can_manage && (
                 <button
                   type="button"
-                  onClick={addColumn}
+                  onClick={() => addColumn()}
                   disabled={columns.length >= 12 || updateBoard.isPending}
                   className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full border border-dashed border-slate-300 bg-white px-4 text-xs font-black text-slate-600 disabled:opacity-40"
                   aria-label={tl("Nuova colonna")}
@@ -923,7 +1014,14 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                         )}
                       </div>
                     )}
-                    {board.can_edit && (
+                    {selectMode && (grouped[column.id] || []).length > 0 && (
+                      <button type="button" onClick={() => togglePicked((grouped[column.id] || []).map((item) => item.id))}
+                        className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-bold text-slate-600 hover:bg-slate-900/[0.06]"
+                        title={tl("Seleziona tutti i task della colonna")} aria-label={tl("Seleziona tutti i task della colonna")}>
+                        {(grouped[column.id] || []).every((item) => pickedIds.has(item.id)) ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                      </button>
+                    )}
+                    {board.can_edit && !selectMode && (
                       <button
                         type="button"
                         onClick={() => {
@@ -942,6 +1040,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     {inlineColumnId === column.id && (
                       <div className="ui-card w-full shrink-0 p-3">
                         <CardForm
+                          boardId={board.id}
                           heading={tl("Nuovo task")}
                           draft={inlineDraft}
                           onChange={setInlineDraft}
@@ -962,15 +1061,16 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                         role="button"
                         tabIndex={0}
                         aria-label={tl("Apri {0}", card.title)}
-                        onClick={() => { setOpenCardId(card.id); setEditingCardId(null) }}
+                        aria-pressed={selectMode ? pickedIds.has(card.id) : undefined}
+                        onClick={() => (selectMode ? togglePicked([card.id]) : setOpenCardId(card.id))}
                         onKeyDown={(event) => {
                           if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
                             event.preventDefault()
-                            setOpenCardId(card.id)
-                            setEditingCardId(null)
+                            if (selectMode) togglePicked([card.id])
+                            else setOpenCardId(card.id)
                           }
                         }}
-                        draggable={Boolean(!isMobile && board.can_edit)}
+                        draggable={Boolean(!isMobile && board.can_edit && !selectMode)}
                         onDragStart={(event) => {
                           if (!board.can_edit || (event.target as HTMLElement).closest('button, input, textarea')) {
                             event.preventDefault()
@@ -985,9 +1085,10 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           setDraggingCardId(null)
                           setDragOverCol(null)
                         }}
-                        className={`ui-card ui-card-interactive w-full shrink-0 cursor-pointer p-3 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${draggingCardId === card.id ? 'opacity-50' : ''}`}
+                        className={`group/card ui-card ui-card-interactive w-full shrink-0 cursor-pointer p-3 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${draggingCardId === card.id ? 'opacity-50' : ''} ${selectMode && pickedIds.has(card.id) ? 'ring-2 ring-[var(--logo-violet)]' : ''}`}
                       >
                         <div className="flex items-start gap-2">
+                          {selectMode && (pickedIds.has(card.id) ? <CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-[var(--logo-violet)]" aria-hidden="true" /> : <Square className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />)}
                           <h4 className="min-w-0 flex-1 text-sm font-bold leading-5 text-slate-900">{card.title}</h4>
                           <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#d4d4d4' }} aria-hidden="true" />
                         </div>
@@ -1007,10 +1108,20 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           </div>
                         )}
                         {(card.priority || card.story_points || (card.assignees || []).length > 0) && (
-                          <div className="mt-2 flex items-center gap-1.5">
+                          <div className="mt-2 flex items-start gap-1.5">
                             {card.priority && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${PRIORITY_STYLE[card.priority].className}`}>{PRIORITY_STYLE[card.priority].label}</span>}
                             {card.story_points ? <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600" title="Story point">{card.story_points} pt</span> : null}
                             <AssigneeStack people={card.assignees || []} />
+                          </div>
+                        )}
+                        {descriptionHasContent(card.description) && (
+                          // Hovering (or focusing) the task unfolds its content right in the column.
+                          <div className="grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out group-hover/card:grid-rows-[1fr] group-focus-within/card:grid-rows-[1fr]">
+                            <div className="min-h-0 overflow-hidden">
+                              <div className="mt-2 max-h-64 overflow-y-auto border-t border-slate-200/70 pt-2 text-xs leading-5 text-slate-600">
+                                <DescriptionView text={card.description || ''} compact />
+                              </div>
+                            </div>
                           </div>
                         )}
                       </article>
@@ -1025,47 +1136,39 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 </section>
               ))}
               {!isMobile && board.can_manage && (
-                <button
-                  type="button"
-                  onClick={addColumn}
-                  disabled={columns.length >= 12 || updateBoard.isPending}
-                  className="flex min-h-[72px] w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white/60 text-sm font-bold text-slate-500 transition hover:border-slate-400 hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 lg:h-full lg:min-h-0 lg:w-[90px]"
-                  title={columns.length >= 12 ? tl("Numero massimo di colonne raggiunto") : tl("Nuova colonna")}
-                >
-                  <Plus className="h-5 w-5" />
-                  <span className="lg:sr-only">{tl("Nuova colonna")}</span>
-                </button>
+                <AddColumnTile existing={columns.map((column) => column.label)} disabled={columns.length >= 12 || updateBoard.isPending} onAdd={(label) => addColumn(label)} />
               )}
             </div>
             </>}
           </>
         )}
       </main>}
+      {selectMode && board?.can_edit && (
+        <div className="ds-popover fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-[var(--ds-radius-card)] px-3 py-2" role="toolbar" aria-label={tl("Azioni sui task selezionati")}>
+          <span className="px-1 text-sm font-bold text-slate-800">{tl("{0} selezionati", String(pickedIds.size))}</span>
+          <select value={bulkTarget} onChange={(event) => setBulkTarget(event.target.value)} aria-label={tl("Sposta in")} className="ds-field h-10 rounded-[var(--ds-field-radius)] px-3 text-sm font-bold">
+            <option value="">{tl("Sposta in…")}</option>
+            {columns.map((column) => <option key={column.id} value={column.id}>{column.label}</option>)}
+          </select>
+          <Button tone="accent" surface="solid" disabled={!pickedIds.size || !bulkTarget || moveMany.isPending} onClick={() => moveMany.mutate({ ids: Array.from(pickedIds), columnId: bulkTarget })}>
+            {moveMany.isPending ? tl("Spostamento…") : tl("Sposta")}
+          </Button>
+          <Button tone="neutral" surface="ghost" onClick={exitSelectMode}>{tl("Fine")}</Button>
+        </div>
+      )}
       {openCard && board && (
-        <CardDetailModal
+        <BoardCardDetail
+          boardId={board.id}
           card={openCard}
           columns={columns}
-          labelById={labelById}
-          sprint={openCard.sprint_id ? sprintById[openCard.sprint_id] : undefined}
-          sprintLabel={openCard.sprint_id ? sprintCode[openCard.sprint_id] : undefined}
+          labels={labels}
+          members={members}
+          sprints={sprints}
           cards={cards}
           canEdit={Boolean(board.can_edit)}
-          editing={editingCardId === openCard.id}
-          editForm={(
-            <CardForm
-              draft={editDraft}
-              onChange={setEditDraft}
-              labels={labels}
-              members={members}
-              sprints={sprints}
-              showPoints={isScrum || openCard.card_type === 'story'}
-              pending={updateCard.isPending}
-              submitLabel={updateCard.isPending ? tl("Salvataggio…") : tl("Salva")}
-              onCancel={() => setEditingCardId(null)}
-              onSubmit={() => updateCard.mutate({ cardId: openCard.id, draft: editDraft })}
-            />
-          )}
-          onEdit={() => startEditingCard(openCard)}
+          showPoints={isScrum || openCard.card_type === 'story'}
+          colorControl={<ColorPicker value={openCard.color || TASK_COLORS[0]} onChange={(color) => patchCard.mutate({ cardId: openCard.id, fields: { color } })} compact />}
+          onPatch={(fields) => patchCard.mutate({ cardId: openCard.id, fields })}
           onMove={(columnId) => moveCard.mutate({ cardId: openCard.id, columnId })}
           onDelete={() => {
             if (window.confirm(tl("Eliminare il task \"{0}\"?", openCard.title))) {
@@ -1073,8 +1176,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
             }
           }}
           deletePending={deleteCard.isPending}
-          onOpenCard={(id) => { setOpenCardId(id); setEditingCardId(null) }}
-          onClose={() => { setOpenCardId(null); setEditingCardId(null) }}
+          onOpenCard={(id) => setOpenCardId(id)}
+          onClose={() => setOpenCardId(null)}
         />
       )}
       {shareOpen && board?.can_manage && (
@@ -1185,7 +1288,8 @@ function ColorPicker({ value, onChange, compact = false }: { value: string; onCh
   )
 }
 
-function CardForm({ heading, draft, onChange, labels, members, sprints, showPoints, pending, submitLabel, onCancel, onSubmit }: {
+function CardForm({ boardId, heading, draft, onChange, labels, members, sprints, showPoints, pending, submitLabel, onCancel, onSubmit }: {
+  boardId: string
   heading?: string
   draft: CardDraft
   onChange: (draft: CardDraft) => void
@@ -1198,9 +1302,7 @@ function CardForm({ heading, draft, onChange, labels, members, sprints, showPoin
   onCancel: () => void
   onSubmit: () => void
 }) {
-  const [showPeople, setShowPeople] = useState(false)
   const set = (patch: Partial<CardDraft>) => onChange({ ...draft, ...patch })
-  const isAssigned = (member: Member) => draft.assignees.some((a) => a.kind === member.kind && a.id === member.id)
   const fieldLabel = 'block text-[10px] font-bold uppercase tracking-wide text-slate-500'
   const inputClass = 'mt-1 w-full rounded-md border border-slate-200 px-2 text-sm font-normal normal-case tracking-normal text-slate-900 outline-none focus:ring-2 focus:ring-slate-300'
   return (
@@ -1223,10 +1325,10 @@ function CardForm({ heading, draft, onChange, labels, members, sprints, showPoin
         {tl("Titolo")}
         <input autoFocus required value={draft.title} onChange={(e) => set({ title: e.target.value })} onKeyDown={(e) => { if (e.key === 'Escape') onCancel() }} placeholder={tl("Cosa bisogna fare?")} className={`${inputClass} h-8`} />
       </label>
-      <label className={fieldLabel}>
+      <div className={fieldLabel}>
         {tl("Descrizione")} <span className="font-normal normal-case">(facoltativa)</span>
-        <textarea value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder={tl("Aggiungi indicazioni")} rows={3} className={`${inputClass} resize-none py-1.5`} />
-      </label>
+        <DescriptionEditor boardId={boardId} value={draft.description} onChange={(description) => set({ description })} placeholder={tl("Aggiungi indicazioni")} rows={3} className={`${inputClass} resize-none py-1.5`} />
+      </div>
       {labels.length > 0 && (
         <div>
           <p className={fieldLabel}>{tl("Etichette")}</p>
@@ -1275,36 +1377,10 @@ function CardForm({ heading, draft, onChange, labels, members, sprints, showPoin
           </label>
         )}
       </div>
-      {members.length > 0 && (
-        <div>
-          <button type="button" onClick={() => setShowPeople((value) => !value)} className={`${fieldLabel} flex w-full items-center justify-between`}>
-            <span>{tl("Assegnatari")}{draft.assignees.length ? ` · ${draft.assignees.length}` : ''}</span>
-            <span className="font-normal normal-case text-slate-400">{showPeople ? tl("chiudi") : tl("modifica")}</span>
-          </button>
-          {!showPeople && draft.assignees.length > 0 && (
-            <p className="mt-1 truncate text-xs text-slate-600">{draft.assignees.map((a) => a.name).join(', ')}</p>
-          )}
-          {showPeople && (
-            <div className="mt-1 max-h-40 space-y-0.5 overflow-y-auto rounded-md border border-slate-200 p-1">
-              {members.map((member) => (
-                <label key={`${member.kind}-${member.id}`} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs text-slate-700 hover:bg-slate-50">
-                  <input
-                    type="checkbox"
-                    checked={isAssigned(member)}
-                    onChange={(e) => set({
-                      assignees: e.target.checked
-                        ? [...draft.assignees, member]
-                        : draft.assignees.filter((a) => !(a.kind === member.kind && a.id === member.id)),
-                    })}
-                  />
-                  <span className="min-w-0 flex-1 truncate font-bold">{member.name}</span>
-                  <span className="text-[10px] text-slate-400">{member.kind === 'teacher' ? tl("docente") : tl("studente")}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      <div>
+        <p className={fieldLabel}>{tl("Responsabili")}{draft.assignees.length ? ` · ${draft.assignees.length}` : ''}</p>
+        <div className="mt-1"><AssigneePicker members={members} value={draft.assignees} onChange={(assignees) => set({ assignees })} /></div>
+      </div>
       <div className="flex items-center justify-between gap-2 pt-1">
         <ColorPicker value={draft.color} onChange={(color) => set({ color })} />
         <div className="flex gap-2">
@@ -1315,159 +1391,5 @@ function CardForm({ heading, draft, onChange, labels, members, sprints, showPoin
         </div>
       </div>
     </form>
-  )
-}
-
-function AssigneeStack({ people, size = 'sm' }: { people: Member[]; size?: 'sm' | 'md' }) {
-  if (!people.length) return null
-  const dim = size === 'md' ? 'h-7 w-7 text-[10px]' : 'h-6 w-6 text-[9px]'
-  return (
-    <div className="ml-auto flex -space-x-1.5">
-      {people.slice(0, 4).map((person) => (
-        <span
-          key={`${person.kind}-${person.id}`}
-          className={`inline-flex ${dim} items-center justify-center rounded-full font-black ring-2 ring-white ${person.kind === 'teacher' ? 'bg-slate-800 text-white' : 'bg-teal-100 text-teal-800'}`}
-          title={`${person.name}${person.kind === 'teacher' ? ' (docente)' : ''}`}
-        >
-          {initials(person.name)}
-        </span>
-      ))}
-      {people.length > 4 && <span className={`inline-flex ${dim} items-center justify-center rounded-full bg-slate-100 font-black text-slate-600 ring-2 ring-white`}>+{people.length - 4}</span>}
-    </div>
-  )
-}
-
-function CardDetailModal({ card, columns, labelById, sprint, sprintLabel, cards, canEdit, editing, editForm, onEdit, onMove, onDelete, deletePending, onOpenCard, onClose }: {
-  card: BoardCard
-  columns: BoardColumn[]
-  labelById: Record<string, BoardLabel>
-  sprint?: BoardSprint
-  sprintLabel?: string
-  cards: BoardCard[]
-  canEdit: boolean
-  editing: boolean
-  editForm: ReactNode
-  onEdit: () => void
-  onMove: (columnId: string) => void
-  onDelete: () => void
-  deletePending: boolean
-  onOpenCard: (id: string) => void
-  onClose: () => void
-}) {
-  const parent = card.parent_card_id ? cards.find((item) => item.id === card.parent_card_id) : null
-  const children = cards.filter((item) => item.parent_card_id === card.id)
-  const column = columns.find((item) => item.id === card.column_id)
-  const cardLabels = (card.labels || []).map((id) => labelById[id]).filter(Boolean)
-  const sectionTitle = 'text-[10px] font-black uppercase tracking-wide text-slate-400'
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !editing) onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [editing, onClose])
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <div className="ds-popover flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-[var(--ds-radius-card)] sm:rounded-[var(--ds-radius-card)]" role="dialog" aria-modal="true" aria-labelledby="board-card-title">
-        <div className="flex items-start gap-3 px-6 pb-3 pt-6">
-          <span className="mt-2 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#d4d4d4' }} aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-wide">
-              {card.card_type && (
-                <span className={`rounded-full px-2 py-0.5 ${card.card_type === 'epic' ? 'bg-violet-100 text-violet-700' : card.card_type === 'story' ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-600'}`}>{CARD_TYPE_LABEL[card.card_type]}</span>
-              )}
-              {column && (
-                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-slate-700" style={{ backgroundColor: `${column.color}2e` }}>{column.label}</span>
-              )}
-              {sprint && <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/[0.06] px-2 py-0.5 text-slate-600"><CalendarRange className="h-3 w-3" />{sprintLabel} · {sprint.name}{formatSprintDates(sprint) ? ` · ${formatSprintDates(sprint)}` : ''}</span>}
-            </div>
-            <h3 id="board-card-title" className="mt-1.5 text-xl font-black leading-7 text-slate-900">{card.title}</h3>
-            {parent && (
-              <button type="button" onClick={() => onOpenCard(parent.id)} className="mt-1 max-w-full truncate text-left text-xs font-bold text-slate-500 hover:text-slate-800 hover:underline">
-                ↳ Epic: {parent.title}
-              </button>
-            )}
-          </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}>
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">
-          {editing ? editForm : (
-            <div className="space-y-5">
-              {(cardLabels.length > 0 || card.priority || card.story_points) && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {cardLabels.map((label) => (
-                    <span key={label.id} className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ backgroundColor: `${label.color}1f`, color: label.color }}>{label.name}</span>
-                  ))}
-                  {card.priority && <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${PRIORITY_STYLE[card.priority].className}`}>{tl("Priorità")} {PRIORITY_STYLE[card.priority].label.toLowerCase()}</span>}
-                  {card.story_points ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{card.story_points} story point</span> : null}
-                </div>
-              )}
-              <section>
-                <h4 className={sectionTitle}>{tl("Descrizione")}</h4>
-                {card.description
-                  ? <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-700">{card.description}</p>
-                  : <p className="mt-1.5 text-sm text-slate-400">{tl("Nessuna descrizione.")}</p>}
-              </section>
-              <section>
-                <h4 className={sectionTitle}>{tl("Assegnatari")}</h4>
-                {(card.assignees || []).length ? (
-                  <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                    {(card.assignees || []).map((person) => (
-                      <li key={`${person.kind}-${person.id}`} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 py-0.5 pl-0.5 pr-2.5 text-xs font-bold text-slate-700">
-                        <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-black ${person.kind === 'teacher' ? 'bg-slate-800 text-white' : 'bg-teal-100 text-teal-800'}`}>{initials(person.name)}</span>
-                        {person.name}
-                        <span className="font-normal text-slate-400">{person.kind === 'teacher' ? tl("docente") : tl("studente")}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : <p className="mt-1.5 text-sm text-slate-400">{tl("Nessuno assegnato.")}</p>}
-              </section>
-              {children.length > 0 && (
-                <section>
-                  <h4 className={sectionTitle}>User story · {children.length}</h4>
-                  <ul className="mt-1.5 space-y-1">
-                    {children.map((child) => (
-                      <li key={child.id}>
-                        <button type="button" onClick={() => onOpenCard(child.id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50">
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: child.color || '#d4d4d4' }} />
-                          <span className="min-w-0 flex-1 truncate font-bold">{child.title}</span>
-                          <span className="shrink-0 text-[10px] text-slate-400">{columns.find((item) => item.id === child.column_id)?.label}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-              {canEdit && columns.length > 1 && (
-                <label className="block">
-                  <span className={sectionTitle}>{tl("Sposta in")}</span>
-                  <select value={card.column_id} onChange={(event) => onMove(event.target.value)} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm">
-                    {columns.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                  </select>
-                </label>
-              )}
-              <p className="text-[11px] text-slate-400">
-                {card.created_by_display_name && tl("Creato da {0}", card.created_by_display_name)}
-                {card.last_actor_display_name && tl(" · ultima modifica {0}", card.last_actor_display_name)}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {canEdit && !editing && (
-          <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-6 py-4">
-            <button type="button" disabled={deletePending} onClick={onDelete} className="inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-40">
-              <Trash2 className="h-4 w-4" /> {tl("Elimina")}
-            </button>
-            <button type="button" onClick={onEdit} className="inline-flex h-10 items-center gap-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)]">
-              <Edit2 className="h-4 w-4" /> {tl("Modifica")}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
   )
 }

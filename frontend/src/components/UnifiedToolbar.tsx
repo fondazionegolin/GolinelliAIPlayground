@@ -5,7 +5,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
   Heading1, Heading2, Pilcrow, Type, Plus, Minus, Video, ZoomIn, ZoomOut, Sparkles, Rows3, MoreHorizontal,
-  Square, Circle, RotateCw, Magnet, Grid3x3, Layers, Paintbrush, ListTree, Eraser, Highlighter
+  Square, Circle, RotateCw, Magnet, Grid3x3, Layers, Paintbrush, ListTree, Eraser, Highlighter, Palette
 } from '@/components/icons'
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
@@ -54,6 +54,8 @@ interface UnifiedToolbarProps {
   onChangeSnapOptions?: (options: SlideSnapOptions) => void
   layersPanelOpen?: boolean
   onToggleLayersPanel?: () => void
+  /** Slide look editor (background, fonts, sizes, colours, saved styles). */
+  onOpenSlideStyle?: () => void
 }
 
 export function UnifiedToolbar({
@@ -79,7 +81,8 @@ export function UnifiedToolbar({
   snapOptions,
   onChangeSnapOptions,
   layersPanelOpen = false,
-  onToggleLayersPanel
+  onToggleLayersPanel,
+  onOpenSlideStyle
 }: UnifiedToolbarProps) {
   const [showImageModal, setShowImageModal] = useState(false)
   const formatPainter = useFormatPainter(mode === 'document' ? editor : null)
@@ -596,6 +599,11 @@ export function UnifiedToolbar({
               >
                 <Layers className="h-4 w-4" />
               </Button>
+              {onOpenSlideStyle && (
+                <Button size="icon" variant="ghost" className="h-8 w-8" title={tl("Stile delle slide: sfondo, caratteri, colori")} aria-label={tl("Stile delle slide")} onClick={onOpenSlideStyle}>
+                  <Palette className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           )}
 

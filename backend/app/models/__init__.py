@@ -34,6 +34,7 @@ from app.models.voice_call import VoiceCall, VoiceCallAnalysis, VoiceCallRecordi
 from app.models.changelog import PlatformChangelogRelease
 from app.models.live_interaction import LiveEscapeParticipant, LiveInteraction, LiveInteractionResponse
 from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
+from app.models.presentation_style import PresentationStyle
 from app.models.coding import CodingAgentRun, CodingBrief, CodingBuild, CodingDesignSystem, CodingFile, CodingMessage, CodingProject, CodingProjectData, CodingPublication, CodingReview, CodingVersion
 from app.models.turing import TuringExperiment, TuringParticipant, TuringMessage, TuringPersona, TuringTeacherSettings
 from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun, AgenticWorkflowTable, AgenticAssistantConversation
@@ -134,6 +135,7 @@ __all__ = [
     "CodingBrief",
     "CodingBuild",
     "CodingDesignSystem",
+    "PresentationStyle",
     "CodingFile",
     "CodingMessage",
     "CodingProject",

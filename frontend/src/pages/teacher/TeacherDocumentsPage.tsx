@@ -34,6 +34,9 @@ import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
 import { collectDocumentColors } from '@/components/ui/ColorPicker'
 import PresentationStudio from '@/components/presentation/PresentationStudio'
 import PresentationDeckTools from '@/components/presentation/PresentationDeckTools'
+import { useResourcePresence } from '@/hooks/useResourcePresence'
+import PresenceAvatars from '@/components/PresenceAvatars'
+import SlideStyleDialog from '@/components/presentation/SlideStyleDialog'
 import DocumentCreateRow from '@/components/documents/DocumentCreateRow'
 import { NewSlideDialog } from '@/components/documents/NewSlideDialog'
 import { withImage, createSlideAt, withSlideBlocks, type DeckTheme, type RenderedDeck, type StudioSlide } from '@/lib/presentationStudio'
@@ -222,6 +225,7 @@ export default function TeacherDocumentsPage() {
   const defaultCanvasTitle = isEnglish ? 'New Board' : 'Nuova Lavagna'
   const dateLocale = isEnglish ? 'en-GB' : 'it-IT'
   const [draftId, setDraftId] = useState<string | null>(null)
+  const documentPresence = useResourcePresence('document', draftId, 'teacher')
   const draftIdRef = useRef<string | null>(null)
   const pendingDraftPayloadRef = useRef<{ title: string; doc_type: string; content_json: string } | null>(null)
   const isSavingDraftRef = useRef(false)
@@ -304,6 +308,7 @@ export default function TeacherDocumentsPage() {
   const [snapOptions, setSnapOptions] = useState<SlideSnapOptions>(DEFAULT_SLIDE_SNAP_OPTIONS)
   const [activeBlockEditor, setActiveBlockEditor] = useState<Editor | null>(null)
   const [layersPanelOpen, setLayersPanelOpen] = useState(false)
+  const [slideStyleOpen, setSlideStyleOpen] = useState(false)
 
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -2250,6 +2255,7 @@ export default function TeacherDocumentsPage() {
           onTitleChange={handleTitleChange}
           titleDisabled={Boolean(activeStudentSubmissionId)}
           titlePlaceholder={isEnglish ? 'Document title' : 'Titolo documento'}
+          presence={<PresenceAvatars people={documentPresence.others} />}
           saveState={activeStudentSubmissionId ? correctionSaveState : draftSaveState}
           saveLabel={activeStudentSubmissionId
             ? (correctionSaveState === 'saving' ? (isEnglish ? 'Saving correction…' : 'Salvataggio correzione…') : (isEnglish ? 'Tracked correction' : 'Correzione tracciata'))
@@ -2367,6 +2373,16 @@ export default function TeacherDocumentsPage() {
           )}
         />
 
+        {slideStyleOpen && mode === 'slides' && (
+          <SlideStyleDialog
+            slides={document.slides as StudioSlide[]}
+            currentSlideIndex={currentSlideIndex}
+            theme={document.theme}
+            dims={FORMAT_DIMENSIONS[document.format]}
+            onApply={(slides) => setDocument(prev => ({ ...prev, slides: slides as Slide[] }))}
+            onClose={() => setSlideStyleOpen(false)}
+          />
+        )}
         {/* Unified Toolbar */}
         {mode !== 'sheet' && mode !== 'canvas' && mode !== 'web' && (
         <div ref={toolbarHostRef}>
@@ -2392,6 +2408,7 @@ export default function TeacherDocumentsPage() {
             onAIAssistAnchorChange={setAiPanelAnchor}
             layersPanelOpen={layersPanelOpen}
             onToggleLayersPanel={() => setLayersPanelOpen(v => !v)}
+            onOpenSlideStyle={mode === 'slides' ? () => setSlideStyleOpen(true) : undefined}
           />
         </div>
         )}
@@ -2667,7 +2684,7 @@ export default function TeacherDocumentsPage() {
              {mode === 'slides' && (
                <div 
                  ref={canvasRef}
-                 className="bg-white shadow-xl relative shrink-0 flex flex-col"
+                 className="theme-keep bg-white shadow-xl relative shrink-0 flex flex-col"
                  style={{
                    width: FORMAT_DIMENSIONS[document.format].width,
                    height: FORMAT_DIMENSIONS[document.format].height,

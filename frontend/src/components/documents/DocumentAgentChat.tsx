@@ -3,7 +3,7 @@ import { usePromptHistory } from '@/hooks/usePromptHistory'
 import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { Bot, Check, ImageIcon, Loader2, MousePointer2, Send, Sparkles, Undo2, X } from '@/components/icons'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
-import { generateDeckImages, pendingImageSlots, type DeckTheme, type StudioSlide } from '@/lib/presentationStudio'
+import { generateDeckImages, pendingImageSlots, presentationStudioApi, type DeckTheme, type SlideStyleSpec, type StudioSlide } from '@/lib/presentationStudio'
 import { llmApi } from '@/lib/api'
 import { useServerHealth } from '@/components/ServerHealthIndicator'
 import type { FormatOperation } from '@/lib/documentFormatOps'
@@ -273,6 +273,14 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
   const applyProposal = (message: ChatMessage) => {
     const proposal = message.proposal!
     onApply(proposal)
+    // «…e salvalo come stile»: saved only once the user confirms the change.
+    const styleToSave = proposal.save_style as { name?: string; style?: SlideStyleSpec } | undefined
+    if (styleToSave?.name && styleToSave.style) {
+      const label = styleToSave.name
+      void presentationStudioApi.createStyle({ name: label, style: styleToSave.style })
+        .then(() => pushAssistant(tl("Stile «{0}» salvato: lo trovi in «Stile delle slide» nella barra in alto.", label)))
+        .catch(() => pushAssistant(tl("Non sono riuscito a salvare lo stile «{0}».", label)))
+    }
     const placeholders = pendingImageSlots(proposalSlides(proposal)).map((slot) => slot.blockId)
     setMessages((current) => current.map((item) => item.id === message.id ? { ...item, status: 'applied', placeholders: placeholders.length ? placeholders : undefined } : item))
   }

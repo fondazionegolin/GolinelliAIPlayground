@@ -42,3 +42,9 @@ export function fontFamiliesIn(blocks: SlideBlock[]): string[] {
 export function ensureSlideFonts(blocks: SlideBlock[]) {
   fontFamiliesIn(blocks).forEach(loadFamily)
 }
+
+/** One family by name (style editor preview); built-in and installed families are skipped. */
+export function ensureFontFamily(name: string) {
+  const family = name.trim()
+  if (family && !AVAILABLE.has(family.toLowerCase())) loadFamily(family)
+}

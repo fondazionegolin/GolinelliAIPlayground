@@ -26,6 +26,7 @@ export function DocumentEditorHeader({
   saveState = 'idle',
   saveLabel,
   badges,
+  presence,
   tools,
   primary,
 }: {
@@ -39,6 +40,8 @@ export function DocumentEditorHeader({
   saveState?: DocumentSaveState
   saveLabel?: string
   badges?: ReactNode
+  /** Avatars of the people who have this document open right now. */
+  presence?: ReactNode
   tools?: ReactNode
   primary?: ReactNode
 }) {
@@ -73,6 +76,8 @@ export function DocumentEditorHeader({
         )}
         {badges}
       </div>
+
+      {presence}
 
       {tools && (
         <div className="flex shrink-0 items-center gap-0.5 rounded-full bg-[var(--ds-control)] p-1 shadow-[var(--ds-shadow-control)]">

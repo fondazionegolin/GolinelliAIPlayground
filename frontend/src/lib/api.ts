@@ -1962,7 +1962,8 @@ export type BoardCardFields = {
   coding_status?: string | null
   sort_order?: string
   labels?: string[]
-  assignees?: { kind: 'teacher' | 'student'; id: string }[]
+  /** kind=external without id creates a named person who has no platform account. */
+  assignees?: { kind: 'teacher' | 'student' | 'external'; id?: string; name?: string }[]
   priority?: 'alta' | 'media' | 'bassa' | null
   story_points?: number | null
   card_type?: 'epic' | 'story' | 'task' | null
@@ -2003,6 +2004,8 @@ export const boardsApi = {
     labels?: { id?: string; name: string; color?: string }[]
     sprints?: BoardSprintInput[]
     auto_sprint_weekly?: boolean
+    external_people?: { id?: string; name: string }[]
+    auto_label?: boolean
     visibility?: 'private' | 'session_shared'
     students_can_edit?: boolean
     session_id?: string
@@ -2024,6 +2027,15 @@ export const boardsApi = {
     api.delete(`/boards/${boardId}/cards/${cardId}`),
   aiChat: (boardId: string, data: { message: string; history?: { role: string; content: string }[]; generate_tasks?: boolean }) =>
     api.post(`/boards/${boardId}/ai/chat`, data),
+  /** A picture pasted into a task description; returns its public URL. */
+  uploadImage: (boardId: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<{ url: string }>(`/boards/${boardId}/images`, form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
+  },
+  /** AI clustering + labelling of the tasks (mode unlabeled = only tasks without labels). */
+  autoLabel: (boardId: string, mode: 'unlabeled' | 'all' = 'unlabeled') =>
+    api.post(`/boards/${boardId}/auto-label`, { mode }, { timeout: 120000 }),
 }
 
 

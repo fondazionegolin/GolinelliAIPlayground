@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-17T13:36:50.162894+00:00",
-  "version_label": "2026.11.17-b8f2eb8d",
+  "generated_at": "2026-11-18T12:41:33.691387+00:00",
+  "version_label": "2026.11.18-21dd58a4",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 27 commit dall'ultima release pubblicata.",
-  "git_ref": "b8f2eb8d0ecf5bf672fb119b25a9e6f4de1df47e",
+  "summary": "Bozza generata automaticamente da 29 commit dall'ultima release pubblicata.",
+  "git_ref": "21dd58a4ddc8c80fced140307acdfa8e69878dfd",
   "items": [
     {
       "category": "new",
@@ -139,6 +139,16 @@
       "category": "new",
       "title": "Support-chat: random starter hints promoting agentic mode and platform tools",
       "description": "Support-chat: random starter hints promoting agentic mode and platform tools"
+    },
+    {
+      "category": "new",
+      "title": "Recordings: personal REC button, translation, speech with ElevenLabs/OpenRouter fallback",
+      "description": "Recordings: personal REC button, translation, speech with ElevenLabs/OpenRouter fallback"
+    },
+    {
+      "category": "new",
+      "title": "Smart-canvas: copy/paste, grid snap, curved connector, floating tool pill, fullscreen; fix class chat dock click",
+      "description": "Smart-canvas: copy/paste, grid snap, curved connector, floating tool pill, fullscreen; fix class chat dock click"
     }
   ]
 }

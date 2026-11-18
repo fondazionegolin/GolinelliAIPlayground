@@ -79,6 +79,11 @@ export interface ResolvedTheme {
 /** What a deck stores: the theme id + options; colours are always re-resolved server-side. */
 export interface DeckTheme { id: string; options: Partial<ThemeOptions> }
 
+/** Slide style: every key optional, only what is set is changed (see backend presentation_styles). */
+export interface SlideTextStyle { fontFamily?: string; fontSize?: number; color?: string; fontWeight?: string; fontStyle?: string; textAlign?: string }
+export interface SlideStyleSpec { background?: string; title?: SlideTextStyle; body?: SlideTextStyle; accent?: string }
+export interface SavedSlideStyle { id: string; name: string; style: SlideStyleSpec; updated_at: string | null }
+
 export interface QualityIssue {
   code: 'low_contrast' | 'low_contrast_inline' | 'off_canvas' | 'degenerate_shape' | 'invisible_shape' | 'empty_text' | 'overflow'
   slide_index: number
@@ -94,6 +99,7 @@ export interface StudioSlide {
   layout?: StudioLayout
   content?: Record<string, unknown>
   customized?: boolean
+  backgroundColor?: string
   blocks: SlideBlock[]
 }
 
@@ -234,6 +240,12 @@ export const presentationStudioApi = {
     api.post<{ theme: DeckTheme; resolved_theme: ResolvedTheme; slides: StudioSlide[]; quality: QualityIssue[] }>('/presentation-studio/retheme', data),
   image: (data: { prompt: string; deck_title: string; slide_title: string; theme?: DeckTheme | null }, signal?: AbortSignal) =>
     api.post<{ url: string }>('/presentation-studio/images', data, { signal, timeout: 180000 }),
+  styles: () => api.get<{ styles: SavedSlideStyle[]; fonts: string[] }>('/presentation-studio/styles'),
+  createStyle: (data: { name: string; style: SlideStyleSpec }) => api.post<SavedSlideStyle>('/presentation-studio/styles', data),
+  updateStyle: (id: string, data: { name: string; style: SlideStyleSpec }) => api.put<SavedSlideStyle>(`/presentation-studio/styles/${id}`, data),
+  deleteStyle: (id: string) => api.delete(`/presentation-studio/styles/${id}`),
+  applyStyle: (data: { slides: StudioSlide[]; style: SlideStyleSpec; slide_ids?: string[] | null; theme?: DeckTheme | null; dims: Dims }) =>
+    api.post<{ slides: StudioSlide[]; changed: number; style: SlideStyleSpec }>('/presentation-studio/apply-style', data),
   quality: (data: { slides: StudioSlide[]; theme?: DeckTheme | null; dims: Dims; fix: boolean }) =>
     api.post<{ issues: QualityIssue[]; slides: StudioSlide[] | null }>('/presentation-studio/quality', data),
   newSlide: (data: { description: string; deck_title: string; theme: DeckTheme; index: number; dims: Dims; context: { title: string; text: string }[] }) =>

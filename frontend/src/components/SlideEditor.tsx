@@ -836,7 +836,7 @@ export function SlideEditor({
   return (
     <div 
       ref={canvasRef}
-      className="flex-1 relative overflow-hidden bg-white shadow-inner w-full h-full"
+      className="theme-keep flex-1 relative overflow-hidden bg-white shadow-inner w-full h-full"
       onPointerDown={handleCanvasClick}
       onContextMenu={(e) => openContextMenu(e, null)}
       onDragOver={(e) => e.preventDefault()}
@@ -845,7 +845,7 @@ export function SlideEditor({
         cursor: dragState?.isDragging ? 'grabbing' : 'default',
         ...(backgroundColor
           ? { backgroundColor }
-          : { backgroundImage: 'radial-gradient(var(--canvas-dot) 1px, transparent 1px)', backgroundSize: '20px 20px' }),
+          : { backgroundColor: '#ffffff', backgroundImage: 'radial-gradient(#d6d6d6 1px, transparent 1px)', backgroundSize: '20px 20px' }),
       }}
     >
       {!blocks.length && !readOnly && (

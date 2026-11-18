@@ -73,7 +73,7 @@ export function SlidePreview({ content, title, backdrop = 'bg-slate-100', intera
     <div ref={hostRef} className={`relative h-full w-full overflow-hidden ${backdrop}`}>
       {hostSize.width > 0 && hostSize.height > 0 && (
         <div
-          className="absolute left-0 top-0 origin-top-left overflow-hidden shadow-inner"
+          className="theme-keep absolute left-0 top-0 origin-top-left overflow-hidden shadow-inner"
           style={{
             width: dimensions.width,
             height: dimensions.height,

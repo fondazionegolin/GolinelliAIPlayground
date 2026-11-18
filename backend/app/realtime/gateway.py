@@ -489,6 +489,7 @@ async def disconnect(sid):
 
     print(f"[Gateway] User disconnected: {user.get('id')} ({user.get('type')}) sid={sid}")
     await _drop_canvas_viewer(sid)
+    await _drop_resource_viewer(sid)
     for call_id in list((user.get("voice_calls") or {}).keys()):
         await _drop_voice_user(_voice_call_key(call_id), user["id"], unless_sid=sid)
 
@@ -1720,6 +1721,114 @@ async def canvas_presence(sid, data):
         await sio.enter_room(sid, f"session:{session_id}")  # teachers' sockets are not in the room by default
         await _broadcast_canvas_viewers(key)
     return {"success": True, "viewers": _canvas_viewer_list(key)}
+
+
+# ─── Presence on any shareable resource (boards, documents, 3D projects) ───────
+# Same idea as the canvas presence, keyed by (kind, id): the room only receives the list after an access check,
+# so names never reach people who cannot open the resource.
+RESOURCE_KINDS = ("board", "document", "model3d")
+resource_viewers: dict[tuple[str, str], dict[str, dict]] = {}
+
+
+async def _can_access_resource(user: dict, kind: str, resource_id: str) -> bool:
+    from uuid import UUID
+    try:
+        rid = UUID(resource_id)
+    except (ValueError, TypeError):
+        return False
+    is_student = user.get("type") == "student"
+    uid = str(user.get("id") or "")
+    try:
+        async with AsyncSessionLocal() as db:
+            if kind == "board":
+                from app.models.board import Board, BoardShare
+                board = (await db.execute(select(Board).where(Board.id == rid))).scalar_one_or_none()
+                if board is None:
+                    return False
+                if str(board.owner_student_id if is_student else board.owner_user_id or "") == uid:
+                    return True
+                share_col = BoardShare.student_id if is_student else BoardShare.user_id
+                if (await db.execute(select(BoardShare.id).where(BoardShare.board_id == rid, share_col == uid))).first():
+                    return True
+                if board.session_id and board.visibility == "session_shared":
+                    return await can_user_access_session(user, str(board.session_id))
+                return False
+            if kind == "document":
+                from app.models.document_draft import DocumentDraft
+                draft = (await db.execute(select(DocumentDraft).where(DocumentDraft.id == rid))).scalar_one_or_none()
+                if draft is None:
+                    return False
+                if str((draft.owner_student_id if is_student else draft.owner_teacher_id) or "") == uid:
+                    return True
+                return bool(draft.session_id) and await can_user_access_session(user, str(draft.session_id))
+            if kind == "model3d":
+                from app.models.solid_model import SolidModel
+                model = (await db.execute(select(SolidModel.owner_id, SolidModel.owner_student_id, SolidModel.tenant_id, SolidModel.shared_class_ids)
+                                          .where(SolidModel.id == rid))).first()
+                if model is None:
+                    return False
+                if uid in {str(model.owner_id or ""), str(model.owner_student_id or "")}:
+                    return True
+                return bool(model.shared_class_ids) and str(model.tenant_id) == str(user.get("tenant_id") or "")
+    except Exception as e:
+        print(f"[Gateway] resource access check failed: {e}")
+    return False
+
+
+def _resource_viewer_list(key: tuple[str, str]) -> list[dict]:
+    viewers = resource_viewers.get(key) or {}
+    now = datetime.now(timezone.utc).timestamp()
+    for stale in [sid for sid, v in viewers.items() if now - v["seen"] > CANVAS_PRESENCE_TTL or sid not in connected_users]:
+        viewers.pop(stale, None)
+    if not viewers:
+        resource_viewers.pop(key, None)
+    unique: dict[str, dict] = {}
+    for v in viewers.values():
+        unique[v["id"]] = {k: v[k] for k in ("id", "name", "role", "avatar_url")}
+    return list(unique.values())
+
+
+async def _broadcast_resource_viewers(key: tuple[str, str]) -> None:
+    await sio.emit("resource_presence", {"kind": key[0], "id": key[1], "viewers": _resource_viewer_list(key)}, room=f"res:{key[0]}:{key[1]}")
+
+
+async def _drop_resource_viewer(sid: str) -> None:
+    for key in [k for k, viewers in resource_viewers.items() if sid in viewers]:
+        resource_viewers[key].pop(sid, None)
+        await _broadcast_resource_viewers(key)
+        try:
+            await sio.leave_room(sid, f"res:{key[0]}:{key[1]}")
+        except Exception:
+            pass
+
+
+@sio.event
+async def resource_presence(sid, data):
+    """A participant opened ("here", also the heartbeat) or closed ("left") a shared resource."""
+    user = connected_users.get(sid)
+    if not user:
+        return {"error": "Not authenticated"}
+    kind = str((data or {}).get("kind") or "")
+    resource_id = str((data or {}).get("id") or "")
+    if kind not in RESOURCE_KINDS or not resource_id:
+        return {"error": "Invalid resource"}
+    key = (kind, resource_id)
+    room = f"res:{kind}:{resource_id}"
+    if (data or {}).get("state") == "left":
+        if key in resource_viewers:
+            resource_viewers[key].pop(sid, None)
+        await _broadcast_resource_viewers(key)
+        await sio.leave_room(sid, room)
+        return {"success": True}
+    known = resource_viewers.get(key, {}).get(sid)
+    if not known and not await _can_access_resource(user, kind, resource_id):
+        return {"error": "Forbidden"}
+    viewer = known or await _canvas_viewer(user)
+    resource_viewers.setdefault(key, {})[sid] = {**viewer, "seen": datetime.now(timezone.utc).timestamp()}
+    if not known:
+        await sio.enter_room(sid, room)
+        await _broadcast_resource_viewers(key)
+    return {"success": True, "viewers": _resource_viewer_list(key)}
 
 
 # Helper function to broadcast from API endpoints

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link2, Loader2, Share2, X } from '@/components/icons'
+import { Link2, Loader2, Plus, Share2, UserRound, X } from '@/components/icons'
 import { boardsApi, type BoardShareTarget } from '@/lib/api'
 import { SearchPill } from '@/design'
 import { useToast } from '@/components/ui/use-toast'
@@ -19,6 +19,7 @@ export type ShareableBoard = {
   session_title?: string | null
   visibility: 'private' | 'session_shared'
   students_can_edit: boolean
+  external_people?: { id: string; name: string }[]
 }
 
 type Props = {
@@ -26,7 +27,7 @@ type Props = {
   activeSessionId?: string
   isStudent: boolean
   onClose: () => void
-  onBoardPatch: (patch: { visibility?: 'private' | 'session_shared'; students_can_edit?: boolean; session_id?: string }) => void
+  onBoardPatch: (patch: { visibility?: 'private' | 'session_shared'; students_can_edit?: boolean; session_id?: string; external_people?: { id?: string; name: string }[] }) => void
   boardPatchPending: boolean
 }
 
@@ -37,6 +38,14 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
   const [students, setStudents] = useState<Record<string, boolean>>({})
   const [teacherSearch, setTeacherSearch] = useState('')
   const [studentSearch, setStudentSearch] = useState('')
+  const [externalName, setExternalName] = useState('')
+  const external = board.external_people || []
+  const addExternal = () => {
+    const name = externalName.replace(/\s+/g, ' ').trim()
+    if (!name || external.some((person) => person.name.toLowerCase() === name.toLowerCase())) { setExternalName(''); return }
+    onBoardPatch({ external_people: [...external, { name }] })
+    setExternalName('')
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['board-shares', board.id, board.session_id],
@@ -125,6 +134,28 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
                 )}
               </div>
             )}
+          </section>
+
+          <section className="space-y-2">
+            <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{tl("Persone esterne alla piattaforma")}{external.length ? ` · ${external.length}` : ''}</h4>
+            <p className="text-xs text-slate-500">{tl("Scrivi il nome di chi collabora ma non ha un account: potrai indicarlo come responsabile dei task. Non riceve accesso alla board.")}</p>
+            <div className="space-y-2 rounded-[var(--ds-radius-control)] bg-slate-50 p-2">
+              {external.length > 0 && (
+                <ul className="flex flex-wrap gap-1.5">
+                  {external.map((person) => (
+                    <li key={person.id} className="inline-flex items-center gap-1 rounded-full bg-amber-100 py-0.5 pl-2.5 pr-1 text-xs font-bold text-amber-900">
+                      <UserRound className="h-3 w-3" /> {person.name}
+                      <button type="button" disabled={boardPatchPending} onClick={() => onBoardPatch({ external_people: external.filter((item) => item.id !== person.id) })} className="rounded-full p-0.5 hover:bg-amber-200" aria-label={tl("Rimuovi {0}", person.name)}><X className="h-3 w-3" /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex gap-1.5">
+                <input value={externalName} maxLength={60} onChange={(event) => setExternalName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addExternal() } }}
+                  placeholder={tl("Nome e cognome")} aria-label={tl("Nome della persona esterna")} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" />
+                <button type="button" disabled={!externalName.trim() || boardPatchPending} onClick={addExternal} className="inline-flex h-9 items-center gap-1 rounded-full bg-white px-3 text-xs font-bold text-slate-700 shadow-[var(--ds-shadow-1)] disabled:opacity-40"><Plus className="h-3.5 w-3.5" /> {tl("Aggiungi")}</button>
+              </div>
+            </div>
           </section>
 
           {isLoading ? (

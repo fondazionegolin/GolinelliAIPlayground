@@ -38,6 +38,9 @@ import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderPageSet
 import { collectDocumentColors } from '@/components/ui/ColorPicker'
 import PresentationStudio from '@/components/presentation/PresentationStudio'
 import PresentationDeckTools from '@/components/presentation/PresentationDeckTools'
+import { useResourcePresence } from '@/hooks/useResourcePresence'
+import PresenceAvatars from '@/components/PresenceAvatars'
+import SlideStyleDialog from '@/components/presentation/SlideStyleDialog'
 import { withImage, withSlideBlocks, type DeckTheme, type RenderedDeck, type StudioSlide } from '@/lib/presentationStudio'
 import { DEFAULT_PAGE_SETUP, pageDimensions, readDocumentAgentPreference, readPageSetup, saveDocumentAgentPreference, withPageBreaks, type PageSetup } from '@/lib/documentPage'
 import { isNativeUndoTarget, useUndoHistory } from '@/hooks/useUndoHistory'
@@ -237,6 +240,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [catalogRefreshKey, setCatalogRefreshKey] = useState(0)
   const isCatalogGrid = true
   const [draftId, setDraftIdState] = useState<string | null>(null)
+  const documentPresence = useResourcePresence('document', draftId, 'student')
   const draftIdRef = useRef<string | null>(null)
   const draftSavePromiseRef = useRef<Promise<string | null>>(Promise.resolve(null))
   const activeDocumentIdRef = useRef(document.id)
@@ -301,6 +305,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [snapOptions, setSnapOptions] = useState<SlideSnapOptions>(DEFAULT_SLIDE_SNAP_OPTIONS)
   const [activeBlockEditor, setActiveBlockEditor] = useState<Editor | null>(null)
   const [layersPanelOpen, setLayersPanelOpen] = useState(false)
+  const [slideStyleOpen, setSlideStyleOpen] = useState(false)
 
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -1902,8 +1907,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     <span className="max-w-[70%] truncate text-xs font-bold text-slate-700">{slide.title}</span>
                   </div>
                   <div className="flex justify-center overflow-hidden bg-slate-100 p-2">
-                    <div className="relative origin-top bg-white" style={{ width: slideDimensions.width * mobileSlideScale, height: slideDimensions.height * mobileSlideScale }}>
-                      <div className="relative origin-top-left bg-white" style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${mobileSlideScale})` }}>
+                    <div className="theme-keep relative origin-top bg-white" style={{ width: slideDimensions.width * mobileSlideScale, height: slideDimensions.height * mobileSlideScale }}>
+                      <div className="theme-keep relative origin-top-left bg-white" style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${mobileSlideScale})` }}>
                         {!slide.blocks.some(block => block.type === 'text' || block.type === 'image') && <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{slide.title}</h3>}
                         <SlideEditor blocks={slide.blocks} backgroundColor={slide.backgroundColor} onChange={() => {}} selectedBlockId={null} onSelectBlock={() => {}} scale={mobileSlideScale} readOnly slideWidth={slideDimensions.width} slideHeight={slideDimensions.height} />
                       </div>
@@ -1913,10 +1918,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               ))}
             </div>
             <div className="hidden min-h-full items-start justify-center pt-3 md:flex">
-              <div className="overflow-hidden rounded-xl bg-white shadow-lg" style={{ width: slideDimensions.width * scale, height: slideDimensions.height * scale }}>
+              <div className="theme-keep overflow-hidden rounded-xl bg-white shadow-lg" style={{ width: slideDimensions.width * scale, height: slideDimensions.height * scale }}>
                 <div
                   ref={canvasRef}
-                  className="relative origin-top-left bg-white"
+                  className="theme-keep relative origin-top-left bg-white"
                   style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${scale})` }}
                 >
                   {!currentSlide.blocks.some(block => block.type === 'text' || block.type === 'image') && (
@@ -1989,6 +1994,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           onTitleChange={handleTitleChange}
           titleDisabled={isEditorReadOnly}
           titlePlaceholder={filenamePlaceholder}
+          presence={<PresenceAvatars people={documentPresence.others} />}
           badges={(
             <>
               {isReadOnlyLesson && (
@@ -2132,6 +2138,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           </div>
         )}
 
+        {slideStyleOpen && mode === 'slides' && (
+          <SlideStyleDialog
+            slides={document.slides as StudioSlide[]}
+            currentSlideIndex={currentSlideIndex}
+            theme={document.theme}
+            dims={FORMAT_DIMENSIONS[document.format]}
+            onApply={(slides) => setDocument(prev => ({ ...prev, slides: slides as Slide[] }))}
+            onClose={() => setSlideStyleOpen(false)}
+          />
+        )}
         {/* Unified Toolbar */}
         {!isEditorReadOnly && mode !== 'sheet' && mode !== 'canvas' && mode !== 'pdf' && mode !== 'web' && (
         <div ref={toolbarHostRef}>
@@ -2155,6 +2171,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
             onChangeSnapOptions={setSnapOptions}
             layersPanelOpen={layersPanelOpen}
             onToggleLayersPanel={() => setLayersPanelOpen(v => !v)}
+            onOpenSlideStyle={mode === 'slides' ? () => setSlideStyleOpen(true) : undefined}
             onOpenAIAssist={() => {
               setPresentationChatOpen(true)
             }}
@@ -2638,7 +2655,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                </div>
                <div
                  ref={canvasRef}
-                 className="relative flex shrink-0 flex-col bg-white shadow-xl"
+                 className="theme-keep relative flex shrink-0 flex-col bg-white shadow-xl"
                  style={{
                    width: FORMAT_DIMENSIONS[document.format].width,
                    height: FORMAT_DIMENSIONS[document.format].height,

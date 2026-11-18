@@ -13,6 +13,8 @@ import { shapePreviewUrl } from './shapePreview'
 import SolidModelerViewport, { type ViewName, type ViewportApi } from './SolidModelerViewport'
 import SolidModelerAIPanel from './SolidModelerAIPanel'
 import SolidModelShareDialog from './SolidModelShareDialog'
+import PresenceAvatars from '@/components/PresenceAvatars'
+import { useResourcePresence } from '@/hooks/useResourcePresence'
 import SolidModelArDialog from './SolidModelArDialog'
 import { useSolidProject, type SaveStatus } from './useSolidProject'
 import { editableEdges, edgeLength, resizeEdge, supportsEdgeFillet, exportSTL, objectGeometry, scaleOf, worldBox } from './geometry'
@@ -150,6 +152,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
     setSearchParams(next, { replace: true })
   }, [searchParams, setSearchParams])
   const project = useSolidProject({ objects, resetScene, snapshot, student, initialId })
+  const modelPresence = useResourcePresence('model3d', project.projectId, student ? 'student' : 'teacher')
 
   // Drop selection ids that no longer exist (undo, AI edits).
   useEffect(() => {
@@ -389,6 +392,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
           >
             <Smartphone /> {tl("Visualizza in AR")}
           </Button>
+          <PresenceAvatars people={modelPresence.others} className="ml-1" />
           {!student && <Button
             type="button"
             onClick={() => void openShare()}

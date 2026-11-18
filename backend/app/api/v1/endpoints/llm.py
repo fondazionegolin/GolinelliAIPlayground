@@ -58,6 +58,7 @@ from app.services.presentation_layouts import (
 )
 from app.services.presentation_quality import check_and_fix_slides
 from app.services.presentation_themes import THEMES, THEMES_BY_ID, resolve_theme, theme_from_deck
+from app.services.presentation_styles import clean_color as _clean_hex_color
 from app.services.slide_sanitizer import sanitize_slide_text_html
 from app.services import document_assist
 from app.services import presentation_studio as studio_service
@@ -264,6 +265,8 @@ def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
                 "blocks": clean_blocks,
                 "speakerNotes": str(slide.get("speakerNotes") or slide.get("notes") or "").strip()[:2000],
             }
+            if _clean_hex_color(slide.get("backgroundColor")):
+                clean_slide["backgroundColor"] = _clean_hex_color(slide.get("backgroundColor"))
             if slide.get("layout") in LAYOUTS and isinstance(slide.get("content"), dict):
                 clean_slide["layout"] = slide["layout"]
                 clean_slide["content"] = normalize_content(slide["content"])
@@ -2682,6 +2685,66 @@ async def _image_placeholder_edit(*, prompt: str, deck_title: str, slides: list[
     return work, placed, [response]
 
 
+# «Sfondo bianco», «cambia font dei titoli», «crea uno stile…»: styling is a deterministic operation on
+# the slide's own background / text styles (app.services.presentation_styles), never freehand shapes
+# (white boxes drawn over the text used to bury the slide's content).
+_STYLE_REQUEST_RE = re.compile(
+    r"\b(sfond\w*|background|font|caratter\w*|tipo\s?grafi\w*|typeface|tema|theme|stile|style|palette|"
+    r"colori\s+(?:dei?|del|della|delle|degli|dello)\s+(?:titol\w*|test\w*)|dimension\w*\s+(?:dei?|del|dello)\s+(?:titol\w*|test\w*|font|caratter\w*)|"
+    r"(?:titol\w*|test\w*)\s+(?:più\s+)?(?:grand\w*|piccol\w*)|(?:ingrandisc\w*|rimpiccioli\w*)\s+(?:i\s+)?(?:titol\w*|test\w*))\b",
+    re.IGNORECASE,
+)
+_STYLE_SYSTEM_PROMPT = (
+    "Sei un art director per presentazioni didattiche. Traduci la richiesta in uno STILE (sfondo, tipografia, colori) che il sistema "
+    "applica in modo deterministico: non disegnare forme e non modificare i testi. Rispondi solo con JSON valido, compatto, senza Markdown."
+)
+
+
+async def _style_assist(*, db: AsyncSession, auth, prompt: str, deck_title: str, slides: list[dict], language: str, provider, model,
+                        dims: tuple[int, int], theme: Optional[dict], whole_deck: bool):
+    """Returns (slides, proposal_extra, summary, responses) or None when the request is not about styling."""
+    from app.models.presentation_style import PresentationStyle
+    from app.services import presentation_styles as styles_service
+
+    owner = PresentationStyle.owner_student_id == auth.student.id if auth.is_student else PresentationStyle.owner_user_id == auth.teacher.id
+    saved = (await db.execute(select(PresentationStyle).where(owner).order_by(PresentationStyle.updated_at.desc()).limit(30))).scalars().all()
+    saved_view = [{"name": row.name, "style": row.style_json} for row in saved]
+    current = []
+    for slide in slides[:6]:
+        texts = [b for b in slide.get("blocks") or [] if isinstance(b, dict) and b.get("type") == "text"]
+        current.append({"title": slide.get("title") or "", "background": slide.get("backgroundColor") or "#FFFFFF",
+                        "text_styles": [{k: (b.get("style") or {}).get(k) for k in ("fontFamily", "fontSize", "color")} for b in texts[:3]]})
+    user_prompt = (
+        f"Lingua: {language}\nPresentazione: {deck_title}\nAmbito: {'tutta la presentazione' if whole_deck else 'la slide corrente'}\n"
+        f"Richiesta dell'utente:\n{prompt}\n\nStato attuale (prime slide): {json.dumps(current, ensure_ascii=False)[:3000]}\n"
+        f"Stili salvati dell'utente: {json.dumps(saved_view, ensure_ascii=False)[:3000]}\n"
+        f"Font consigliati: {', '.join(styles_service.STYLE_PRESET_FONTS)}.\n\n"
+        "Se la richiesta NON riguarda sfondo, tema, font, dimensioni o colori del testo (ad es. chiede di scrivere, tradurre, aggiungere "
+        "contenuti, immagini o forme), rispondi {\"is_style_request\": false}. Altrimenti compila SOLO le proprietà richieste (le altre restano come sono): "
+        "colori in esadecimale #RRGGBB (es. «sfondo bianco» = #FFFFFF); fontSize in px sul canvas 960×540 (titoli 36-48, testo 20-28). "
+        "Se l'utente chiede di usare uno stile salvato, copia il suo «style». Se chiede di salvare/creare uno stile, dagli un nome breve in «save_as». "
+        "Scegli colori con buon contrasto tra testo e sfondo.\n"
+        'Schema: {"is_style_request":true,"summary":"cosa cambia, in una frase","save_as":null,"style":{"background":"#FFFFFF",'
+        '"title":{"fontFamily":"Georgia","fontSize":40,"color":"#1A1A2E","fontWeight":"bold","textAlign":"left"},'
+        '"body":{"fontFamily":"Inter","fontSize":24,"color":"#2D2D2D"},"accent":"#E85C8D"}}'
+    )
+    response = await llm_service.generate(messages=[{"role": "user", "content": user_prompt}], system_prompt=_STYLE_SYSTEM_PROMPT,
+                                          provider=provider, model=model, temperature=0.2, max_tokens=1200, allow_web_search=False)
+    payload = _extract_json_object(response.content)
+    if payload.get("is_style_request") is False:
+        return None, [response]
+    style = styles_service.normalize_style(payload.get("style"))
+    if not style:
+        return None, [response]
+    new_slides, _ = styles_service.apply_style(slides, style, dims[0], dims[1], theme)
+    summary = str(payload.get("summary") or "").strip()[:300] or f"Stile applicato: {styles_service.describe_style(style)}."
+    extra = {"style": style, "style_description": styles_service.describe_style(style)}
+    save_as = re.sub(r"\s+", " ", str(payload.get("save_as") or "")).strip()[:120]
+    if save_as:
+        extra["save_style"] = {"name": save_as, "style": style}
+    return (new_slides, extra, summary), [response]
+
+
 # «Aggiungi…» must never rewrite what is already there: the model sometimes answers an add request by
 # replacing a text. Additive requests get a prompt rule AND a deterministic guard on what comes back.
 _ADDITIVE_RE = re.compile(r"\b(aggiung\w*|inserisc\w*|inseri\w*|append\w*|add|insert\w*|accod\w*|integra\w*|in più)\b", re.IGNORECASE)
@@ -3120,6 +3183,47 @@ async def document_context_assist(
                 for item in source_slides
             ]
             target_payload = json.dumps({"title": target.get("title"), "slides": content_mode_slides}, ensure_ascii=False)[:60000]
+    if target_kind in {"slide", "presentation"} and _STYLE_REQUEST_RE.search(prompt) and not _is_image_placeholder_request(prompt):
+        try:
+            source_slides = [target.get("slide")] if target_kind == "slide" else (target.get("slides") or [])
+            source_slides = [item for item in source_slides if isinstance(item, dict)]
+            if source_slides:
+                outcome, style_responses = await _style_assist(
+                    db=db, auth=auth, prompt=prompt, deck_title=str(target.get("title") or ""), slides=source_slides, language=language,
+                    provider=provider, model=model, dims=(canvas_width, canvas_height), theme=deck_theme, whole_deck=target_kind == "presentation",
+                )
+                style_response = style_responses[-1]
+                real_provider = style_response.provider or provider or settings.DEFAULT_LLM_PROVIDER
+                real_model = style_response.model or model or settings.DEFAULT_LLM_MODEL
+                await safe_track_usage(
+                    db, tenant_id, real_provider, real_model,
+                    credit_service.calculate_cost_for_model(real_provider, real_model, style_response.prompt_tokens, style_response.completion_tokens),
+                    enrich_usage_with_environmental_impact({
+                        "type": "document_context_assist", "target_kind": target_kind, "mode": "slide_style",
+                        "prompt_tokens": style_response.prompt_tokens, "completion_tokens": style_response.completion_tokens,
+                        "total_tokens": style_response.prompt_tokens + style_response.completion_tokens,
+                    }, provider=real_provider, model=real_model),
+                    teacher_id, class_id, session_id, student_id, context="document_context_assist",
+                )
+                if outcome is not None:
+                    new_slides, extra, summary = outcome
+                    if target_kind == "slide":
+                        proposal = {"kind": "slide", "replacement_slide": new_slides[0]}
+                    else:
+                        proposal = {"kind": "presentation", "replacement_presentation": {
+                            "title": str(target.get("title") or "Presentazione")[:140], "format": target.get("format") or "16:9", "slides": new_slides,
+                        }}
+                    proposal.update(extra)
+                    return {"summary": summary, "proposal": proposal, "agent_steps": [
+                        {"agent": "Context Analyst", "summary": f"Ho letto sfondo e stile di {len(source_slides)} slide."},
+                        {"agent": "Style Designer", "summary": f"Stile: {extra['style_description']}."},
+                        {"agent": "Reviewer", "summary": "Leggibilità verificata: i testi restano modificabili, nessun riquadro sovrapposto."},
+                    ]}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("Slide style assist failed")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Document assist failed: {exc}")
     if target_kind in {"slide", "presentation"} and _is_image_placeholder_request(prompt):
         try:
             source_slides = [target.get("slide")] if target_kind == "slide" else (target.get("slides") or [])
