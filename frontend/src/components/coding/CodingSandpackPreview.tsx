@@ -1,3 +1,4 @@
+import { extractModuleSpecifiers } from '@/lib/jsImports'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   SandpackProvider,
@@ -330,6 +331,8 @@ if (nativeGetUserMedia) {
   json: ({ prompt, schema, history = [] }: any = {}) => callHost('json', { prompt, schema, history }, 90000),
   // Image understanding: image = data URL (file input / canvas) or https URL.
   vision: ({ image, prompt }: any = {}) => callHost('vision', { image, prompt }, 90000),
+  // Real place search / reverse geocoding (OpenStreetMap data served by the platform): { places: [{name,label,lat,lon,type}] }.
+  places: ({ query, lat, lon, limit, country, zoom }: any = {}) => callHost('places', { query, lat, lon, limit, country, zoom }, 30000).then((result: any) => result?.places || []),
   me: () => callHost('me', {}),
   // State shared by EVERYONE using this app in the session (polls, boards, multiplayer games).
   // append() adds to a list server-side, so simultaneous users never overwrite each other.
@@ -394,6 +397,7 @@ if (nativeGetUserMedia) {
 // host so the observe->fix loop can see them (fire-and-forget, deduplicated, capped).
 const reportedErrors = new Set<string>()
 function reportRuntimeError(message: string) {
+  ;(window as any).__golinelliRuntimeFailed = true
   const text = String(message || '').trim()
   if (!text || reportedErrors.has(text) || reportedErrors.size > 20) return
   reportedErrors.add(text)
@@ -460,6 +464,15 @@ const checkBlank = () => {
 }
 window.setTimeout(checkBlank, 3500)
 window.setTimeout(checkBlank, 9000)
+
+let startupReported = false
+function confirmStartup() {
+  if (startupReported || looksBlank() || (window as any).__golinelliRuntimeFailed) return
+  startupReported = true
+  window.parent.postMessage({ source: 'golinelli-coding-preview', id: 'startup_' + Date.now(), action: 'previewReady' }, '*')
+}
+window.setTimeout(confirmStartup, 1000)
+window.setTimeout(confirmStartup, 4000)
 `
 
 // Sandpack's default bundler timeout is 40s; a cold start with a heavy dependency (three, tensorflow,
@@ -477,7 +490,6 @@ function normalizePath(path: string): string {
   return trimmed.startsWith('/') ? trimmed : '/' + trimmed
 }
 
-const BARE_IMPORT = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"]([^'".\/][^'"]*)['"]/g
 const NPM_NAME = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/
 const NOT_PACKAGES = new Set(['react', 'react-dom', 'fs', 'path', 'os', 'crypto', 'child_process', 'http', 'https', 'net', 'stream', 'zlib', 'util', 'url', 'events', 'buffer', 'process'])
 
@@ -497,9 +509,9 @@ function parseDependencies(files: GeneratedFile[]): Record<string, string> {
   const inferred: Record<string, string> = {}
   for (const file of files) {
     if (!/\.(tsx?|jsx?)$/i.test(file.path)) continue
-    for (const match of file.content.matchAll(BARE_IMPORT)) {
-      const parts = match[1].split('/')
-      const name = match[1].startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]
+    for (const specifier of extractModuleSpecifiers(file.content)) {
+      const parts = specifier.split('/')
+      const name = specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]
       if (!NPM_NAME.test(name) || NOT_PACKAGES.has(name) || name.startsWith('node:') || name in declared) continue
       inferred[name] = 'latest'
     }
@@ -578,6 +590,15 @@ export default function CodingSandpackPreview({
   forceVerticalScroll = false,
   className,
 }: Props) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const ready = (event: MessageEvent) => {
+      if (event.data?.source !== 'golinelli-coding-preview' || event.data?.action !== 'previewReady') return
+      if (Array.from(hostRef.current?.querySelectorAll('iframe') || []).some(frame => frame.contentWindow === event.source)) onReady?.()
+    }
+    window.addEventListener('message', ready)
+    return () => window.removeEventListener('message', ready)
+  }, [onReady])
   const dependencies = useMemo(() => parseDependencies(files), [files])
   const heavy = useMemo(() => Object.keys(dependencies).some(isHeavyDependency), [dependencies])
   const bundlerTimeOut = heavy ? 150_000 : 75_000
@@ -599,8 +620,7 @@ export default function CodingSandpackPreview({
   const handleReady = useCallback(() => {
     attempts.current = 0
     setInfraFailure(null)
-    onReady?.()
-  }, [onReady])
+  }, [])
   const retryNow = () => {
     attempts.current = 0
     setInfraFailure(null)
@@ -632,7 +652,7 @@ export default function CodingSandpackPreview({
   }, [files, enableInspector, forceVerticalScroll, mlModels])
 
   return (
-    <div className={`golinelli-sp ${className || ''}`}>
+    <div ref={hostRef} className={`golinelli-sp ${className || ''}`}>
       {/* Sandpack ships a fixed default layout height; force the whole chain to fill our container. */}
       <style>{SANDPACK_FILL_CSS}</style>
       {infraFailure && (

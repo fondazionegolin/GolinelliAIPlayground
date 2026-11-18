@@ -456,7 +456,7 @@ class LLMService:
         # Reasoning models on OpenRouter (GLM, Qwen, ...) spend max_tokens on hidden thinking and can
         # finish with zero answer text. thinking=False asks for minimal effort (some models refuse to
         # fully disable reasoning, so "low" rather than "enabled: false").
-        extras = [{"reasoning": {"effort": "low"}}, {}] if thinking is False else [{}]
+        extras = [{"reasoning": {"effort": "low"}}, {}] if thinking is False else [{"reasoning": {"effort": "high"}}, {}] if thinking is True else [{}]
         stream = None
         for i, extra in enumerate(extras):
             try:
@@ -477,7 +477,7 @@ class LLMService:
                     continue
                 choice = chunk.choices[0]
                 delta = choice.delta
-                if choice.finish_reason:
+                if getattr(choice, "finish_reason", None):
                     finish = choice.finish_reason
                 reasoning = getattr(delta, "reasoning", None) or (getattr(delta, "model_extra", None) or {}).get("reasoning")
                 if reasoning and reasoning_sink:
@@ -547,24 +547,27 @@ class LLMService:
             logger.info("Web search enabled (stream) for %s/%s", provider, model)
 
         if provider == "openai":
-            async for chunk in self._stream_openai(messages, system_prompt, model, temperature, max_tokens, use_web_search):
-                yield chunk
+            source = self._stream_openai(messages, system_prompt, model, temperature, max_tokens, use_web_search)
         elif provider == "anthropic":
-            async for chunk in self._stream_anthropic(messages, system_prompt, model, temperature, max_tokens, use_web_search):
-                yield chunk
+            source = self._stream_anthropic(messages, system_prompt, model, temperature, max_tokens, use_web_search)
         elif provider == "deepseek":
-            async for chunk in self._stream_deepseek(messages, system_prompt, model, temperature, max_tokens, reasoning_sink, thinking):
-                yield chunk
+            source = self._stream_deepseek(messages, system_prompt, model, temperature, max_tokens, reasoning_sink, thinking)
         elif provider == "gemini":
-            async for chunk in self._stream_gemini(messages, system_prompt, model, temperature, max_tokens):
-                yield chunk
+            source = self._stream_gemini(messages, system_prompt, model, temperature, max_tokens)
         elif provider == "openrouter":
-            async for chunk in self._stream_openrouter(messages, system_prompt, model, temperature, max_tokens, reasoning_sink, thinking):
-                yield chunk
+            source = self._stream_openrouter(messages, system_prompt, model, temperature, max_tokens, reasoning_sink, thinking)
         else:
             response = await self.generate(messages, system_prompt, provider, model, temperature, max_tokens)
             yield response.content
-    
+            return
+        try:
+            async for chunk in source:
+                yield chunk
+        finally:
+            # Closing the outer iterator must close the provider immediately, including when a
+            # caller abandons a stream between chunks rather than cancelling an in-flight read.
+            await source.aclose()
+
     async def _stream_openai(
         self,
         messages: list[dict],
@@ -592,10 +595,13 @@ class LLMService:
                 stream=True,
             )
             emitted_text = False
-            async for event in stream:
-                if event.type == "response.output_text.delta":
-                    emitted_text = True
-                    yield event.delta
+            try:
+                async for event in stream:
+                    if event.type == "response.output_text.delta":
+                        emitted_text = True
+                        yield event.delta
+            finally:
+                await stream.close()
             if not emitted_text:
                 raise RuntimeError("OpenAI web search returned no text")
             return
@@ -618,9 +624,13 @@ class LLMService:
                 stream=True,
             )
 
-        async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        try:
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        finally:
+            await stream.close()
+
     
     async def _stream_anthropic(
         self,
@@ -679,15 +689,19 @@ class LLMService:
             **({"extra_body": {"thinking": {"type": "disabled"}}} if thinking is False else {}),
         )
 
-        async for chunk in stream:
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if not delta:
-                continue
-            thinking = getattr(delta, "reasoning_content", None)
-            if thinking and reasoning_sink:
-                reasoning_sink(thinking)
-            if delta.content:
-                yield delta.content
+        try:
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if not delta:
+                    continue
+                thinking = getattr(delta, "reasoning_content", None)
+                if thinking and reasoning_sink:
+                    reasoning_sink(thinking)
+                if delta.content:
+                    yield delta.content
+        finally:
+            await stream.close()
+
 
     async def _stream_gemini(
         self,
@@ -713,9 +727,13 @@ class LLMService:
             stream=True,
         )
 
-        async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        try:
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        finally:
+            await stream.close()
+
 
     async def compute_embeddings(self, texts: list[str]) -> list[list[float]]:
         if not self.openai_client:

@@ -17,11 +17,13 @@ def test_prices_are_converted_without_treating_unknown_as_free(value, expected):
 
 
 @pytest.mark.asyncio
-async def test_discovery_separates_chat_and_video_and_reads_official_prices(monkeypatch):
+async def test_discovery_separates_chat_images_and_video_and_reads_official_prices(monkeypatch):
     monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "test-key")
 
     def handle(request):
         assert request.headers["Authorization"] == "Bearer test-key"
+        if request.url.path.endswith("/images/models"):
+            return httpx.Response(200, json={"data": [{"id": "vendor/image", "name": "Image"}]})
         if request.url.path.endswith("/videos/models"):
             return httpx.Response(200, json={"data": [{"id": "google/video", "pricing_skus": {"per-video-second": "0.5"}}]})
         return httpx.Response(200, json={"data": [
@@ -32,10 +34,11 @@ async def test_discovery_separates_chat_and_video_and_reads_official_prices(monk
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
         models = await openrouter.discover(client)
-    assert [m["kind"] for m in models] == ["text", "video"]
+    assert [m["kind"] for m in models] == ["text", "image", "video"]
+    assert [m["id"] for m in models] == ["vendor/chat", "vendor/image", "google/video"]
     assert models[0]["input_usd"] == 2
     assert models[0]["output_usd"] == 6
-    assert models[1]["price_note"] == "per-video-second: $0.5"
+    assert models[2]["price_note"] == "per-video-second: $0.5"
 
 
 @pytest.mark.asyncio
@@ -71,7 +74,10 @@ async def test_chat_routes_to_openrouter_and_preserves_model_and_usage():
     response = await service.generate([{"role": "user", "content": "Ciao"}], provider="openrouter", model="vendor/chat",
                                       system_prompt="Italiano", allow_web_search=False)
     assert (response.provider, response.model, response.prompt_tokens) == ("openrouter", "vendor/chat", 10)
-    assert create.call_args.kwargs["messages"][0] == {"role": "system", "content": "Italiano"}
+    system = create.call_args.kwargs["messages"][0]
+    assert system["role"] == "system"
+    assert system["content"].startswith("Italiano")
+    assert "[LANGUAGE POLICY]" in system["content"]
     assert create.call_args.kwargs["model"] == "vendor/chat"
 
 

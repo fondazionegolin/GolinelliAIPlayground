@@ -1,10 +1,11 @@
 import { SectionHeading, SectionIllustration } from '@/design/primitives/SectionHeading'
 import inspectorSparkles from '@/components/icons/inspector-sparkles.generated'
 import { imageToDataUrl, extractDocument, isImageFile, VIBE_DOC_ACCEPT, VIBE_MAX_DOCS, VIBE_MAX_IMAGES, type VibeDocument } from '@/lib/vibeAttachments'
+import { vibeValidationLabel, observationVerdict, type VibeValidation } from '@/lib/vibeValidation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { EditorView } from '@codemirror/view'
-import CodeMirror from '@uiw/react-codemirror'
+import CodeMirror, { type ReactCodeMirrorRef } from '@uiw/react-codemirror'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowRight,
@@ -12,7 +13,6 @@ import {
   Brush,
   Check,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   Code2,
   Download,
@@ -20,7 +20,6 @@ import {
   FileCode2,
   Globe,
   Copy,
-  HelpCircle,
   Lightbulb,
   ListChecks,
   Loader2,
@@ -39,7 +38,7 @@ import {
   Sparkles,
   Smartphone,
   Wand2,
-  X, Brain,
+  X, Brain, ArrowLeft, History,
 } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -49,22 +48,16 @@ import { editorKeymap, getEditorExtensions } from '@/components/notebook/editorC
 import { Button } from '@/components/ui/button'
 import DesignSystemStudio from '@/components/coding/DesignSystemStudio'
 import CodingSandpackPreview, { type SandpackRuntimeError } from '@/components/coding/CodingSandpackPreview'
-import { modelValue, useScopedModels } from '@/components/models/ScopedModelSelect'
+import { useScopedModels } from '@/components/models/ScopedModelSelect'
+import VibeLabLibrary from '@/components/coding/VibeLabLibrary'
+import StyleDirectionPicker, { type StyleOption } from '@/components/coding/StyleDirectionPicker'
 import MlModelPicker, { ML_MODELS_PATH, buildMlModelsMarkdown } from '@/components/coding/MlModelPicker'
 import { buildMlStub, mlModelIdsFrom, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
 import { mlLabApi, type MLLabProjectSummary } from '@/lib/api'
-import {
-  WorkspaceExplorerBadge,
-  WorkspaceExplorerHeader,
-  WorkspaceExplorerItem,
-  WorkspaceExplorerList,
-  WorkspaceExplorerSidebar,
-} from '@/components/WorkspaceExplorerSidebar'
 import { useMobile } from '@/hooks/useMobile'
 import { useAuthStore } from '@/stores/auth'
 import { TEACHER_PROFILE_KEY, type TeacherProfileData } from '@/hooks/useTeacherProfile'
 import { useQueryClient } from '@tanstack/react-query'
-import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 import { tl } from '@/i18n/tl'
 import { takeHandoff } from '@/lib/platformHandoff'
 
@@ -95,6 +88,7 @@ type CodingProject = {
   owner_kind?: string | null
   is_owned_by_current_user?: boolean
   current_version_id?: string | null
+  thumbnail?: string | null
   created_at: string
   updated_at: string
 }
@@ -110,6 +104,7 @@ type CodingMessage = {
 }
 
 type CodingVersion = {
+  artifact_manifest_json?: { validation?: VibeValidation }
   id: string
   version_number: number
   source_manifest_json?: {
@@ -170,122 +165,16 @@ type UpstreamStatus = {
 type PreviewApiRequest = {
   source?: 'golinelli-coding-preview'
   id?: string
-  action?: 'chat' | 'chatStream' | 'json' | 'vision' | 'me' | 'sharedGet' | 'sharedSet' | 'sharedAppend' | 'captureResult' | 'mediaStatus' | 'mlStatus' | 'generateImage' | 'saveData' | 'loadData' | 'deleteData' | 'askAgent' | 'openExternalLink' | 'reportError'
+  action?: 'chat' | 'chatStream' | 'json' | 'vision' | 'places' | 'me' | 'sharedGet' | 'sharedSet' | 'sharedAppend' | 'captureResult' | 'mediaStatus' | 'mlStatus' | 'generateImage' | 'saveData' | 'loadData' | 'deleteData' | 'askAgent' | 'openExternalLink' | 'reportError'
   payload?: Record<string, unknown>
 }
 
-type InterviewTurn = { role: 'user' | 'assistant'; content: string; suggestions?: string[]; kind?: 'question' | 'confirm' }
+type InterviewTurn = { role: 'user' | 'assistant'; content: string; suggestions?: string[]; kind?: 'question' | 'confirm' | 'style'; styleOptions?: StyleOption[] }
 const BUILD_PLAN_DATA_KEY = '_golinelli_build_plan'
 type BuildMilestone = { title: string; goal: string; features: string[] }
 type BuildPlan = { projectId: string; milestones: BuildMilestone[]; next: number }
 // Ideas longer than this are always analysed into spec.md + milestones instead of fed raw to codegen.
 const SPEC_PROMPT_THRESHOLD = 700
-type ModelProvider = string
-type ModelOption = { key: string; label: string; hint: string; provider: ModelProvider }
-
-// Selectable generation models come from Admin → Modelli (separate lists for teachers and students); the key is
-// "provider|model", and the empty key is the section default resolved by the server.
-const PROJECT_MODEL_DATA_KEY = '_golinelli_generation_model'
-const modelStorageKey = (isTeacher: boolean) => `coding_model_key:${isTeacher ? 'vibelab' : 'vibelab_students'}`
-function initialModelKey(isTeacher: boolean): string {
-  try { return localStorage.getItem(modelStorageKey(isTeacher)) || '' } catch { return '' }
-}
-
-const MODEL_PROVIDER_ASSETS: Record<string, { src: string; alt: string }> = {
-  anthropic: { src: '/icone_ai/anthropic.svg', alt: 'Anthropic' },
-  openai: { src: "/icone_ai/OpenAI_logo_2025_(symbol).svg.png", alt: 'OpenAI' },
-  deepseek: { src: '/icone_ai/deepseek-logo-icon.svg', alt: 'DeepSeek' },
-}
-
-function ModelProviderIcon({ provider, className = 'h-4 w-4' }: { provider: ModelProvider; className?: string }) {
-  const asset = MODEL_PROVIDER_ASSETS[provider]
-  if (!asset) return <span className={`${className} inline-flex shrink-0 items-center justify-center rounded-full bg-slate-200 text-[9px] font-bold uppercase text-slate-600`}>{provider.slice(0, 1)}</span>
-  return <img src={asset.src} alt={asset.alt} className={`${className} shrink-0 object-contain`} />
-}
-
-function CodingModelSelector({
-  value,
-  options,
-  onChange,
-  compact = false,
-}: {
-  value: string
-  options: ModelOption[]
-  onChange: (value: string) => void
-  compact?: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const selected = options.find((option) => option.key === value) ?? options[0]
-
-  useEffect(() => {
-    if (!open) return
-    const closeOnOutsideClick = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', closeOnOutsideClick)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('mousedown', closeOnOutsideClick)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [open])
-
-  if (!selected) return null
-
-  return (
-    <div ref={rootRef} className={compact ? 'relative inline-block shrink-0' : 'relative min-w-0 flex-1'}>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className={`${compact ? 'h-7 w-auto max-w-[190px] rounded-full px-2.5 text-xs' : 'h-11 w-full rounded-xl px-3 text-sm'} ds-control flex items-center gap-1.5 font-semibold text-[var(--logo-violet-strong)] outline-none transition focus-visible:shadow-[var(--ds-shadow-focus)]`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        title={tl("Modello usato per generare il codice")}
-      >
-        <ModelProviderIcon provider={selected.provider} className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-        <span className="min-w-0 flex-1 truncate text-left">{compact ? selected.label : `${selected.label} · ${selected.hint}`}</span>
-        <ChevronDown className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        <div
-          role="listbox"
-          aria-label={tl("Seleziona il modello")}
-          className={`${compact ? 'bottom-full right-0 mb-2' : 'top-full left-0 mt-2'} ds-popover absolute z-50 w-full min-w-[17rem] overflow-hidden rounded-2xl p-1.5`}
-        >
-          {options.map((option) => {
-            const active = option.key === selected.key
-            return (
-              <button
-                key={option.key}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onClick={() => {
-                  onChange(option.key)
-                  setOpen(false)
-                }}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${active ? 'bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)]' : 'text-[var(--text-primary)] hover:bg-[var(--surface-subtle)]'}`}
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-white">
-                  <ModelProviderIcon provider={option.provider} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-bold">{option.label}</span>
-                  <span className="block truncate text-xs text-[var(--text-muted)]">{[MODEL_PROVIDER_ASSETS[option.provider]?.alt ?? option.provider, option.hint].filter(Boolean).join(' · ')}</span>
-                </span>
-                {active && <Check className="h-4 w-4 shrink-0" />}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
 const CODING_TUTORIAL_STORAGE_KEY = 'coding_lab_tutorial_seen_v1'
 const MOBILE_PAGE_CONSTRAINT = `VINCOLI MOBILE OBBLIGATORI:
 - genera esclusivamente una pagina pensata per smartphone (viewport di riferimento 390px);
@@ -463,17 +352,19 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   // real compile/runtime/console errors go back to the agent as a patch-only fix turn, until the app
   // runs clean or the budget is spent (so a stubborn error can't loop forever / burn credits).
   const [autoFixing, setAutoFixing] = useState(false)
-  const [verifyState, setVerifyState] = useState<'idle' | 'observing' | 'clean' | 'failed'>('idle')
+  const [verifyState, setVerifyState] = useState<'idle' | 'observing' | 'clean' | 'failed' | 'unverified'>('idle')
+  const [validation, setValidation] = useState<VibeValidation | null>(null)
+  const verificationRef = useRef<{ projectId: string; versionId: string; hash: string } | null>(null)
+  const generationNeedsReview = useRef(false)
   const [verifyErrors, setVerifyErrors] = useState<SandpackRuntimeError[]>([])
   const autoFixAttempts = useRef(0)
   // Blocking errors must always get resolved: generous budget, escalating strategy server-side (full rewrites, stronger model).
-  const MAX_AUTO_FIX = 8
+  const MAX_AUTO_FIX = 3
   const lastFixErrorsRef = useRef<SandpackRuntimeError[]>([])
   const pitfallTriesRef = useRef<Map<string, number>>(new Map())
   const budgetProjectRef = useRef<string | null>(null)
-  const observeRef = useRef<{ errors: Map<string, SandpackRuntimeError>; timer: number | null } | null>(null)
+  const observeRef = useRef<{ errors: Map<string, SandpackRuntimeError>; timer: number | null; ready: boolean; snapshot: string; target: { projectId: string; versionId: string; hash: string } | null } | null>(null)
   const generationAbortRef = useRef<AbortController | null>(null)
-  const lastGenerationModeRef = useRef<'build' | 'fix' | 'visual'>('build')
   // Visual review: screenshot of the running app → vision model → one-click polish turn.
   const previewFrameRef = useRef<HTMLDivElement>(null)
   const captureWaitersRef = useRef(new Map<string, (result: { ok?: boolean; image?: string; error?: string }) => void>())
@@ -528,22 +419,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewFullscreen])
   const { data: scopedModels } = useScopedModels(isTeacher ? 'vibelab' : 'vibelab_students')
-  const modelOptions = useMemo<ModelOption[]>(() => [
-    { key: '', label: tl("Predefinito"), hint: scopedModels?.default_name || '', provider: scopedModels?.default_provider || 'anthropic' },
-    ...(scopedModels?.models || []).map((m) => ({ key: modelValue(m.provider, m.model), label: m.name, hint: m.description || '', provider: m.provider })),
-  ], [scopedModels])
-  const [modelKey, setModelKey] = useState<string>(() => initialModelKey(isTeacher))
-  useEffect(() => {
-    if (scopedModels && modelKey && !modelOptions.some((option) => option.key === modelKey)) setModelKey('')
-  }, [scopedModels, modelKey, modelOptions])
   const [consents, setConsents] = useState<Array<{ key: string; title: string; version: string; source_url: string; accept_label: string; accepted: boolean }>>([])
   useEffect(() => {
     if (isTeacher) return
     studentApi.listConsents().then((res) => setConsents(res.data)).catch(() => {})
   }, [isTeacher])
-  const activeModelProvider = modelOptions.find((option) => option.key === modelKey)?.provider
   const deepSeekConsent = consents.find((item) => item.key === 'deepseek_privacy')
-  const showDeepSeekDisclaimer = !isTeacher && activeModelProvider === 'deepseek' && !!deepSeekConsent && !deepSeekConsent.accepted
+  const showDeepSeekDisclaimer = !isTeacher && (scopedModels?.default_provider === 'deepseek' || scopedModels?.models?.some(m => m.provider === 'deepseek')) && !!deepSeekConsent && !deepSeekConsent.accepted
   const acceptDeepSeekConsent = async () => {
     try {
       await studentApi.acceptConsent('deepseek_privacy')
@@ -562,6 +444,16 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [liveReasoning, setLiveReasoning] = useState('')
   const [livePlan, setLivePlan] = useState<{ path: string; purpose: string }[]>([])
   const [liveFiles, setLiveFiles] = useState<LiveFile[]>([])
+  // Text of the files while the writer agents produce them: the code inspector shows them live.
+  const [liveContents, setLiveContents] = useState<Record<string, string>>({})
+  const [liveThinking, setLiveThinking] = useState('')
+  const [liveSelectedPath, setLiveSelectedPath] = useState<string | null>(null)
+  const liveFollowRef = useRef(true)
+  // Files being written right now: with several writer agents the status line must say so.
+  const writingPaths = useRef<Set<string>>(new Set())
+  const writingStatus = (single: string) => writingPaths.current.size > 1
+    ? tl("{0} agenti scrivono {0} file in parallelo…", writingPaths.current.size)
+    : single
   const [liveStatus, setLiveStatus] = useState('')
   const [showDesignStudio, setShowDesignStudio] = useState(false)
   const [designNotice, setDesignNotice] = useState<string | null>(null)
@@ -576,9 +468,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setDraftDirty(true)
   }
 
-  useEffect(() => {
-    try { localStorage.setItem(modelStorageKey(isTeacher), modelKey) } catch { /* storage unavailable */ }
-  }, [modelKey, isTeacher])
+
 
   useEffect(() => {
     if (localStorage.getItem(CODING_TUTORIAL_STORAGE_KEY) !== 'seen') {
@@ -595,13 +485,20 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
   )
-  const [explorerCollapsed, setExplorerCollapsed] = useSidebarCollapsed('vibe-lab')
-  const filteredProjects = useMemo(() => {
-    const query = projectListSearch.trim().toLocaleLowerCase('it')
-    if (!query) return projects
-    return projects.filter((project) => [project.title, project.owner_display_name, project.template_key].filter(Boolean).join(' ').toLocaleLowerCase('it').includes(query))
-  }, [projects, projectListSearch])
-  const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null
+  const [versionsOpen, setVersionsOpen] = useState(false)
+  const liveCodeActive = generating && Object.keys(liveContents).length > 0
+  const inspectorFiles = useMemo(() => {
+    if (!liveCodeActive) return files
+    const merged = files.map((file) => liveContents[file.path] !== undefined ? { ...file, content: liveContents[file.path] } : file)
+    for (const [path, content] of Object.entries(liveContents)) {
+      if (!merged.some((file) => file.path === path)) merged.push({ path, content })
+    }
+    return merged
+  }, [files, liveContents, liveCodeActive])
+  const inLibrary = !selectedProjectId && !createPanelOpen
+  const selectedFile = liveCodeActive
+    ? (inspectorFiles.find((file) => file.path === liveSelectedPath) ?? inspectorFiles.find((file) => file.path === selectedPath) ?? inspectorFiles[0] ?? null)
+    : (files.find((file) => file.path === selectedPath) ?? files[0] ?? null)
   const selectedFileIsGeneratedDescription = selectedFile?.path === 'description.md'
   const isReactPreview = useMemo(() => isReactProject(files), [files])
   activeWorkbenchRef.current = activeWorkbench
@@ -634,6 +531,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   // wiping in-memory state and any data the generated app persisted. Only remount for a genuinely
   // different project/version/commit.
   const previewIdentityKey = `${selectedProjectId || 'new'}:${latestVersion?.id || selectedProject?.current_version_id || 'draft'}:${previewingCommitId || ''}:${previewingVersionId || ''}`
+
+  useEffect(() => {
+    if (draftDirty) { verificationRef.current = null; setValidation(null); cancelObservation(); setVerifyState('idle') }
+  }, [draftDirty])
 
   // New preview content (or forced remount) resets the per-mount load counters.
   useEffect(() => { previewLoads.current = 0 }, [previewNonce])
@@ -685,7 +586,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setDraftSavedAt(null)
   }
 
-  const handleStartNewProject = async () => {
+  // Back to the library: from the editor (saving the draft first) or from the new-project panel.
+  const goToLibrary = async () => {
+    if (selectedProjectId) await handleStartNewProject(true)
+    else { startNewProject(); setCreatePanelOpen(false) }
+  }
+
+  const handleStartNewProject = async (toLibrary = false) => {
     if (!selectedProjectId || creating || generating || draftSaving) return
     if (draftDirty && files.length > 0 && !previewingCommitId && !previewingVersionId) {
       if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
@@ -719,6 +626,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       }
     }
     startNewProject()
+    if (toLibrary) setCreatePanelOpen(false)
   }
 
   const loadProjects = async () => {
@@ -735,8 +643,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         setActiveWorkbench('preview')
       } else if (selectedProjectId && !nextProjects.some((project) => project.id === selectedProjectId)) {
         startNewProject()
-      } else if (!selectedProjectId) {
-        setCreatePanelOpen(true)
       }
     } catch (err: any) {
       setError(err?.response?.data?.detail || tl("Impossibile caricare i progetti."))
@@ -761,12 +667,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setPreviewingCommitId(null)
     setPreviewingVersionId(null)
     try {
-      const [response, savedModelResponse, planResponse] = await Promise.all([
+      const [response, planResponse] = await Promise.all([
         codingApi.getProject(projectId),
-        codingApi.getProjectData(projectId, PROJECT_MODEL_DATA_KEY).catch((err: any) => {
-          if (err?.response?.status !== 404) console.warn('Impossibile caricare il modello del progetto:', err)
-          return null
-        }),
         codingApi.getProjectData(projectId, BUILD_PLAN_DATA_KEY).catch(() => null),
       ])
       if (seq !== detailLoadSeq.current) return
@@ -777,16 +679,18 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         setBuildPlan((prev) => (prev && prev.projectId === projectId ? null : prev))
       }
       const detail = response.data as CodingProjectDetail
-      // The model picker always keeps the user's last explicit choice (persisted in localStorage): a project's
-      // stored model is only a record and must not override it when the project is opened.
-      void savedModelResponse
       setProjectDetail(detail)
+      const current = detail.versions.find(v => v.id === detail.current_version_id) || [...detail.versions].sort((a, b) => b.version_number - a.version_number)[0]
+      const verdict = current?.artifact_manifest_json?.validation
+      setValidation(verdict || null)
+      verificationRef.current = verdict ? { projectId, versionId: current.id, hash: verdict.source_hash } : null
       const latestFiles = [...(detail.versions || [])]
         .sort((a, b) => b.version_number - a.version_number)
         .find((version) => version.source_manifest_json?.files?.length)
         ?.source_manifest_json?.files
       if (latestFiles?.length) {
         setFiles(latestFiles)
+        filesRef.current = latestFiles
         setSelectedPath(latestFiles.some((file) => file.path === selectedPath) ? selectedPath : latestFiles[0].path)
       } else {
         setFiles([])
@@ -1191,6 +1095,20 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           return
         }
 
+        if (data.action === 'places') {
+          const payload = data.payload || {}
+          const response = await codingApi.aiPlaces({
+            query: typeof payload.query === 'string' ? payload.query : undefined,
+            lat: typeof payload.lat === 'number' ? payload.lat : undefined,
+            lon: typeof payload.lon === 'number' ? payload.lon : undefined,
+            limit: typeof payload.limit === 'number' ? payload.limit : undefined,
+            country: typeof payload.country === 'string' ? payload.country : undefined,
+            zoom: typeof payload.zoom === 'number' ? payload.zoom : undefined,
+          })
+          reply({ ok: true, result: response.data })
+          return
+        }
+
         if (data.action === 'reportError') {
           const message = String(data.payload?.message || '').trim()
           if (message) previewErrorsHandlerRef.current?.([{ message: message.slice(0, 600), kind: 'runtime' }])
@@ -1236,7 +1154,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       })
       const data = response.data || {}
       const phase: 'question' | 'confirm' = data.phase === 'confirm' ? 'confirm' : 'question'
-      setChatTurns([...turns, { role: 'assistant', content: String(data.text || data.reply || ''), suggestions: phase === 'question' ? (data.options || data.suggestions || []) : [], kind: phase }])
+      const isStyle = data.kind === 'style' && Array.isArray(data.style_options) && data.style_options.length > 0
+      setChatTurns([...turns, {
+        role: 'assistant', content: String(data.text || data.reply || ''),
+        suggestions: phase === 'question' && !isStyle ? (data.options || data.suggestions || []) : [],
+        kind: isStyle ? 'style' : phase, ...(isStyle ? { styleOptions: data.style_options as StyleOption[] } : {}),
+      }])
       setChatStep({ n: Number(data.question_number) || 1, max: Number(data.max_questions) || 5 })
     } catch (err: any) {
       setError(err?.response?.data?.detail || tl("Intervista non disponibile, riprova."))
@@ -1364,9 +1287,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         kb_files: kbFiles,
       })
       const project = response.data as CodingProject
-      void codingApi.putProjectData(project.id, PROJECT_MODEL_DATA_KEY, { model_key: modelKey }).catch(() => {
-        setError(tl("Progetto creato, ma non è stato possibile salvare la preferenza del modello."))
-      })
       setProjects((prev) => [project, ...prev.filter((item) => item.id !== project.id)])
       setSelectedProjectId(project.id)
       setCreatePanelOpen(false)
@@ -1391,16 +1311,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const resumeBuildPlan = async () => {
     if (!buildPlan || generating) return
     await runMilestones(buildPlan.projectId, buildPlan.milestones, buildPlan.next)
-  }
-
-  const handleModelChange = (nextModelKey: string) => {
-    if (!modelOptions.some((option) => option.key === nextModelKey)) return
-    setModelKey(nextModelKey)
-    if (selectedProjectId) {
-      void codingApi.putProjectData(selectedProjectId, PROJECT_MODEL_DATA_KEY, { model_key: nextModelKey }).catch(() => {
-        setError(tl("Non è stato possibile salvare il modello scelto per questo progetto."))
-      })
-    }
   }
 
   // Parse the generation SSE stream (new run or a replay of a background job) into the live UI.
@@ -1431,7 +1341,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         } catch {
           continue
         }
-        if (event.type === 'reasoning') {
+        if (event.type === 'thinking') {
+          // Hidden reasoning of the architect, streamed so the wait is never a silent timer.
+          setLiveThinking((prev) => (prev + (event.content || '')).slice(-6000))
+        } else if (event.type === 'reasoning') {
           setLiveStatus(tl("L’architetto sta definendo struttura e modifiche…"))
           setLiveReasoning((prev) => prev + (event.content || ''))
         } else if (event.type === 'status') {
@@ -1439,16 +1352,33 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         } else if (event.type === 'plan') {
           setLiveStatus(tl("Piano pronto: {0} file da elaborare.", event.files?.length || 0))
           setLivePlan((event.files || []) as { path: string; purpose: string }[])
-          setLiveFiles((event.files || []).map((file: any) => ({ path: String(file.path), lines: 0, status: 'writing' as const })))
+          setLiveFiles((event.files || []).map((file: any) => ({ path: String(file.path), lines: 0, status: 'queued' as const })))
         } else if (event.type === 'file_start') {
-          setLiveStatus(event.op === 'patch' ? tl("Modifico {0}…", String(event.path)) : tl("Scrittura di {0}…", String(event.path)))
+          if (event.op !== 'patch') {
+            const path = String(event.path)
+            setLiveContents((prev) => ({ ...prev, [path]: '' }))
+            if (liveFollowRef.current) setLiveSelectedPath(path)
+            if (!files.length) setActiveWorkbench('code')
+          }
+          writingPaths.current.add(String(event.path))
+          setLiveStatus(writingStatus(event.op === 'patch' ? tl("Modifico {0}…", String(event.path)) : tl("Scrittura di {0}…", String(event.path))))
           setLiveFiles((prev) => prev.some((file) => file.path === event.path)
-            ? prev.map((file) => file.path === event.path ? { ...file, op: event.op } : file)
+            ? prev.map((file) => file.path === event.path ? { ...file, op: event.op, status: 'writing' as const } : file)
             : [...prev, { path: String(event.path), lines: 0, status: 'writing' as const, op: event.op }])
         } else if (event.type === 'file_progress') {
-          setLiveStatus(tl("Scrittura di {0}: {1} righe…", String(event.path), event.lines || 0))
-          setLiveFiles((prev) => prev.map((file) => file.path === event.path ? { ...file, lines: event.lines || file.lines } : file))
+          writingPaths.current.add(String(event.path))
+          setLiveStatus(writingStatus(tl("Scrittura di {0}: {1} righe…", String(event.path), event.lines || 0)))
+          setLiveFiles((prev) => prev.map((file) => file.path === event.path ? { ...file, lines: event.lines || file.lines, status: 'writing' as const } : file))
+          if (typeof event.append === 'string') {
+            const path = String(event.path)
+            setLiveContents((prev) => ({ ...prev, [path]: (prev[path] || '') + event.append }))
+          }
         } else if (event.type === 'file_done') {
+          writingPaths.current.delete(String(event.path))
+          if (typeof event.content === 'string') {
+            const path = String(event.path)
+            setLiveContents((prev) => ({ ...prev, [path]: event.content }))
+          }
           setLiveStatus(event.op === 'delete' ? `${String(event.path)} eliminato.` : event.op === 'patch' ? tl("Modifica pronta per {0}.", String(event.path)) : `${String(event.path)} completato (${event.lines || 0} righe).`)
           setLiveFiles((prev) => {
             const next = { path: String(event.path), lines: event.lines || 0, status: 'done' as const, op: event.op }
@@ -1457,7 +1387,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               : [...prev, next]
           })
         } else if (event.type === 'done') {
-          setLiveStatus(tl("Versione pronta. Aggiorno progetto e anteprima…"))
+          generationNeedsReview.current = !!event.needs_review
+          setValidation(event.validation || null)
+          setLiveStatus(tl(event.needs_review ? "Codice salvato: restano controlli da completare." : "Codice generato. Verifico l’anteprima…"))
           generatedFiles = (event.files || []) as GeneratedFile[]
           finished = true
         } else if (event.type === 'error') {
@@ -1475,14 +1407,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], fix?: { errors: string[]; mode?: 'fix' | 'visual'; attempt?: number }, extras?: { attachments?: string[]; documents?: VibeDocument[] }) => {
+    if (generationAbortRef.current) return false
     const controller = new AbortController()
     generationAbortRef.current = controller
+    generationNeedsReview.current = false
     setGenerating(true)
     setGenerationMode(fix ? 'fix' : 'build')
-    lastGenerationModeRef.current = fix ? (fix.mode || 'fix') : 'build'
     if (!fix || fix.mode === 'visual') setVisualReview(null)
     setError(null)
-    setLiveReasoning('')
+    setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear()
     setLivePlan([])
     setLiveFiles([])
     setLiveStatus(fix ? tl("Leggo gli errori dell’anteprima e preparo una correzione mirata…") : tl("Preparo il progetto e il contesto della richiesta…"))
@@ -1506,16 +1439,18 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         credentials: 'include',
         signal: controller.signal,
         body: JSON.stringify(fix
-          ? { mode: fix.mode || 'fix', errors: fix.errors, attempt: fix.attempt, files: baseFiles.length ? baseFiles : undefined, model_key: modelKey }
+          ? { mode: fix.mode || 'fix', errors: fix.errors, attempt: fix.attempt, files: baseFiles.length ? baseFiles : undefined }
           : {
               prompt: nextPrompt ? constrainGenerationPrompt(nextPrompt) : nextPrompt,
               files: baseFiles.length ? baseFiles : undefined,
-              model_key: modelKey,
               attachments: extras?.attachments?.length ? extras.attachments : undefined,
               documents: extras?.documents?.length ? extras.documents.map((d) => ({ name: d.name, text: d.text })) : undefined,
             }),
       })
-      if (!response.ok || !response.body) throw new Error(tl("La generazione non è partita."))
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.detail?.message || (typeof payload.detail === 'string' ? payload.detail : tl("La generazione non è partita.")))
+      }
       generationJobIdRef.current = response.headers.get('X-Job-Id')
       notifyJobsChanged()
       const generatedFiles = await consumeGenerationStream(response)
@@ -1525,19 +1460,18 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         const preferred = generatedFiles.find((f) => f.path === 'App.tsx' || f.path === 'index.html')
         setSelectedPath(preferred?.path || generatedFiles[0]?.path || 'App.tsx')
         // Observe the new version running before declaring it done (React projects only).
-        if (isReactProject(generatedFiles)) startObservation()
       }
       await loadProjectDetail(projectId)
+      if (generatedFiles && isReactProject(generatedFiles)) startObservation()
+      if (generationNeedsReview.current) { setError(tl("Codice salvato, ma restano controlli da completare. Correggi i problemi prima del prossimo milestone.")); return false }
       return true
     } catch (err: any) {
       if (err?.name === 'AbortError') setError(tl("Generazione interrotta: il progetto è rimasto alla versione precedente."))
       else {
         const failure = err?.message || tl("Generazione codice non riuscita.")
         setError(failure)
-        // A fix turn that itself fails (network, empty model output…) must not end the loop: try again.
-        if (fix && fix.mode !== 'visual' && autoFixAttempts.current < MAX_AUTO_FIX && !/credit|limite|quota|consenso|accesso|non autorizzat/i.test(failure)) {
-          window.setTimeout(() => { void runAutoFixRef.current(lastFixErrorsRef.current) }, 3000)
-        }
+        // Server recovery already spent the bounded retry budget; don't repeat a failed call endlessly.
+        if (fix && fix.mode !== 'visual') setVerifyState('failed')
       }
       return false
     } finally {
@@ -1547,7 +1481,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         notifyJobsChanged()
       }
       setGenerating(false)
-      setLiveReasoning('')
+      setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear()
       setLivePlan([])
       setLiveFiles([])
       setLiveStatus('')
@@ -1581,6 +1515,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     observeRef.current = null
     const errs = [...state.errors.values()]
     setVerifyErrors(errs)
+    const verdict = observationVerdict(state.ready, errs.length, state.snapshot === JSON.stringify(filesRef.current))
+    if (verdict === 'stale') { setVerifyState('idle'); return }
+    if (verdict === 'unverified') { setVerifyState('unverified'); return }
+    if (state.target) {
+      const target = state.target
+      void codingApi.verifyPreview(target.projectId, target.versionId, { source_hash: target.hash, status: errs.length ? 'failed' : 'observed', errors: errs.map(describeRuntimeError).slice(0, 12) })
+        .then(({ data }) => { if (verificationRef.current?.hash === target.hash && selectedProjectIdRef.current === target.projectId) setValidation(data.artifact_manifest_json?.validation || null) })
+        .catch(() => undefined)
+    }
     if (!errs.length) {
       const pitfalls = detectMediaPitfalls(filesRef.current)
       const signature = pitfalls.map((item) => item.path).join('|')
@@ -1593,10 +1536,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       }
       setVerifyState('clean')
       window.setTimeout(() => setVerifyState((value) => value === 'clean' ? 'idle' : value), 4000)
-      // A fresh build that runs clean gets one automatic look; polish turns don't loop on themselves.
-      if (lastGenerationModeRef.current === 'build' && activeWorkbenchRef.current === 'preview') {
-        window.setTimeout(() => { void runVisualReviewRef.current() }, 1200)
-      }
       return
     }
     if (autoFixAttempts.current >= MAX_AUTO_FIX) { setVerifyState('failed'); return }
@@ -1611,7 +1550,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
   function startObservation() {
     cancelObservation()
-    observeRef.current = { errors: new Map(), timer: null }
+    observeRef.current = { errors: new Map(), timer: null, ready: false, snapshot: JSON.stringify(filesRef.current), target: verificationRef.current }
     setVerifyState('observing')
     // Hard cap in case the bundler never reports back (e.g. dependency download stalls).
     scheduleVerdict(15000)
@@ -1669,8 +1608,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setVisualReview({ status: 'error', error: err?.response?.data?.detail || err?.message || tl("Revisione visiva non riuscita.") })
     }
   }
-  const runVisualReviewRef = useRef(runVisualReview)
-  runVisualReviewRef.current = runVisualReview
 
   const applyVisualFixes = () => {
     const projectId = selectedProjectIdRef.current
@@ -1706,9 +1643,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     generationJobIdRef.current = jobId
     setGenerating(true)
     setGenerationMode('build')
-    lastGenerationModeRef.current = 'build'
     setError(null)
-    setLiveReasoning('')
+    setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear()
     setLivePlan([])
     setLiveFiles([])
     setLiveStatus(tl("Generazione in corso in background: riprendo da dove era arrivata…"))
@@ -1736,7 +1672,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         generationJobIdRef.current = null
       }
       setGenerating(false)
-      setLiveReasoning('')
+      setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear()
       setLivePlan([])
       setLiveFiles([])
       setLiveStatus('')
@@ -1756,20 +1692,28 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     void runAutoFix(verifyErrors)
   }
 
-  const handlePreviewReady = () => {
-    // Mounted without compile errors: keep watching briefly for runtime errors after first render.
-    if (observeRef.current) scheduleVerdict(3000)
-    else if (
-      !generationAbortRef.current
-      && selectedProjectIdRef.current
-      && activeWorkbenchRef.current === 'preview'
-      && isReactProject(filesRef.current)
-      && autoFixAttempts.current < MAX_AUTO_FIX
-      && detectMediaPitfalls(filesRef.current).length
-    ) {
-      // A project saved with the webcam bug: fix it through the same loop as any other blocking error.
-      startObservation()
+  // Library card image: a small screenshot of the running app, taken once per version of the code.
+  const thumbSignatureRef = useRef<Map<string, string>>(new Map())
+  const captureThumbnail = async () => {
+    const projectId = selectedProjectIdRef.current
+    if (!projectId || generationAbortRef.current || activeWorkbenchRef.current !== 'preview' || document.hidden) return
+    const signature = filesRef.current.map((file) => `${file.path}:${file.content.length}`).join('|')
+    if (!signature || thumbSignatureRef.current.get(projectId) === signature) return
+    thumbSignatureRef.current.set(projectId, signature)
+    try {
+      const image = await shrinkToThumbnail(await capturePreview())
+      await codingApi.setThumbnail(projectId, image)
+      setProjects((prev) => prev.map((project) => project.id === projectId ? { ...project, thumbnail: image } : project))
+    } catch {
+      thumbSignatureRef.current.delete(projectId) // try again on the next ready preview
     }
+  }
+
+  const handlePreviewReady = () => {
+    window.setTimeout(() => void captureThumbnail(), 6000)
+    // The platform bootstrap confirmed an actual visible render, not merely bundle completion.
+    if (!observeRef.current && !generationAbortRef.current && selectedProjectIdRef.current && activeWorkbenchRef.current === 'preview' && isReactProject(filesRef.current)) startObservation()
+    if (observeRef.current) { observeRef.current.ready = true; scheduleVerdict(3000) }
     setPreviewLoading(false)
   }
 
@@ -2101,95 +2045,32 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           {designNotice}
         </div>
       )}
-      {!isMobile && explorerCollapsed && (
-        <SidebarRail
-          label="Vibe Lab"
-          expandLabel={tl("Espandi elenco progetti")}
-          onExpand={() => setExplorerCollapsed(false)}
-          onCreate={() => { setExplorerCollapsed(false); handleStartNewProject() }}
-          createLabel={tl("Nuovo progetto")}
-          items={projects.map((project) => ({
-            id: project.id,
-            title: project.title,
-            icon: <Code2 className="h-4 w-4" />,
-            selected: selectedProjectId === project.id,
-            onClick: () => openProjectFromList(project),
-          }))}
+      {inLibrary && (
+        <VibeLabLibrary
+          projects={projects}
+          loading={loading}
+          search={projectListSearch}
+          onSearch={setProjectListSearch}
+          onOpen={(project) => void openProjectFromList(project as CodingProject)}
+          onNew={() => startNewProject()}
+          onTutorial={() => setShowTutorial(true)}
+          creating={creating}
         />
       )}
-      {!isMobile && !explorerCollapsed && <WorkspaceExplorerSidebar>
-        <WorkspaceExplorerHeader
-          section="/teacher/coding"
-          eyebrow={isTeacher ? tl("Pannello docente") : tl("Spazio studente")}
-          title="Vibe Lab"
-          description={tl("Progetti, versioni e condivisioni in un unico explorer.")}
-          action={(
-            <div className="flex shrink-0 items-center gap-1.5">
-            {!isMobile && <SidebarCollapseButton onClick={() => setExplorerCollapsed(true)} label={tl("Comprimi elenco progetti")} />}
-            <Button
-              type="button"
-              onClick={handleStartNewProject}
-              disabled={creating || generating || draftSaving}
-              density="compact"
-              tone="accent"
-              surface="solid"
-              className="h-9 w-9 shrink-0 rounded-full p-0"
-              title={tl("Nuovo progetto")}
-              aria-label={tl("Nuovo progetto")}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-            </div>
-          )}
-          searchValue={projectListSearch}
-          onSearchChange={setProjectListSearch}
-          searchPlaceholder={tl("Cerca progetti...")}
-          clearSearchLabel={tl("Cancella ricerca progetti")}
-        />
-        <WorkspaceExplorerList>
-          {loading ? (
-            <div className="flex h-24 items-center justify-center text-slate-400">
-              <Loader2 className="h-5 w-5 animate-spin" />
-            </div>
-          ) : projects.length === 0 ? (
-            <p className="px-2 py-6 text-center text-xs text-slate-400">{tl("Nessun progetto ancora.")}</p>
-          ) : filteredProjects.length === 0 ? (
-            <p className="px-2 py-6 text-center text-xs text-slate-400">{tl("Nessun progetto corrisponde a “")}{projectListSearch}”.</p>
-          ) : (
-            <div className="space-y-2">
-              {filteredProjects.map((project) => (
-                <WorkspaceExplorerItem
-                  key={project.id}
-                  icon={<Code2 className="h-4 w-4" />}
-                  title={project.title}
-                  subtitle={`${project.owner_display_name || (project.owner_kind === 'teacher' ? 'Docente' : 'Studente')} · ${project.template_key}`}
-                  selected={selectedProjectId === project.id}
-                  onClick={() => openProjectFromList(project)}
-                  badges={(
-                    <>
-                      <WorkspaceExplorerBadge>{new Date(project.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</WorkspaceExplorerBadge>
-                      {project.visibility === 'class_shared' && <WorkspaceExplorerBadge>{tl("Condiviso")}</WorkspaceExplorerBadge>}
-                    </>
-                  )}
-                />
-              ))}
-            </div>
-          )}
-        </WorkspaceExplorerList>
-        <div className="px-4 py-3 shadow-[0_-1px_0_rgba(163,163,163,0.10)]">
-          <Button
-            type="button"
-            onClick={() => setShowTutorial(true)}
-            variant="outline"
-            density="compact"
-            className="w-full gap-1.5 rounded-xl text-xs font-bold"
-            title="Tutorial Vibe Lab"
+      {versionsOpen && selectedProject && (
+        <div className="fixed inset-0 z-[70] flex items-start justify-end bg-black/30 p-3 sm:p-4" onClick={() => setVersionsOpen(false)}>
+          <div
+            className="mt-12 flex h-[min(78vh,640px)] w-[400px] max-w-full flex-col overflow-hidden rounded-2xl bg-[var(--surface-card)] shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-label={tl("Versioni del progetto")}
           >
-            <HelpCircle className="h-3.5 w-3.5" />
-            Tutorial
-          </Button>
-        </div>
-        <SidebarVersioningPanel
+            <div className="flex shrink-0 items-center justify-between px-4 pt-3">
+              <p className="truncate text-sm font-black text-[var(--text-primary)]">{selectedProject.title}</p>
+              <button type="button" onClick={() => setVersionsOpen(false)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}><X className="h-4 w-4" /></button>
+            </div>
+            <SidebarVersioningPanel
+              className="flex min-h-0 flex-1 flex-col p-3 text-[13px]"
           selectedProject={selectedProject}
           isFork={isFork}
           upstreamStatus={upstreamStatus}
@@ -2205,6 +2086,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             setPreviewingVersionId(version.id)
             setPreviewingCommitId(null)
             setActiveWorkbench('preview')
+            setVersionsOpen(false)
           }}
           onRollbackVersion={handleRollbackVersion}
           onOpenCommit={(commit) => {
@@ -2213,12 +2095,29 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             setPreviewingCommitId(commit.id)
             setPreviewingVersionId(null)
             setActiveWorkbench('preview')
+            setVersionsOpen(false)
           }}
           onMergeCommit={handleMergeCommit}
-        />
-      </WorkspaceExplorerSidebar>}
+            />
+          </div>
+        </div>
+      )}
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {!inLibrary && <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {!isMobile && (
+          <div className="flex shrink-0 items-center gap-2 px-3 pt-2">
+            <Button type="button" variant="ghost" density="compact" onClick={() => void goToLibrary()} disabled={creating || generating || draftSaving} title={generating ? tl("Attendi la fine della generazione") : tl("Torna ai progetti")}>
+              <ArrowLeft className="h-4 w-4" /> {tl("Progetti")}
+            </Button>
+            {selectedProject && <span className="min-w-0 flex-1 truncate text-sm font-black text-[var(--text-primary)]">{selectedProject.title}</span>}
+            {!selectedProject && <span className="flex-1" />}
+            {selectedProject && (
+              <Button type="button" variant="ghost" density="compact" onClick={() => setVersionsOpen(true)} title={tl("Versioni, commit e aggiornamenti")}>
+                <History className="h-4 w-4" /> {tl("Versioni")}{sortedVersions.length ? ` · ${sortedVersions.length}` : ''}{pendingCommits.length ? ` · ${pendingCommits.length} commit` : ''}
+              </Button>
+            )}
+          </div>
+        )}
         {isMobile && (
           <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2">
             <div className="flex items-center gap-2">
@@ -2354,10 +2253,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     className="min-h-40 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 shadow-inner outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[var(--logo-violet)] focus:bg-white focus:shadow-[var(--ds-shadow-focus)] md:text-sm"
                   />
                 </div>
-                <div className="hidden md:block">
-                  <div className="mb-2 mt-6 text-sm font-bold text-slate-700">{tl("Modello")}</div>
-                  <CodingModelSelector value={modelKey} options={modelOptions} onChange={handleModelChange} />
-                </div>
                 {showDeepSeekDisclaimer && deepSeekConsent && (
                   <DeepSeekDisclaimer consent={deepSeekConsent} onAccept={acceptDeepSeekConsent} className="mt-3" />
                 )}
@@ -2428,6 +2323,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                             >
                               {tl("Riprova")}
                             </button>
+                          )}
+                          {!interviewing && last?.role === 'assistant' && last.kind === 'style' && last.styleOptions && (
+                            <StyleDirectionPicker
+                              options={last.styleOptions}
+                              onPick={(option) => void sendChatAnswer(option.answer)}
+                              onSurprise={() => void sendChatAnswer(tl("Scegli tu la direzione visiva: deve essere specifica per questo soggetto e questo pubblico, non generica."))}
+                            />
                           )}
                           {options.length > 0 && (
                             <div className="flex flex-wrap gap-1.5">
@@ -2536,7 +2438,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   )}
                   {generating && (
                     <div className="sticky bottom-0 z-20 rounded-2xl border border-[color:var(--border-subtle)] bg-white/95 p-2 shadow-[var(--shadow-lg)] backdrop-blur-xl">
-                      <LiveGenerationPanel status={liveStatus} reasoning={liveReasoning} plan={livePlan} files={liveFiles} mode={generationMode} onStop={stopGeneration} />
+                      <LiveGenerationPanel status={liveStatus} reasoning={liveReasoning} thinking={liveThinking} plan={livePlan} files={liveFiles} mode={generationMode} onStop={stopGeneration} />
                     </div>
                   )}
                   <div ref={conversationEndRef} />
@@ -2544,10 +2446,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               )}
             </div>
             {!createPanelOpen && <div className="border-t border-slate-100 bg-white/90 p-3">
-              <div className="mb-2 flex items-center justify-end gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Modello")}</span>
-                <CodingModelSelector compact value={modelKey} options={modelOptions} onChange={handleModelChange} />
-              </div>
               {showDeepSeekDisclaimer && deepSeekConsent && (
                 <DeepSeekDisclaimer consent={deepSeekConsent} onAccept={acceptDeepSeekConsent} className="mb-2" />
               )}
@@ -2804,13 +2702,26 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 </button>
               </div>
               <div className="flex min-h-0 flex-1">
-              <ProjectFileTree files={files} selectedPath={selectedFile?.path} onSelect={setSelectedPath} onAddFile={addNewFile} />
+              <ProjectFileTree
+                files={inspectorFiles}
+                selectedPath={selectedFile?.path}
+                onSelect={(path) => {
+                  if (liveCodeActive) {
+                    // A click while the agents write pins that file instead of following the writer.
+                    liveFollowRef.current = false
+                    setLiveSelectedPath(path)
+                  }
+                  setSelectedPath(path)
+                }}
+                onAddFile={addNewFile}
+                writingPaths={liveCodeActive ? new Set(liveFiles.filter((file) => file.status === 'writing').map((file) => file.path)) : undefined}
+              />
               <div className="min-h-0 min-w-0 flex-1 p-3">
                 {selectedFile ? (
                   selectedFileIsGeneratedDescription ? (
                     <GeneratedDescriptionPreview file={selectedFile} />
                   ) : (
-                    <HighlightedCodeEditor file={selectedFile} onChange={updateSelectedFile} />
+                    <HighlightedCodeEditor file={selectedFile} onChange={updateSelectedFile} live={liveCodeActive && liveContents[selectedFile.path] !== undefined} />
                   )
                 ) : (
                   <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-white/10 text-sm text-slate-500">
@@ -2820,6 +2731,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               </div>
               </div>
             </div>
+            {selectedProjectId && files.length > 0 && <p role="status" className="px-3 py-1 text-xs text-[var(--text-secondary)]">{tl(vibeValidationLabel(draftDirty ? null : validation))}</p>}
             <div className={activeWorkbench === 'preview' ? `flex min-h-0 flex-1 bg-slate-100 ${previewDevice === 'mobile' && !isMobile ? 'items-start justify-center overflow-auto p-4' : ''}` : 'hidden'}>
             {isReactPreview && files.length > 0 ? (
               <div ref={previewFrameRef} className={`relative flex min-h-0 ${previewDevice === 'mobile' && !isMobile ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
@@ -2908,7 +2820,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </div>
           </section>}
         </div>
-      </main>
+      </main>}
       {previewFullscreen && hasPreview && (
         <div className="fixed inset-0 z-50 flex flex-col bg-white" style={{ height: '100dvh' }}>
           {isMobile ? (
@@ -3407,6 +3319,7 @@ function ImageJobStatusOverlay({ status, message }: { status: 'generating' | 'op
 }
 
 function SidebarVersioningPanel({
+  className,
   selectedProject,
   isFork,
   upstreamStatus,
@@ -3420,6 +3333,7 @@ function SidebarVersioningPanel({
   onOpenCommit,
   onMergeCommit,
 }: {
+  className?: string
   selectedProject: CodingProject | null
   isFork: boolean
   upstreamStatus: UpstreamStatus | null
@@ -3438,7 +3352,7 @@ function SidebarVersioningPanel({
   }
 
   return (
-    <div className="hidden h-[34vh] min-h-[240px] max-h-[420px] shrink-0 flex-col border-t border-[color:var(--border-subtle)] bg-[var(--surface-muted)] p-3 text-[13px] lg:flex">
+    <div className={className ?? "hidden h-[34vh] min-h-[240px] max-h-[420px] shrink-0 flex-col border-t border-[color:var(--border-subtle)] bg-[var(--surface-muted)] p-3 text-[13px] lg:flex"}>
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h3 className="text-xs font-black uppercase tracking-wide text-[var(--text-secondary)]">Versioning</h3>
@@ -3625,7 +3539,7 @@ function buildFileTree(files: GeneratedFile[]): FileTreeNode[] {
 }
 
 // Explorer-style file tree for the code workbench (desktop); mobile keeps the compact tab strip.
-function ProjectFileTree({ files, selectedPath, onSelect, onAddFile }: { files: GeneratedFile[]; selectedPath?: string; onSelect: (path: string) => void; onAddFile: () => void }) {
+function ProjectFileTree({ files, selectedPath, onSelect, onAddFile, writingPaths }: { files: GeneratedFile[]; selectedPath?: string; onSelect: (path: string) => void; onAddFile: () => void; writingPaths?: Set<string> }) {
   const tree = useMemo(() => buildFileTree(files), [files])
   const [closed, setClosed] = useState<Set<string>>(() => new Set())
   const renderNodes = (nodes: FileTreeNode[], depth: number): ReactNode => nodes.map((node) => {
@@ -3658,7 +3572,9 @@ function ProjectFileTree({ files, selectedPath, onSelect, onAddFile }: { files: 
         style={{ paddingLeft: 20 + depth * 12 }}
         title={node.path}
       >
-        <FileCode2 className="h-3 w-3 shrink-0 opacity-70" />
+        {writingPaths?.has(node.file?.path || node.path)
+          ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-300" aria-label={tl("In scrittura")} />
+          : <FileCode2 className="h-3 w-3 shrink-0 opacity-70" />}
         <span className="truncate">{node.name}</span>
         {node.path === 'description.md' && <span className="ml-auto rounded-full bg-white/10 px-1.5 text-[9px] font-black uppercase text-slate-400">auto</span>}
       </button>
@@ -3675,6 +3591,31 @@ function ProjectFileTree({ files, selectedPath, onSelect, onAddFile }: { files: 
       </div>
     </aside>
   )
+}
+
+// Screenshot data URL -> small JPEG card cover (top of the page, 16:10) that stays well under the upload limit.
+function shrinkToThumbnail(dataUrl: string, width = 480): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => {
+      const scale = width / image.naturalWidth
+      const height = Math.round(width * 0.625)
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('2d')
+      if (!context) { reject(new Error('canvas')); return }
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, width, height)
+      context.drawImage(image, 0, 0, image.naturalWidth * scale, image.naturalHeight * scale)
+      let quality = 0.62
+      let out = canvas.toDataURL('image/jpeg', quality)
+      while (out.length > 150000 && quality > 0.3) { quality -= 0.12; out = canvas.toDataURL('image/jpeg', quality) }
+      resolve(out)
+    }
+    image.onerror = () => reject(new Error('image'))
+    image.src = dataUrl
+  })
 }
 
 // Tolerant JSON extraction for model output: strips code fences and surrounding prose.
@@ -3752,7 +3693,7 @@ function PublicationBanner({ url, onClose }: { url: string; onClose: () => void 
   )
 }
 
-type LiveFile = { path: string; lines: number; status: 'writing' | 'done'; op?: 'file' | 'patch' | 'delete' }
+type LiveFile = { path: string; lines: number; status: 'queued' | 'writing' | 'done'; op?: 'file' | 'patch' | 'delete' }
 
 // Console chatter that is not a bug in the student's app: never worth a fix turn.
 const RUNTIME_NOISE = [/NotAllowedError|Permission denied|Permesso negato|getUserMedia|NotFoundError: Requested device/i, /^Warning:/i, /React DevTools/i, /Download the React/i, /ResizeObserver loop/i, /\[HMR\]/i, /sandpack/i, /favicon/i]
@@ -3829,7 +3770,7 @@ function describeRuntimeError(error: SandpackRuntimeError) {
 }
 
 function VerifyStatusPill({ state, attempt, maxAttempts, errors, onRetry, onDismiss }: {
-  state: 'idle' | 'observing' | 'fixing' | 'clean' | 'failed'
+  state: 'idle' | 'observing' | 'fixing' | 'clean' | 'failed' | 'unverified'
   attempt: number
   maxAttempts: number
   errors: SandpackRuntimeError[]
@@ -3843,7 +3784,8 @@ function VerifyStatusPill({ state, attempt, maxAttempts, errors, onRetry, onDism
       <div className={`pointer-events-auto flex max-w-[92%] items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold shadow-lg ${tone}`} role="status" aria-live="polite" title={errors.map(describeRuntimeError).join('\n')}>
         {state === 'observing' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("Verifico l’app in esecuzione…")}</>}
         {state === 'fixing' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("Correggo gli errori trovati (tentativo")} {Math.max(1, attempt)}/{maxAttempts})…</>}
-        {state === 'clean' && <><Check className="h-3.5 w-3.5" /> {tl("Verificata: nessun errore in esecuzione")}</>}
+        {state === 'clean' && <><Check className="h-3.5 w-3.5" /> {tl("Anteprima avviata senza errori rilevati")}</>}
+        {state === 'unverified' && <span>{tl('Anteprima non verificata: avvio non confermato.')}</span>}
         {state === 'failed' && (
           <>
             <X className="h-3.5 w-3.5 shrink-0" />
@@ -3860,6 +3802,7 @@ function VerifyStatusPill({ state, attempt, maxAttempts, errors, onRetry, onDism
 function LiveGenerationPanel({
   status,
   reasoning,
+  thinking = '',
   plan,
   files,
   mode,
@@ -3867,17 +3810,23 @@ function LiveGenerationPanel({
 }: {
   status: string
   reasoning: string
+  thinking?: string
   plan: { path: string; purpose: string }[]
   files: LiveFile[]
   mode: 'build' | 'fix'
   onStop: () => void
 }) {
   const reasoningRef = useRef<HTMLDivElement>(null)
+  const thinkingRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     reasoningRef.current?.scrollTo({ top: reasoningRef.current.scrollHeight })
   }, [reasoning])
+  useEffect(() => {
+    thinkingRef.current?.scrollTo({ top: thinkingRef.current.scrollHeight })
+  }, [thinking])
 
   const doneCount = files.filter((file) => file.status === 'done').length
+  const writingCount = files.filter((file) => file.status === 'writing').length
 
   return (
     <div className="space-y-2">
@@ -3889,8 +3838,13 @@ function LiveGenerationPanel({
       <div className="rounded-2xl border border-amber-300/55 bg-amber-50/85 p-3 shadow-sm ring-1 ring-amber-100/80">
         <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-800">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          {mode === 'fix' ? tl("Verificatore") : reasoning ? tl("Architetto") : tl("Sto progettando la struttura...")}
+          {mode === 'fix' ? tl("Verificatore") : reasoning || thinking ? tl("Architetto") : tl("Sto progettando la struttura...")}
         </div>
+        {thinking && !reasoning && (
+          <div ref={thinkingRef} className="mb-2 max-h-28 overflow-y-auto whitespace-pre-wrap rounded-xl border border-amber-200/80 bg-white/[0.6] p-2.5 font-mono text-[11px] leading-4 text-slate-600" aria-label={tl("Ragionamento dell'architetto")}>
+            {thinking}
+          </div>
+        )}
         {reasoning && (
           <div ref={reasoningRef} className="h-48 overflow-y-auto rounded-xl border border-amber-200/80 bg-white/[0.82] p-3 text-slate-800">
             <ReasoningMarkdown>{reasoning}</ReasoningMarkdown>
@@ -3902,7 +3856,7 @@ function LiveGenerationPanel({
         <div className="rounded-2xl border border-sky-300/60 bg-sky-50/90 p-3 shadow-sm ring-1 ring-sky-100/80">
           <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wide text-sky-700">
             <span>{mode === 'fix' ? tl("Correzioni") : tl("Piano di lavoro")}</span>
-            <span>{doneCount}/{files.length} {tl("file")}</span>
+            <span>{writingCount > 0 ? `${writingCount} ${tl("in scrittura")} · ` : ''}{doneCount}/{files.length} {tl("file")}</span>
           </div>
           <div className="h-36 space-y-1 overflow-y-auto rounded-xl border border-sky-200/75 bg-white/[0.82] p-2 font-code">
             {files.map((file) => {
@@ -3911,7 +3865,9 @@ function LiveGenerationPanel({
                 <div key={file.path} className="flex items-start gap-2 text-sm text-slate-700">
                   {file.status === 'done'
                     ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-700" />
-                    : <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-sky-400" />}
+                    : file.status === 'queued'
+                      ? <span className="mx-1 mt-1.5 h-2 w-2 shrink-0 rounded-full bg-sky-200" aria-label={tl("In attesa")} />
+                      : <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{file.path}</span>
                     {purpose && <span className="block truncate font-sans text-[11px] text-slate-500">{purpose}</span>}
@@ -4434,8 +4390,14 @@ function GeneratedDescriptionPreview({ file }: { file: GeneratedFile }) {
   )
 }
 
-function HighlightedCodeEditor({ file, onChange }: { file: GeneratedFile; onChange: (content: string) => void }) {
+function HighlightedCodeEditor({ file, onChange, live = false }: { file: GeneratedFile; onChange: (content: string) => void; live?: boolean }) {
   const language = languageForFile(file)
+  const editorRef = useRef<ReactCodeMirrorRef>(null)
+  // While an agent writes the file, keep its newest lines in view.
+  useEffect(() => {
+    const scroller = live ? editorRef.current?.view?.scrollDOM : null
+    if (scroller) scroller.scrollTop = scroller.scrollHeight
+  }, [file.content, live])
   const lineCount = file.content.split('\n').length
   const extensions = useMemo(() => [
     ...getEditorExtensions('p5js', 'dark', 'jetbrains', editorKeymap(() => undefined), 450),
@@ -4459,11 +4421,19 @@ function HighlightedCodeEditor({ file, onChange }: { file: GeneratedFile; onChan
         <span className="rounded-full border border-sky-400/30 bg-sky-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-100">
           {language} · {lineCount} ln
         </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">CodeMirror</span>
+        {live ? (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+            <Loader2 className="h-3 w-3 animate-spin" /> {tl("In scrittura")}
+          </span>
+        ) : (
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">CodeMirror</span>
+        )}
       </div>
       <CodeMirror
+        ref={editorRef}
         value={file.content}
-        onChange={onChange}
+        onChange={live ? undefined : onChange}
+        editable={!live}
         extensions={extensions}
         height="100%"
         basicSetup={{

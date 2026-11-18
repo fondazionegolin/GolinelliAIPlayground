@@ -565,3 +565,33 @@ Il primo incremento utile deve dimostrare il flusso end-to-end senza ancora tutt
 7. Inspector docente con timeline e file.
 
 Da li` si innestano gli agenti di review e valutazione.
+
+## Hardening della generazione (18 novembre 2026)
+
+La generazione streaming è serializzata per tenant/progetto: un breve advisory lock PostgreSQL protegge
+l'avvio e il job persistente `vibe_generate/running` impedisce ulteriori avvii fino alla conclusione.
+Il server risponde 409 prima di aggiungere messaggi o chiamare il modello; anche il client usa un lock
+sincrono. Il progetto precedente resta disponibile se una generazione non produce un risultato valido.
+
+Il parser accetta marker senza `@@FILES@@`, JSON e blocchi di codice con nome file esplicito. Il recupero
+è prima deterministico, poi al massimo una chiamata mirata. I file troncati non diventano una consegna
+valida senza passare il controllo di build. Gli import sono letti come token/sintassi e non dentro
+commenti o stringhe (regressione: `['by','from','not']` non importa il pacchetto `,`).
+
+`artifact_manifest_json.validation` separa `generation`, `build`, `runtime` e `features`, con un hash
+SHA-256 del codice. `build_passed` certifica il bundle, non i flussi utente. L'anteprima invia un handshake
+solo dopo il primo render visibile; un timeout silenzioso resta non verificato. Il controllo persistente
+è riferito a versione e hash: una bozza modificata invalida il verdetto; il client non può assegnare
+`ready` a codice diverso. Un confronto col brief incompleto/non interpretabile non conta come superato.
+
+La pipeline non impone un vendor per il recupero: usa la scelta corrente e un fallback abilitato nello
+stesso catalogo docente/studente. Limiti condivisi: 360 secondi per generazione, 240 per stream, 75 di
+inattività (ragionamento e codice contano come attività), 60 per verifica/riparazione, massimo 12 chiamate. I milestone e i brief brevi
+saltano il passaggio architetto/worker; il controllo di stile deterministico evita una riscrittura
+LLM completa. Ogni helper e worker viene cancellato e chiuso quando termina il budget o l'utente annulla.
+Il client limita l'autocorrezione a tre tentativi.
+
+Il risultato del job conserva `diagnostics` (provider/modello effettivo per chiamata, fase, durata,
+caratteri di risposta/ragionamento, errori e recuperi), anche in caso di fallimento o annullamento.
+Non conserva le risposte grezze del modello. Le regressioni sono in `test_vibe_hardening.py` e
+`test_vibe_generation_database.py` (opt-in `VIBE_DB_TESTS=1`, transazioni annullate, provider simulati).

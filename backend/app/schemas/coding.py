@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class CodingMessageCreate(BaseModel):
@@ -44,8 +44,8 @@ class CodingVersionCreate(BaseModel):
 
 
 class CodingGeneratedFile(BaseModel):
-    path: str
-    content: str
+    path: str = Field(min_length=1, max_length=300)
+    content: str = Field(max_length=200000)
     language: Optional[str] = None
 
 
@@ -58,7 +58,7 @@ class CodingGenerateRequest(BaseModel):
     prompt: Optional[str] = Field(default=None, min_length=1, max_length=20000)
     # Current editor files (edits + knowledge-base .md). When provided, they are the base
     # for this generation so unsaved edits and added files are respected.
-    files: Optional[list[CodingGeneratedFile]] = None
+    files: Optional[list[CodingGeneratedFile]] = Field(default=None, max_length=100)
     # Which generation model to use (for example "sonnet" | "haiku" | "luna"). Resolved to a
     # provider/model pair server-side; unknown/empty falls back to the configured default.
     model_key: Optional[str] = Field(default=None, max_length=160)  # "provider|model" (legacy short keys still accepted)
@@ -75,6 +75,12 @@ class CodingGenerateRequest(BaseModel):
     errors: Optional[list[str]] = Field(default=None, max_length=12)
     # 1-based index of this automatic fix turn; later attempts escalate (full rewrites, stronger model).
     attempt: Optional[int] = Field(default=None, ge=1, le=50)
+
+    @model_validator(mode="after")
+    def bounded_context(self):
+        if sum(len(f.content) for f in self.files or []) > 1_000_000:
+            raise ValueError("Il contesto del progetto supera il limite di 1 MB")
+        return self
 
 
 class CodingMessageResponse(BaseModel):
@@ -131,11 +137,16 @@ class CodingProjectResponse(BaseModel):
     status: str
     current_version_id: Optional[UUID]
     visibility: str
+    thumbnail: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class CodingThumbnailUpdate(BaseModel):
+    image: str = Field(min_length=32, max_length=200000)
 
 
 class CodingProjectDetail(CodingProjectResponse):

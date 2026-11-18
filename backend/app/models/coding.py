@@ -44,6 +44,8 @@ class CodingProject(Base):
     status = Column(String(32), nullable=False, default="draft", server_default="draft")
     current_version_id = Column(UUID(as_uuid=True), nullable=True)
     visibility = Column(String(32), nullable=False, default="private", server_default="private")
+    # Small JPEG data URL of the running app, captured from the preview: card image of the library.
+    thumbnail = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

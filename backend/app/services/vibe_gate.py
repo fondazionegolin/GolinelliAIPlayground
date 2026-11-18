@@ -24,6 +24,7 @@ import shutil
 import tempfile
 from dataclasses import asdict, dataclass
 
+from app.services.js_imports import code_mask, module_imports, tokens
 from app.services.vibe_contract import BUILTIN_PACKAGES, HEAVY_PACKAGES
 
 logger = logging.getLogger(__name__)
@@ -36,8 +37,6 @@ NODE_BUILTINS = {
 BINARY_ASSET_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".ico", ".mp3", ".wav", ".ogg", ".mp4", ".webm",
                      ".woff", ".woff2", ".ttf", ".otf", ".wasm", ".pdf", ".svg")
 
-_BARE_IMPORT = re.compile(r"""(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"]([^'".\/][^'"]*)['"]""")
-_ASSET_IMPORT = re.compile(r"""(?:\bfrom\s*|\bimport\s*\(?\s*)['"](\.{0,2}/[^'"]+\.(?:%s))['"]""" % "|".join(e.lstrip(".") for e in BINARY_ASSET_EXTS), re.I)
 _HAS_DEFAULT_EXPORT = re.compile(r"\bexport\s+default\b|\bexport\s*\{[^}]*\bas\s+default\b")
 
 # (regex, rule id, message) — each applied per code file.
@@ -94,7 +93,7 @@ def heavy_dependencies(files: list[dict]) -> list[str]:
     used = declared_dependencies(files)
     for f in files:
         if _is_code(str(f.get("path") or "")):
-            used |= {_package_name(m) for m in _BARE_IMPORT.findall(str(f.get("content") or ""))}
+            used |= {_package_name(m) for m in [spec for spec, _ in module_imports(str(f.get("content") or "")) if not spec.startswith((".", "/"))]}
     return sorted(used & HEAVY_PACKAGES)
 
 
@@ -124,9 +123,34 @@ def normalize_layout(files: list[dict]) -> tuple[list[dict], list[str]]:
     return files, notes
 
 
+def unsafe_imports(files: list[dict]) -> list[Issue]:
+    """Never let a generated import make the server bundler read outside its temp project."""
+    issues = []
+    for file in files:
+        path, content = str(file.get('path') or ''), str(file.get('content') or '')
+        references = list(module_imports(content)) if _is_code(path) else []
+        items = tokens(content) if _is_code(path) or path.endswith('.css') else []
+        for index, token in enumerate(items):
+            if token.kind != 'word': continue
+            if token.value == 'import' and len(items) > index + 2 and items[index + 1].value == '(' and items[index + 2].kind == 'template':
+                references.append((items[index + 2].value.split('${', 1)[0], token.start))
+            if path.endswith('.css'):
+                if token.value == 'url':
+                    match = re.match(r"url\(\s*['\"]?([^)'\"\s]+)", content[token.start:], re.I)
+                    if match: references.append((match.group(1), token.start))
+                if token.value == 'import' and index and items[index - 1].value == '@' and len(items) > index + 1 and items[index + 1].kind == 'string':
+                    references.append((items[index + 1].value, token.start))
+        for spec, offset in references:
+            resolved = posixpath.normpath(posixpath.join(posixpath.dirname(path), spec))
+            outside = spec.startswith(('/', 'file:')) or '\\' in spec or (spec.startswith('.') and (resolved == '..' or resolved.startswith('../')))
+            if outside:
+                issues.append(Issue(path, 'import fuori dal progetto non consentito: usa file relativi interni al progetto', line=content.count('\n', 0, offset) + 1, rule='outside-project-import'))
+    return issues
+
+
 def static_issues(files: list[dict], allowed_packages: set[str] | None = None) -> list[Issue]:
     """Rules about the Sandpack runtime that need no bundler."""
-    issues: list[Issue] = []
+    issues: list[Issue] = unsafe_imports(files)
     paths = {str(f.get("path") or "") for f in files}
     declared = declared_dependencies(files)
     available = BUILTIN_PACKAGES | declared
@@ -134,7 +158,7 @@ def static_issues(files: list[dict], allowed_packages: set[str] | None = None) -
     app = next((f for f in files if str(f.get("path") or "") in {"App.tsx", "App.jsx"}), None)
     if app is None:
         issues.append(Issue("App.tsx", "manca App.tsx nella radice del progetto (la piattaforma monta `./App`)", rule="missing-app"))
-    elif not _HAS_DEFAULT_EXPORT.search(str(app.get("content") or "")):
+    elif not _HAS_DEFAULT_EXPORT.search(code_mask(str(app.get("content") or ""))):
         issues.append(Issue(str(app["path"]), "App.tsx deve avere `export default function App()` (default export)", rule="app-default-export"))
     if "styles.css" not in paths:
         issues.append(Issue("styles.css", "manca styles.css nella radice", rule="missing-styles", severity="warn"))
@@ -146,17 +170,24 @@ def static_issues(files: list[dict], allowed_packages: set[str] | None = None) -
             continue
         if path.startswith("src/"):
             issues.append(Issue(path, "i file non vanno in src/: la cartella non esiste, il progetto parte dalla radice", rule="no-src-dir"))
+        masked = code_mask(content)
         for pattern, rule, message in _FORBIDDEN:
-            match = pattern.search(content)
+            match = next((m for m in pattern.finditer(content) if not masked[m.start()].isspace()), None)
             if match:
                 issues.append(Issue(path, message, line=content.count("\n", 0, match.start()) + 1, rule=rule))
-        for match in _ASSET_IMPORT.finditer(content):
-            target = posixpath.normpath(posixpath.join(posixpath.dirname(path), match.group(1)))
-            if target not in paths:
-                issues.append(Issue(path, f"importa il file binario \"{match.group(1)}\" che non puo' esistere: usa SVG inline, emoji o URL https", line=content.count("\n", 0, match.start()) + 1, rule="no-binary-asset"))
-        for spec in sorted(set(_BARE_IMPORT.findall(content))):
+        for spec, offset in module_imports(content):
+            line = content.count("\n", 0, offset) + 1
+            if spec.startswith((".", "/")):
+                if spec.lower().endswith(BINARY_ASSET_EXTS):
+                    target = posixpath.normpath(posixpath.join(posixpath.dirname(path), spec))
+                    if target not in paths:
+                        issues.append(Issue(path, f'importa il file binario "{spec}" non disponibile: usa SVG inline o URL https', line=line, rule="no-binary-asset"))
+                continue
             name = _package_name(spec)
-            line = content.count("\n", 0, content.find(spec)) + 1
+            if name in {"next", "@next"}:
+                issues.append(Issue(path, "`next/*` non esiste: il progetto e' React puro", line=line, rule="no-next"))
+            if spec.startswith(("@/", "~/")):
+                issues.append(Issue(path, "gli alias @/ e ~/ non esistono: usa import relativi", line=line, rule="no-path-alias"))
             bare = name.removeprefix("node:")
             if name.startswith("node:") or bare in NODE_BUILTINS:
                 issues.append(Issue(path, f"`{spec}` e' un modulo Node: non esiste nel browser", line=line, rule="no-node-module"))
@@ -204,6 +235,8 @@ def _humanize(message: str) -> str:
 async def build_check(files: list[dict], timeout: float = 25.0) -> tuple[list[Issue], bool]:
     """Bundle the project with esbuild (packages external). Returns (issues, ran). ran=False when the
     binary is unavailable or the check itself failed — the caller then relies on static rules only."""
+    unsafe = unsafe_imports(files)
+    if unsafe: return unsafe, False
     binary = esbuild_binary()
     if not binary:
         return [], False
@@ -234,6 +267,7 @@ async def build_check(files: list[dict], timeout: float = 25.0) -> tuple[list[Is
                 _out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
                 proc.kill()
+                await proc.communicate()
                 return [], False
             if proc.returncode == 0:
                 return [], True

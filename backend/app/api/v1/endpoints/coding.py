@@ -1,8 +1,12 @@
 import re
-from app.services import model_roles, model_selection, vibe_brief, vibe_contract, vibe_gate, vibe_verify
+import httpx
+from app.services.js_imports import module_imports
+from app.services import model_roles, model_selection, vibe_brief, vibe_styles, vibe_contract, vibe_gate, vibe_verify, vibe_runs, vibe_output, vibe_pipeline, vibe_quality
 import io
 import asyncio
+from contextlib import suppress
 import time
+from datetime import datetime, timezone
 import json
 import logging
 import posixpath
@@ -10,9 +14,10 @@ import zipfile
 from typing import Annotated, Any, Optional
 from uuid import UUID
 
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import StudentOrTeacher, get_student_or_teacher
@@ -38,6 +43,7 @@ from app.schemas.coding import (
     CodingProjectDataResponse,
     CodingProjectDetail,
     CodingProjectResponse,
+    CodingThumbnailUpdate,
     CodingVersionCreate,
     CodingVersionResponse,
     DesignSystemCompileRequest,
@@ -336,6 +342,7 @@ CAPACITÀ DELLA PIATTAFORMA (window.GolinelliAI, sempre disponibile, nessuna chi
 - json({prompt, schema, history}) -> oggetto JS gia parsato che rispetta lo schema descritto (quiz, schede,
   classificazioni, dati strutturati): preferiscilo a chat quando ti serve una struttura;
 - vision({image, prompt}) -> {response}: analizza un'immagine (data URL da <input type=file> o canvas, o URL);
+- places({query} | {lat, lon}) -> [{name,label,lat,lon}]: ricerca luoghi REALI (OpenStreetMap) per mappe e indirizzi;
 - generateImage({prompt}) -> {image_url};
 - speak(testo, {lang, rate}) legge ad alta voce; stopSpeaking(); listen({lang, onPartial}) -> Promise<string>
   con il parlato trascritto (microfono);
@@ -472,7 +479,7 @@ Non scrivere index.html né il file di entry/bootstrap. Non scrivere nulla al di
 
 def _codegen_prompt(model: str | None) -> str:
     """System prompt with the sandbox contract (tightened for light models) spliced in."""
-    return CODEGEN_STREAM_SYSTEM_PROMPT.replace("@@SANDBOX_CONTRACT@@", vibe_contract.contract_for(model))
+    return CODEGEN_STREAM_SYSTEM_PROMPT.replace("@@SANDBOX_CONTRACT@@", vibe_contract.contract_for(model) + "\n\n" + vibe_contract.design_block())
 
 
 # Edit turns (existing project): files that already exist are changed with SEARCH/REPLACE patches,
@@ -622,7 +629,7 @@ def _autodeclare_packages(files: list[dict]) -> tuple[list[dict], list[str]]:
     imported: set[str] = set()
     for f in files:
         if vibe_gate._is_code(str(f.get("path") or "")):
-            imported |= {vibe_gate._package_name(m) for m in vibe_gate._BARE_IMPORT.findall(str(f.get("content") or ""))}
+            imported |= {vibe_gate._package_name(m) for m in [spec for spec, _ in module_imports(str(f.get("content") or "")) if not spec.startswith((".", "/"))]}
     declared = vibe_gate.declared_dependencies(files)
     missing = sorted(n for n in imported if n in ALLOWED_NPM_PACKAGES and n not in declared)
     if not missing:
@@ -849,7 +856,7 @@ def _heal_leaked_markers(files: list[dict]) -> list[dict]:
     return healed
 
 
-def _normalize_generated_files(payload: dict) -> list[dict]:
+def _normalize_generated_files(payload: dict, *, force_react=False, allow_placeholder=True) -> list[dict]:
     files = payload.get("files")
     if not isinstance(files, list):
         raise ValueError("Missing files array")
@@ -858,7 +865,7 @@ def _normalize_generated_files(payload: dict) -> list[dict]:
     # Detect React up front (on the raw set) so we only strip the platform-owned HTML shell / entry
     # for React projects — legacy static projects legitimately ship their own index.html.
     raw_files = [f for f in files if isinstance(f, dict)]
-    react = _is_react_files([
+    react = force_react or _is_react_files([
         {"path": str(f.get("path") or ""), "content": str(f.get("content") or "")} for f in raw_files
     ])
 
@@ -879,7 +886,7 @@ def _normalize_generated_files(payload: dict) -> list[dict]:
 
     if react or not normalized:
         # React project: guarantee the root component + global stylesheet the preview expects.
-        if "App.tsx" not in seen_paths and "App.jsx" not in seen_paths:
+        if allow_placeholder and "App.tsx" not in seen_paths and "App.jsx" not in seen_paths:
             normalized.insert(0, {
                 "path": "App.tsx",
                 "language": "typescript",
@@ -900,7 +907,8 @@ def _normalize_generated_files(payload: dict) -> list[dict]:
         if "script.js" not in seen_paths:
             normalized.append({"path": "script.js", "language": "javascript", "content": "document.getElementById('app').innerHTML='<h1>Mini app generata</h1>';"} )
 
-    return normalized[:30]
+    if len(normalized) > 100: raise ValueError("Troppi file: suddividi il progetto in milestone più piccoli")
+    return normalized
 
 
 def _seed_description_md(title: str, initial_prompt: str = "") -> str:
@@ -1400,10 +1408,13 @@ async def _record_coding_cost(
         logger.exception("coding usage tracking failed (%s) provider=%s model=%s", context, provider, model)
 
 
-async def _coding_generate(messages: list[dict], system_prompt: str, *, temperature: float = 0.4, max_tokens: int = 8000):
+async def _coding_generate(messages: list[dict], system_prompt: str, *, temperature: float = 0.4, max_tokens: int = 8000, phase: str = "completion"):
     """Generate with the stronger Coding Lab model, falling back to the platform default."""
+    if vibe_pipeline.current.get() is not None:
+        return await vibe_pipeline.generate(messages=messages, system_prompt=system_prompt,
+            temperature=temperature, max_tokens=max_tokens, allow_web_search=False, phase=phase)
     try:
-        return await llm_service.generate(
+        return await vibe_pipeline.generate(
             messages=messages,
             system_prompt=system_prompt,
             provider=settings.CODING_LLM_PROVIDER,
@@ -1414,7 +1425,7 @@ async def _coding_generate(messages: list[dict], system_prompt: str, *, temperat
         )
     except Exception as exc:
         logger.warning("coding model %s/%s failed (%s); falling back to default", settings.CODING_LLM_PROVIDER, settings.CODING_LLM_MODEL, exc)
-        return await llm_service.generate(
+        return await vibe_pipeline.generate(
             messages=messages,
             system_prompt=system_prompt,
             temperature=temperature,
@@ -1466,35 +1477,46 @@ async def _resolve_vibelab_model(db: AsyncSession, model_key: str | None, *, is_
     return model_selection.default_pair(scope)
 
 
-async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, provider: str, model: str, temperature: float = 0.4, max_tokens: int = 16000, reasoning_sink=None):
+async def _vibe_team(db, is_student):
+    """(architect, writer) for a Vibe Lab run. The user never picks a model: the admin assigns the roles in
+    Admin → Modelli — a strong reasoner plans the contract and handles hard repairs ("coding.teacher" /
+    "coding.student"), a cheap fast coder writes the files in parallel ("coding.writer"). A role whose
+    provider has no API key falls back to the other one, so a run never starts on an unusable model."""
+    keys = model_selection.provider_keys()
+    architect = model_roles.pair_for("coding.student" if is_student else "coding.teacher")
+    writer = model_roles.pair_for("coding.writer")
+    if not keys.get(architect[0]) and keys.get(writer[0]):
+        architect = writer
+    if not keys.get(writer[0]):
+        writer = architect
+    return architect, writer
+
+
+async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, provider: str, model: str, temperature: float = 0.4, max_tokens: int = 64000, reasoning_sink=None, phase="codegen"):
     """Streaming counterpart of _coding_generate. Yields text chunks from the chosen Coding Lab
     model, falling back to the platform default only if the primary fails before emitting."""
     started = False
+    run = vibe_pipeline.current.get()
     try:
-        async for chunk in llm_service.generate_stream(
-            messages=messages,
-            system_prompt=system_prompt,
-            provider=provider,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            reasoning_sink=reasoning_sink,
-            # DeepSeek V4 otherwise "thinks" silently for tens of thousands of tokens and can burn the
-            # whole output budget before writing a file; the prompt already asks for explicit reasoning.
-            thinking=False,
-        ):
+        async for chunk in vibe_pipeline.stream(messages=messages, system_prompt=system_prompt,
+            provider=provider, model=model, temperature=temperature, max_tokens=max_tokens,
+            reasoning_sink=reasoning_sink, phase=phase, thinking=phase == "architect", allow_web_search=False):
             started = True
             yield chunk
     except Exception as exc:
         if started:
+            # Preserve complete files already received; the parser + recovery + gate inspect the tail.
+            if run: run.recovery.append({"reason": "partial_stream", "error_type": type(exc).__name__})
+            return
+        fallback = (run.primary if phase == "architect" else run.fallback) if run else (provider, model)
+        if fallback == (provider, model):
             raise
-        logger.warning("coding stream model %s/%s failed (%s); falling back to default", provider, model, exc)
-        async for chunk in llm_service.generate_stream(
-            messages=messages,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        ):
+        if run: run.recovery.append({"reason": "stream_unavailable", "error_type": type(exc).__name__, "fallback": list(fallback)})
+        # The fallback keeps the progress sink (the UI must never go silent) and skips hidden reasoning:
+        # the strong model already failed, so speed matters more than depth here.
+        async for chunk in vibe_pipeline.stream(messages=messages, system_prompt=system_prompt,
+            provider=fallback[0], model=fallback[1], temperature=temperature, max_tokens=max_tokens,
+            reasoning_sink=reasoning_sink, phase=phase, thinking=False, allow_web_search=False):
             yield chunk
 
 
@@ -1517,6 +1539,7 @@ async def _heartbeat_await(coro, interval: float = SSE_HEARTBEAT_SECONDS):
     finally:
         if not task.done():
             task.cancel()
+            with suppress(asyncio.CancelledError): await task
 
 
 async def _heartbeat_stream(agen_factory, interval: float = SSE_HEARTBEAT_SECONDS):
@@ -1549,6 +1572,7 @@ async def _heartbeat_stream(agen_factory, interval: float = SSE_HEARTBEAT_SECOND
     finally:
         if not producer.done():
             producer.cancel()
+            with suppress(asyncio.CancelledError): await producer
 
 
 MAX_CODING_ATTACHMENTS = 3
@@ -1587,7 +1611,7 @@ async def _describe_attachments(data_urls: list[str]) -> str:
         if not data_url or len(data_url) > MAX_ATTACHMENT_DATA_URL_CHARS or not _DATA_URL_RE.match(data_url.strip()):
             continue
         try:
-            response = await llm_service.generate(
+            response = await vibe_pipeline.generate(
                 messages=[{
                     "role": "user",
                     "content": [
@@ -1635,7 +1659,7 @@ async def _repair_failed_patches(files: dict[str, dict], failed: dict[str, list]
                 messages=[{"role": "user", "content": f"FILE: {path}\n\nCONTENUTO ATTUALE:\n{current}\n\nMODIFICHE PREVISTE:\n{edits}"}],
                 system_prompt=PATCH_REPAIR_SYSTEM_PROMPT,
                 temperature=0.1,
-                max_tokens=12000,
+                max_tokens=48000,
             )
             for item in _parse_delimited_files(response.content or ""):
                 if str(item.get("path") or "").lstrip("/") == path and str(item.get("content") or "").strip():
@@ -1672,7 +1696,7 @@ async def _ui_review_files(files: list[dict]) -> tuple[list[dict], list[str]]:
             messages=[{"role": "user", "content": f"File della mini app da rivedere:\n\n{bundle}{ds_context}"}],
             system_prompt=UI_REVIEW_SYSTEM_PROMPT,
             temperature=0.2,
-            max_tokens=8000,
+            max_tokens=32000,
         )
         payload = _extract_json_object(response.content)
         fixed = _normalize_generated_files(payload)
@@ -1692,35 +1716,7 @@ async def _ui_review_files(files: list[dict]) -> tuple[list[dict], list[str]]:
 
 
 def _parse_delimited_files(text: str) -> list[dict]:
-    """Parse the '=== FILE: path ===\\n<content>' ... '=== END ===' format into file dicts."""
-    file_marker = re.compile(r"^===\s*FILE:\s*(.+?)\s*(?:===)?\s*$")
-    end_marker = re.compile(r"^===\s*END\s*(?:===)?\s*$")
-    out: list[dict] = []
-    current_path: str | None = None
-    current_lines: list[str] = []
-
-    def flush():
-        nonlocal current_path, current_lines
-        if current_path is not None:
-            content = _strip_code_fences("\n".join(current_lines).strip("\n"))
-            if content.strip():
-                out.append({"path": current_path, "content": content, "language": _lang_for_path(current_path)})
-        current_path = None
-        current_lines = []
-
-    for line in text.splitlines():
-        marker = file_marker.match(line)
-        if marker:
-            flush()
-            current_path = marker.group(1).strip().lstrip("/")
-            continue
-        if end_marker.match(line):
-            flush()
-            continue
-        if current_path is not None:
-            current_lines.append(line)
-    flush()
-    return out
+    return vibe_output.recover_files(text)
 
 
 async def _continue_missing_files(
@@ -1738,13 +1734,13 @@ async def _continue_missing_files(
         "Mantieni ogni file sotto le 350 righe; se serve, sii piu` compatto."
     )
     try:
-        response = await llm_service.generate(
+        response = await vibe_pipeline.generate(phase="missing_files",
             messages=[{"role": "user", "content": prompt}],
             system_prompt=_codegen_prompt(model),
             provider=provider,
             model=model,
             temperature=0.2,
-            max_tokens=16000,
+            max_tokens=64000,
             allow_web_search=False,
         )
     except Exception as exc:
@@ -1800,13 +1796,13 @@ async def _gate_repair(
         f"PACCHETTI CONSENTITI (con versione): {allowed}\n\n{brief}\n\nFILE COINVOLTI:\n{bundle}"
     )
     try:
-        response = await llm_service.generate(
+        response = await vibe_pipeline.generate(phase="build_repair",
             messages=[{"role": "user", "content": user}],
             system_prompt=GATE_REPAIR_HEAD + vibe_contract.contract_for(model),
             provider=provider,
             model=model,
             temperature=0.1,
-            max_tokens=16000,
+            max_tokens=64000,
             allow_web_search=False,
         )
     except Exception as exc:
@@ -1824,20 +1820,20 @@ async def _gate_repair(
     return list(by_path.values()), [item["path"] for item in fixed], est["prompt_tokens"], est["completion_tokens"]
 
 
-async def _verify_conformance(files: list[dict], reqs: list[tuple[str, str]]) -> tuple[list[dict], int, int]:
+async def _verify_conformance(files: list[dict], reqs: list[tuple[str, str]]) -> tuple[list[dict], int, int, bool]:
     """Ask a verifier which brief features the code does not really implement. Never raises: [] on any failure."""
     listing = "\n".join(f"- {rid}: {text}" for rid, text in reqs)
     user = f"REQUISITI DEL BRIEF:\n{listing}\n\nCODICE DELL'APP:\n{vibe_verify.code_bundle(files)}"
     try:
         response = await asyncio.wait_for(
-            _coding_generate(messages=[{"role": "user", "content": user}], system_prompt=vibe_verify.VERIFY_SYSTEM_PROMPT, temperature=0.0, max_tokens=3000),
+            _coding_generate(messages=[{"role": "user", "content": user}], system_prompt=vibe_verify.VERIFY_SYSTEM_PROMPT, temperature=0.0, max_tokens=3000, phase="brief_verify"),
             timeout=90,
         )
     except Exception as exc:
         logger.warning("brief conformance verify failed (%s)", exc)
-        return [], 0, 0
+        return [], 0, 0, False
     est = build_estimated_token_usage([{"role": "user", "content": user}], response.content or "")
-    return vibe_verify.parse_gaps(response.content or "", reqs), est["prompt_tokens"], est["completion_tokens"]
+    return vibe_verify.parse_gaps(response.content or "", reqs), est["prompt_tokens"], est["completion_tokens"], vibe_verify.valid_assessment(response.content or "", reqs)
 
 
 async def _conformance_repair(
@@ -1852,10 +1848,10 @@ async def _conformance_repair(
     )
     try:
         response = await asyncio.wait_for(
-            llm_service.generate(
+            vibe_pipeline.generate(phase="brief_repair",
                 messages=[{"role": "user", "content": user}],
                 system_prompt=vibe_verify.CONFORMANCE_REPAIR_SYSTEM + vibe_contract.contract_for(model),
-                provider=provider, model=model, temperature=0.2, max_tokens=16000, allow_web_search=False,
+                provider=provider, model=model, temperature=0.2, max_tokens=64000, allow_web_search=False,
             ),
             timeout=240,
         )
@@ -1877,7 +1873,7 @@ async def _conformance_repair(
 # disjoint groups of files concurrently. The contract is the only source of truth between workers,
 # and the deterministic import check + the missing-file continuation catch any drift afterwards.
 
-MAX_PARALLEL_WORKERS = 4
+MAX_PARALLEL_WORKERS = 6
 
 _PLATFORM_ENTRY_PATHS = {
     "index.tsx", "index.ts", "index.jsx", "index.js", "main.tsx", "main.ts", "main.jsx", "main.js",
@@ -1898,14 +1894,22 @@ Altri worker scriveranno i componenti IN PARALLELO: tu fissi solo il contratto. 
 1) Brevissimo ragionamento in italiano (piano, viste, scelte di design), MASSIMO 8 righe.
 2) Una riga con ESATTAMENTE: @@PLAN@@
 3) Una riga per ogni file da far scrivere ai worker (App.tsx incluso, assegnato al worker 1), formato esatto:
-   <worker 1-4> | <percorso> | <scopo in 3-8 parole> | <export pubblici con firma completa>
+   <worker 1-6> | <percorso> | <scopo in 3-8 parole> | <export pubblici con firma completa>
    es. `2 | components/Header.tsx | barra di navigazione | export default function Header(props: { title: string; onNavigate: (view: View) => void })`
-   Bilancia i file su 2-4 worker per quantita' di codice (max ~350 righe a file). Gli export del contratto sono
+   Usa da 3 a 6 worker, AL MASSIMO 2 file per worker, file piccoli e focalizzati (max ~200 righe ciascuno):
+   i worker scrivono in parallelo, quindi piu' file corti = progetto pronto prima e niente troncamenti.
+   App.tsx deve restare SNELLO (solo stato di navigazione e composizione delle viste, max ~120 righe). Gli export del contratto sono
    l'UNICA fonte di verita': i worker li useranno alla lettera, quindi sii preciso su nomi, props e tipi.
 4) Una riga con ESATTAMENTE: @@SHARED@@
-5) I file condivisi, completi, nel formato `=== FILE: percorso ===`: types.ts (tutti i tipi/interfacce/costanti e
-   dati di esempio condivisi tra piu' file), styles.css (blocco :root completo + reset + classi globali minime
-   come .container .btn .card, max 150 righe) e package.json solo se servono librerie oltre a react/react-dom.
+5) I file condivisi, completi, nel formato `=== FILE: percorso ===`: types.ts (tutti i tipi/interfacce/costanti
+   condivisi tra piu' file, SENZA dati di esempio voluminosi: cataloghi, domande e dati demo vanno in data.ts
+   assegnato a un worker nel piano, con l'export dichiarato nel contratto), styles.css (SEGUE la DIREZIONE ARTISTICA del brief: @import dei due font Google, blocco :root completo con ruoli di colore,
+   raggio, ombra e spaziatura, reset, body con margin 0, .container con max-width e padding laterale clamp(), gerarchia di bottoni .btn-primary/.btn-ghost,
+   .card, badge, barre di punteggio, stati focus/hover, max 200 righe) e package.json solo se servono librerie oltre a react/react-dom.
+5b) Se il progetto mostra immagini di soggetti concreti (prodotti, luoghi, persone, opere...) includi tra i file condivisi
+   hooks/useGeneratedImage.ts ESATTAMENTE come nei SERVIZI REALI del prompt, e nel contratto dichiara
+   `export function useGeneratedImage(key: string, prompt: string): { url: string | null; error: string | null; loading: boolean; retry: () => void }`.
+   Se servono mappe, chat AI o analisi di immagini, assegna a un worker il componente che le usa e dichiara nel contratto le props.
 6) Chiudi con una riga: === END ===
 Non elencare nel piano i file condivisi del punto 5."""
 
@@ -1917,13 +1921,27 @@ Niente ragionamento, niente @@FILES@@. Scrivi SOLO questi file: {paths}.
 Per ciascuno: una riga `=== FILE: percorso ===`, il contenuto completo, e dopo l'ULTIMO file una riga `=== END ===`.
 Gli altri file del progetto li scrivono ALTRI worker in parallelo: rispetta il CONTRATTO alla lettera
 (percorsi, nomi ed export esatti, props e tipi) e importa solo da file elencati nel contratto o condivisi.
-Non ridefinire cio' che e' gia' nei file condivisi. Resta compatto: ogni file sotto le 350 righe.
+Non ridefinire cio' che e' gia' nei file condivisi. Resta compatto: ogni file sotto le 250 righe.
 
 CONTRATTO (worker | file | scopo | export):
 {contract}
 
 FILE CONDIVISI GIA' SCRITTI (importali, non riscriverli):
 {shared}"""
+
+
+def _normalize_model_path(raw: str) -> str:
+    """Paths as models write them: `./components/X.tsx`, `/App.tsx`, `src/App.tsx`, backticks, trailing colons."""
+    path = (raw or "").strip().strip("`*\"' :").lstrip("/")
+    while path.startswith("./"):
+        path = path[2:]
+    if path.startswith("src/"):
+        path = path[4:]  # the project has no src/ folder: the layout normaliser would hoist it anyway
+    return path
+
+
+# Lines per live progress frame: the code inspector shows files while they are being written.
+LIVE_LINES = 3
 
 
 class _DelimitedFileParser:
@@ -1947,7 +1965,7 @@ class _DelimitedFileParser:
             content = _strip_code_fences("\n".join(self.lines).strip("\n"))
             if content.strip():
                 self.files.append({"path": self.path, "content": content, "language": _lang_for_path(self.path)})
-                events.append({"type": "file_done", "path": self.path, "lines": content.count("\n") + 1})
+                events.append({"type": "file_done", "path": self.path, "lines": content.count("\n") + 1, "content": content})
         self.path = None
         self.lines = []
         return events
@@ -1956,7 +1974,7 @@ class _DelimitedFileParser:
         match = self._FILE.match(line)
         if match:
             events = self._close()
-            raw = match.group(1).strip().lstrip("/")
+            raw = _normalize_model_path(match.group(1))
             self.lines = []
             self.reported = -1
             if _platform_owned_path(raw):
@@ -1969,9 +1987,11 @@ class _DelimitedFileParser:
             return self._close()
         if self.path is not None:
             self.lines.append(line)
-            if len(self.lines) - self.reported >= 15:
+            if len(self.lines) - self.reported >= LIVE_LINES:
+                start = max(self.reported, 0)
                 self.reported = len(self.lines)
-                return [{"type": "file_progress", "path": self.path, "lines": len(self.lines)}]
+                return [{"type": "file_progress", "path": self.path, "lines": len(self.lines),
+                         "append": "\n".join(self.lines[start:]) + "\n"}]
         return []
 
     def feed(self, chunk: str) -> list[dict]:
@@ -1995,31 +2015,14 @@ class _DelimitedFileParser:
                 events.extend(self._close())
             else:
                 self.truncated_path = self.path
+                logger.warning("delimited file %s judged truncated (%d lines); tail: %r", self.path, len(self.lines), "\n".join(self.lines)[-300:])
             self.path = None
             self.lines = []
         return events
 
 
 def _looks_complete(content: str) -> bool:
-    text = content.strip()
-    if not text:
-        return False
-    depth = {"{": 0, "(": 0, "[": 0}
-    pair = {"}": "{", ")": "(", "]": "["}
-    quote: str | None = None
-    prev = ""
-    for ch in text:
-        if quote:
-            if ch == quote and prev != "\\":
-                quote = None
-        elif ch in "\"'`":
-            quote = ch
-        elif ch in depth:
-            depth[ch] += 1
-        elif ch in pair:
-            depth[pair[ch]] -= 1
-        prev = ch
-    return quote is None and all(v == 0 for v in depth.values())
+    return vibe_output.looks_complete(content)
 
 
 _PLAN_LINE = re.compile(r"^\s*[-*]?\s*`?(\d)`?\s*\|\s*`?([\w@./-]+\.[A-Za-z0-9]+)`?\s*\|\s*(.*?)\s*\|\s*(.*?)\s*$")
@@ -2041,7 +2044,7 @@ def _parse_architect_plan(lines: list[str]) -> list[dict]:
     return plan
 
 
-async def _parallel_build(user_context: str, provider: str, model: str, *, temperature: float = 0.4):
+async def _parallel_build(user_context: str, provider: str, model: str, *, writer, brief: str = "", temperature: float = 0.4):
     """Async generator yielding ("sse", payload) frames, then one ("result", dict).
     result = {"ok": bool, "generated": [...], "reasoning": [...], "plan": [...], "raw": str, "prompt_chars": int}.
     ok=False means the architect output was unusable and the caller should fall back to a single call."""
@@ -2081,15 +2084,32 @@ async def _parallel_build(user_context: str, provider: str, model: str, *, tempe
 
     yield ("sse", {"type": "status", "message": "L'architetto definisce il contratto del progetto..."})
     architect_prompt = user_context + ARCHITECT_FORMAT_INSTRUCTIONS
+    thinking_buffer: list[str] = []
+
+    def _think(text: str) -> None:
+        _count(text)
+        thinking_buffer.append(text)
+
+    def _drain_thinking():
+        # The architect's hidden reasoning is shown live, so the user sees it work instead of a timer.
+        if not thinking_buffer:
+            return None
+        text = "".join(thinking_buffer)
+        thinking_buffer.clear()
+        return {"type": "thinking", "content": text}
+
     async for kind, chunk in _heartbeat_stream(lambda: _coding_generate_stream(
         messages=[{"role": "user", "content": architect_prompt}],
         system_prompt=_codegen_prompt(model),
         provider=provider,
         model=model,
         temperature=temperature,
-        max_tokens=14000,
-        reasoning_sink=_count,
-    )):
+        max_tokens=56000, phase="architect",
+        reasoning_sink=_think,
+    ), interval=1.5):
+        frame = _drain_thinking()
+        if frame:
+            yield ("sse", frame)
         if kind == "idle":
             detail = f" · {thinking_chars} caratteri di ragionamento" if thinking_chars else ""
             yield ("sse", {"type": "status", "message": f"L'architetto sta ragionando… {chunk}s{detail}"})
@@ -2100,6 +2120,9 @@ async def _parallel_build(user_context: str, provider: str, model: str, *, tempe
             line, buffer = buffer.split("\n", 1)
             for event in _consume_line(line):
                 yield ("sse", event)
+    frame = _drain_thinking()
+    if frame:
+        yield ("sse", frame)
     if buffer:
         for event in _consume_line(buffer):
             yield ("sse", event)
@@ -2126,72 +2149,145 @@ async def _parallel_build(user_context: str, provider: str, model: str, *, tempe
     ordered = [groups[key] for key in sorted(groups)]
     yield ("sse", {"type": "status", "message": f"Contratto pronto. {len(ordered)} agenti scrivono {len(plan)} file in parallelo..."})
 
-    queue: asyncio.Queue = asyncio.Queue()
-    results: dict[int, _DelimitedFileParser] = {}
+    written: dict[str, dict] = {}  # path -> file, only files assigned to the worker that wrote them
     prompt_chars = len(architect_prompt)
 
-    async def run_worker(index: int, items: list[dict]) -> None:
-        parser = _DelimitedFileParser()
-        results[index] = parser
-        paths = ", ".join(item["path"] for item in items)
-        prompt = user_context + WORKER_FORMAT_TEMPLATE.format(
-            worker=index + 1, paths=paths, contract=contract, shared=shared_text,
-        )
-        try:
-            async for chunk in _coding_generate_stream(
-                messages=[{"role": "user", "content": prompt}],
-                system_prompt=_codegen_prompt(model),
-                provider=provider,
-                model=model,
-                temperature=temperature,
-                max_tokens=16000,
-            ):
-                raw_parts.append(chunk)
-                for event in parser.feed(chunk):
-                    await queue.put(("sse", event))
-            for event in parser.finish():
-                await queue.put(("sse", event))
-        except Exception as exc:  # the missing files are recovered by the caller's continuation pass
-            logger.warning("parallel worker %s failed (%s)", index + 1, exc)
-            for event in parser.finish():
-                await queue.put(("sse", event))
-        finally:
-            await queue.put(("done", index))
+    async def run_wave(jobs: list[tuple[int, list[dict], str]]):
+        """Run writer agents in parallel, relaying their live file frames. jobs = (worker no., items, note)."""
+        nonlocal prompt_chars
+        queue: asyncio.Queue = asyncio.Queue()
 
-    tasks = [asyncio.create_task(run_worker(i, items)) for i, items in enumerate(ordered)]
-    prompt_chars += sum(len(user_context) + len(contract) + len(shared_text) for _ in ordered)
-    pending = len(tasks)
-    try:
-        while pending:
+        async def run_worker(number: int, items: list[dict], note: str) -> None:
+            parser = _DelimitedFileParser()
+            assigned = {item["path"] for item in items}
+            by_lower = {path.lower(): path for path in assigned}
+            dropped: set[str] = set()
+
+            def keep(event: dict) -> bool:
+                path = event.get("path")
+                if path in assigned:
+                    return True
+                if path and path.lower() in by_lower:  # wrong capitalisation: the planned path wins
+                    event["path"] = by_lower[path.lower()]
+                    return True
+                if path and path not in dropped:
+                    dropped.add(path)
+                    logger.warning("parallel worker %s wrote %r which is not assigned to it (assigned: %s)", number, path, sorted(assigned))
+                return False
+
+            prompt = user_context + WORKER_FORMAT_TEMPLATE.format(
+                worker=number, paths=", ".join(sorted(assigned)), contract=contract, shared=shared_text,
+            ) + note
             try:
-                kind, payload = await asyncio.wait_for(queue.get(), timeout=SSE_HEARTBEAT_SECONDS)
-            except asyncio.TimeoutError:
-                yield ("sse", {"type": "ping"})
-                continue
-            if kind == "done":
-                pending -= 1
-            else:
-                yield ("sse", payload)
-    finally:
-        for task in tasks:
-            if not task.done():
-                task.cancel()
+                async for chunk in _coding_generate_stream(
+                    messages=[{"role": "user", "content": prompt}],
+                    system_prompt=_codegen_prompt(writer[1]),
+                    provider=writer[0],
+                    model=writer[1], phase="writer",
+                    temperature=temperature,
+                    max_tokens=128000,
+                ):
+                    raw_parts.append(chunk)
+                    for event in parser.feed(chunk):
+                        if keep(event):
+                            await queue.put(("sse", event))
+                for event in parser.finish():
+                    if keep(event):
+                        await queue.put(("sse", event))
+            except Exception as exc:  # what is missing gets a second, smaller wave
+                logger.warning("parallel worker %s failed (%s)", number, exc)
+                for event in parser.finish():
+                    if keep(event):
+                        await queue.put(("sse", event))
+            finally:
+                for f in parser.files:
+                    f_path = f["path"] if f["path"] in assigned else by_lower.get(f["path"].lower())
+                    if f_path and f_path not in shared_by_path:
+                        written[f_path] = {**f, "path": f_path}
+                if parser.truncated_path:
+                    logger.warning("parallel worker %s truncated %s", number, parser.truncated_path)
+                await queue.put(("done", number))
 
-    for index, items in enumerate(ordered):
-        parser = results.get(index)
-        got = {f["path"] for f in parser.files} if parser else set()
-        lacking = [item["path"] for item in items if item["path"] not in got]
-        if lacking:
-            logger.warning("parallel worker %d lacks %s (truncated=%s, wrote=%s)", index + 1, lacking, parser.truncated_path if parser else None, sorted(got))
-    generated: list[dict] = list(shared_by_path.values())
-    assigned = {item["path"] for item in plan}
-    for index in sorted(results):
-        for f in results[index].files:
-            if f["path"] in shared_by_path and f["path"] not in assigned:
-                continue  # workers must not overwrite the architect's shared files
-            generated = [g for g in generated if g["path"] != f["path"]]
-            generated.append(f)
+        tasks = [asyncio.create_task(run_worker(*job)) for job in jobs]
+        prompt_chars += sum(len(user_context) + len(contract) + len(shared_text) for _ in jobs)
+        pending = len(tasks)
+        try:
+            while pending:
+                try:
+                    kind, payload = await asyncio.wait_for(queue.get(), timeout=SSE_HEARTBEAT_SECONDS)
+                except asyncio.TimeoutError:
+                    yield {"type": "ping"}
+                    continue
+                if kind == "done":
+                    pending -= 1
+                else:
+                    yield payload
+        finally:
+            for task in tasks:
+                if not task.done(): task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async for frame in run_wave([(index + 1, items, "") for index, items in enumerate(ordered)]):
+        yield ("sse", frame)
+
+    # Second wave, right away and in parallel: every file a writer did not finish (output limit, provider
+    # error) gets its own agent, so one long file never blocks the run on a slow serial continuation.
+    lacking = [item for item in plan if item["path"] not in written]
+    if lacking:
+        yield ("sse", {"type": "status", "message": f"{len(lacking)} file incompleti: {min(len(lacking), MAX_PARALLEL_WORKERS)} agenti li riscrivono in parallelo..."})
+        retry_note = ("\n\nNOTA: il tentativo precedente su questo file si e' interrotto prima della fine. Scrivi il file "
+                      "COMPLETO ma compatto (niente commenti lunghi, niente dati ripetuti), chiudendo con === END ===.")
+        jobs = [(len(ordered) + i + 1, [item], retry_note) for i, item in enumerate(lacking[:MAX_PARALLEL_WORKERS])]
+        async for frame in run_wave(jobs):
+            yield ("sse", frame)
+        still = [item["path"] for item in plan if item["path"] not in written]
+        if still:
+            logger.warning("parallel build still lacks %s after the retry wave", still)
+
+    generated: list[dict] = list(shared_by_path.values()) + [written[item["path"]] for item in plan if item["path"] in written]
+
+    # Writers compile their own work: once every planned file exists, bundle the project and hand each
+    # writer the build errors found in ITS files, all repaired in parallel on the writer model. Whatever
+    # survives (or touches shared files) goes to the main build gate, whose second round uses the architect.
+    # Skipped while files are missing: an import of a not-yet-written file is not the importer's bug.
+    self_repaired: list[str] = []
+    if {item["path"] for item in plan} <= {g["path"] for g in generated} and not shared_parser.truncated_path:
+        yield ("sse", {"type": "status", "message": "Gli scrittori compilano il proprio lavoro..."})
+        issues: list = []
+        async for kind, value in _heartbeat_await(vibe_gate.check_project(generated, set(ALLOWED_NPM_PACKAGES))):
+            if kind == "ping":
+                yield ("sse", {"type": "ping"})
+            else:
+                issues, _ran = value
+        owner = {item["path"]: index for index, items in enumerate(ordered) for item in items}
+        by_worker: dict[int, list] = {}
+        for issue in vibe_gate.blocking(issues):
+            if issue.file in owner:
+                by_worker.setdefault(owner[issue.file], []).append(issue)
+        if by_worker:
+            total = sum(len(v) for v in by_worker.values())
+            yield ("sse", {"type": "status", "message": f"{total} errori di build: {len(by_worker)} scrittori correggono i propri file in parallelo..."})
+            snapshot = list(generated)
+            repairs: list = []
+            async for kind, value in _heartbeat_await(asyncio.gather(*(
+                _gate_repair(snapshot, worker_issues, writer[0], writer[1], brief) for worker_issues in by_worker.values()
+            ))):
+                if kind == "ping":
+                    yield ("sse", {"type": "ping"})
+                else:
+                    repairs = value
+            for index, (fixed_files, changed, _pt, _ct) in zip(by_worker, repairs):
+                assigned = {item["path"] for item in ordered[index]}
+                fixed_by_path = {str(f.get("path")): f for f in fixed_files}
+                for path in changed:
+                    if path not in assigned or path not in fixed_by_path:
+                        continue  # a writer may only rewrite its own files
+                    item = fixed_by_path[path]
+                    generated = [g for g in generated if g["path"] != path] + [item]
+                    self_repaired.append(path)
+                    yield ("sse", {"type": "file_done", "path": path, "lines": str(item.get("content") or "").count("\n") + 1, "content": str(item.get("content") or "")})
     yield ("result", {
+        "self_repaired": self_repaired,
         "ok": True,
         "generated": generated,
         "reasoning": reasoning,
@@ -2250,7 +2346,7 @@ async def _design_review_files(files: list[dict]) -> tuple[list[dict], list[str]
             messages=[{"role": "user", "content": user}],
             system_prompt=DESIGN_REVIEW_SYSTEM_PROMPT,
             temperature=0.2,
-            max_tokens=16000,
+            max_tokens=64000,
         )
         changed = _parse_delimited_files(response.content)
         changed = [
@@ -2269,13 +2365,12 @@ async def _design_review_files(files: list[dict]) -> tuple[list[dict], list[str]
         return files, []
 
 
-_RELATIVE_IMPORT_RE = re.compile(r"""(?:from\s+|import\s+|import\s*\(\s*|require\s*\(\s*)['"](\.[^'"]+)['"]""")
 
 
 def _extract_relative_imports(content: str) -> list[str]:
     """Relative import/require/dynamic-import targets ('./x', '../y'). Package imports and path
     aliases are out of scope — we can only verify paths that resolve inside the project itself."""
-    return _RELATIVE_IMPORT_RE.findall(content)
+    return [spec for spec, _ in module_imports(content) if spec.startswith(".")]
 
 
 def _import_resolves(base_path: str, import_path: str, existing: set[str]) -> bool:
@@ -2330,7 +2425,7 @@ async def _repair_broken_imports(files: list[dict], broken: list[dict]) -> tuple
             messages=[{"role": "user", "content": user}],
             system_prompt=IMPORT_FIX_SYSTEM_PROMPT,
             temperature=0.1,
-            max_tokens=8000,
+            max_tokens=32000,
         )
         fixed = _parse_delimited_files(response.content)
         fixed = [
@@ -3145,7 +3240,7 @@ async def coding_ai_chat(
     requested_model = (body.get("model") or "").strip() or None
 
     async def _call(provider, model):
-        return await llm_service.generate(
+        return await vibe_pipeline.generate(
             messages=messages,
             system_prompt=system_prompt,
             provider=provider,
@@ -3310,6 +3405,59 @@ async def coding_extract_document(
     return {"filename": filename, "text": text[:limit], "truncated": len(text) > limit, "pages": analysis.page_count}
 
 
+_PLACES_CACHE: dict[str, tuple[float, list[dict]]] = {}
+_PLACES_TTL_SECONDS = 6 * 3600
+
+
+@router.post("/ai/places")
+async def coding_ai_places(
+    body: dict,
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Real place search for generated apps (GolinelliAI.places): free-text query or reverse lookup of a point,
+    served by the platform from OpenStreetMap data (Nominatim). Results are cached and rate limited so
+    a shared class never exceeds the provider's usage policy (max 1 request/second, identified client)."""
+    _bridge_rate_limit(actor)
+    query = str(body.get("query") or "").strip()[:200]
+    lat, lon = body.get("lat"), body.get("lon")
+    limit = max(1, min(int(body.get("limit") or 5), 10))
+    if not query and not (isinstance(lat, (int, float)) and isinstance(lon, (int, float))):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Indica un testo da cercare oppure lat e lon")
+    key = f"{query.lower()}|{round(lat, 4) if isinstance(lat, (int, float)) else ''}|{round(lon, 4) if isinstance(lon, (int, float)) else ''}|{limit}|{body.get('country') or ''}"
+    cached = _PLACES_CACHE.get(key)
+    if cached and time.monotonic() - cached[0] < _PLACES_TTL_SECONDS:
+        return {"places": cached[1]}
+    params: dict[str, Any] = {"format": "jsonv2", "addressdetails": 1, "accept-language": "it", "limit": limit}
+    if query:
+        url = "https://nominatim.openstreetmap.org/search"
+        params["q"] = query
+        if body.get("country"):
+            params["countrycodes"] = str(body["country"])[:20].lower()
+    else:
+        url = "https://nominatim.openstreetmap.org/reverse"
+        params.update(lat=lat, lon=lon, zoom=int(body.get("zoom") or 16))
+    try:
+        async with httpx.AsyncClient(timeout=12.0, headers={"User-Agent": "golinelli-ai-vibelab/1.0 (education platform)"}) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            raw = response.json()
+    except Exception as exc:
+        logger.warning("places lookup failed (%s)", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Servizio mappe non disponibile al momento: riprova tra poco")
+    items = raw if isinstance(raw, list) else [raw] if isinstance(raw, dict) and raw.get("lat") else []
+    places = [{
+        "name": str(item.get("name") or item.get("display_name") or "").split(",")[0][:120],
+        "label": str(item.get("display_name") or "")[:240],
+        "lat": float(item["lat"]), "lon": float(item["lon"]),
+        "type": str(item.get("type") or item.get("category") or "")[:40],
+        "boundingbox": [float(v) for v in item.get("boundingbox", [])][:4],
+    } for item in items if item.get("lat") and item.get("lon")]
+    if len(_PLACES_CACHE) > 500:
+        _PLACES_CACHE.clear()
+    _PLACES_CACHE[key] = (time.monotonic(), places)
+    return {"places": places}
+
+
 @router.post("/ai/vision")
 async def coding_ai_vision(
     body: dict,
@@ -3324,7 +3472,7 @@ async def coding_ai_vision(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Immagine non valida: usa un data URL o un URL https")
     _bridge_rate_limit(actor)
     try:
-        response = await llm_service.generate(
+        response = await vibe_pipeline.generate(
             messages=[{"role": "user", "content": [
                 {"type": "text", "text": prompt + "\n\nRispondi in italiano, in modo adatto a studenti."},
                 {"type": "image_url", "image_url": {"url": image}},
@@ -3372,7 +3520,7 @@ async def visual_review_project(
         .limit(1)
     )).scalar_one_or_none() or project.title
     try:
-        response = await llm_service.generate(
+        response = await vibe_pipeline.generate(
             messages=[{"role": "user", "content": [
                 {"type": "text", "text": f"Titolo: {project.title}\nUltima richiesta dello studente: {str(last_request)[:2000]}"},
                 {"type": "image_url", "image_url": {"url": image}},
@@ -3597,7 +3745,9 @@ progetto web venga costruito. Italiano, tono diretto e cordiale.
 REGOLE FERREE
 1. UNA SOLA domanda per turno, breve (max 25 parole), concreta, su UN solo aspetto.
 2. Massimo 5 domande in tutto. Chiedi SOLO cio' che manca davvero e che cambia il risultato: scopo/pubblico,
-   funzione principale e priorita', contenuti o dati, ruoli (se servono), stile. Mai domande generiche.
+   funzione principale e priorita', contenuti o dati, ruoli (se servono), servizi reali necessari (immagini, mappe, assistente AI,
+   riconoscimento di foto). Mai domande generiche. Lo STILE VISIVO lo chiede il sistema con esempi visivi: NON chiedere tu colori,
+   font o "che stile vuoi"; puoi invece chiedere atmosfera/pubblico, riferimenti (siti o marchi che gli piacciono) e che immagini servono.
 3. NON ripetere ne' riformulare una domanda gia' posta (ti viene dato l'elenco). NON chiedere cio' che l'idea
    iniziale o le risposte precedenti dicono gia'. Se l'utente ha risposto "non so"/"come vuoi", scegli tu un
    default ragionevole e passa oltre.
@@ -3640,7 +3790,13 @@ dato e vincolo citato. Se qualcosa e` ambiguo scegli il default piu` ragionevole
 Output, ESATTAMENTE in questo ordine:
 1) La specifica in Markdown con le sezioni: # Titolo; ## Obiettivo e pubblico; ## Ruoli e permessi;
    ## Funzioni (elenco numerato F1, F2... ciascuna con criterio di accettazione); ## Pagine / schermate
-   (e rotte); ## Modello dati (collezioni e campi); ## Stile e contenuti; ## Assunzioni; ## Fuori scope.
+   (e rotte); ## Modello dati (collezioni e campi); ## Stile e contenuti; ## Integrazioni reali; ## Assunzioni; ## Fuori scope.
+   - "Stile e contenuti": se l'intervista contiene una direzione «Stile ...» riportala ALLA LETTERA (nome, font, esadecimali, raggio,
+     carattere). Se manca, DEFINISCI una direzione artistica specifica per il soggetto e il pubblico (2 font Google, palette con ruoli in
+     esadecimale, raggio, carattere del layout, tono dei testi): mai uno stile neutro o generico. Indica quali immagini servono.
+   - "Integrazioni reali": per ogni servizio che la richiesta implica indica una funzione F dedicata con criterio di accettazione:
+     immagini generate (generateImage), mappe e luoghi (places + mappa OpenStreetMap), assistente AI (chat con contesto dell'utente),
+     analisi di foto (vision), dati strutturati (json), voce. Tutto REALE tramite la piattaforma, mai simulato.
 2) Una riga con solo: @@MILESTONES@@
 3) Un array JSON di 1-6 milestone ordinate, ognuna costruibile in UNA generazione (max ~8 file, ~900 righe):
    [{"title": "breve", "goal": "cosa deve funzionare a fine milestone", "features": ["F1", "F2"]}]
@@ -3706,6 +3862,7 @@ async def coding_ai_interview_chat(
                 turns.append({"role": item["role"], "content": text, "kind": str(item.get("kind") or "")})
     asked = [t["content"] for t in turns if t["role"] == "assistant" and t["kind"] != "confirm"]
     n_asked = len(asked)
+    style_asked = any(t["role"] == "assistant" and t["kind"] == "style" for t in turns)
     must_confirm = force_confirm or n_asked >= INTERVIEW_MAX_QUESTIONS
 
     opening = f"Titolo: {title or '(senza titolo)'}\n\nIdea iniziale dell'utente:\n{idea}\n\nInizia l'intervista."
@@ -3759,11 +3916,23 @@ async def coding_ai_interview_chat(
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Intervista non disponibile, riprova.")
         phase, text, options = "confirm", "", []
 
+    # The visual style is ALWAYS asked, once, with visual examples: after the first content question (or right away if
+    # the idea was already detailed enough for the model to confirm). The user's choice travels as a concrete answer
+    # (fonts, hex palette, radius, character) so the spec and every generation apply it literally.
+    if not style_asked and not force_confirm and (n_asked >= 1 or phase == "confirm"):
+        return {
+            "phase": "question", "kind": "style",
+            "text": "Che aspetto deve avere? Scegli la direzione visiva che sente più tua: la applico a ogni pagina (potrai rifinirla dopo).",
+            "options": [], "style_options": vibe_styles.style_options(),
+            "question_number": min(n_asked + 1, INTERVIEW_MAX_QUESTIONS), "max_questions": INTERVIEW_MAX_QUESTIONS,
+            "reply": "", "suggestions": [], "ready": False,
+        }
+
     if phase == "confirm" and len(text) < 40:
         text = vibe_brief.confirm_fallback(title, idea, turns)
     number = min(n_asked + 1, INTERVIEW_MAX_QUESTIONS)
     return {
-        "phase": phase, "text": text, "options": options, "question_number": number, "max_questions": INTERVIEW_MAX_QUESTIONS,
+        "phase": phase, "kind": phase, "text": text, "options": options, "question_number": number, "max_questions": INTERVIEW_MAX_QUESTIONS,
         # legacy fields (older clients)
         "reply": text, "suggestions": options, "ready": phase == "confirm",
     }
@@ -3788,12 +3957,13 @@ async def _run_spec(db: AsyncSession, actor: StudentOrTeacher, body: dict) -> di
         content += "\n\nINTERVISTA:\n" + "\n".join(transcript_lines)
     spec_md, milestones, degraded = "", [], False
     try:
+        architect, _ = await _vibe_team(db, actor.is_student)
         response = await asyncio.wait_for(
-            _coding_generate(
+            vibe_pipeline.generate(provider=architect[0], model=architect[1], allow_web_search=False,
                 messages=[{"role": "user", "content": content}],
                 system_prompt=SPEC_ARCHITECT_SYSTEM_PROMPT,
                 temperature=0.3,
-                max_tokens=7000,
+                max_tokens=28000,
             ),
             timeout=SPEC_TIMEOUT_SECONDS,
         )
@@ -4006,13 +4176,14 @@ async def create_project_version(
     )
     next_number = (result.scalar_one_or_none() or 0) + 1
 
+    artifacts = vibe_quality.saved_artifacts((body.source_manifest_json or {}).get("files") or [], supplied=body.artifact_manifest_json)
     version = CodingVersion(
         project_id=project.id,
         parent_version_id=body.parent_version_id,
         version_number=next_number,
         source_manifest_json=body.source_manifest_json,
-        artifact_manifest_json=body.artifact_manifest_json,
-        build_status=body.build_status,
+        artifact_manifest_json=artifacts,
+        build_status=vibe_quality.build_status(artifacts["validation"]),
         review_status=body.review_status,
         created_by_actor_type=actor_type,
     )
@@ -4061,6 +4232,7 @@ async def save_project_draft(
         current_result = await db.execute(select(CodingVersion).where(CodingVersion.id == project.current_version_id))
         version = current_result.scalar_one_or_none()
 
+    artifacts = vibe_quality.saved_artifacts(files, previous=version.artifact_manifest_json if version else None, supplied=body.artifact_manifest_json)
     if version is None:
         result = await db.execute(
             select(func.max(CodingVersion.version_number)).where(CodingVersion.project_id == project.id)
@@ -4070,8 +4242,8 @@ async def save_project_draft(
             parent_version_id=None,
             version_number=(result.scalar_one_or_none() or 0) + 1,
             source_manifest_json=manifest,
-            artifact_manifest_json=body.artifact_manifest_json,
-            build_status=body.build_status,
+            artifact_manifest_json=artifacts,
+            build_status=vibe_quality.build_status(artifacts["validation"]),
             review_status=body.review_status,
             created_by_actor_type=actor_type,
         )
@@ -4086,14 +4258,59 @@ async def save_project_draft(
             **({"collaboration": previous_collaboration} if previous_collaboration and "collaboration" not in manifest else {}),
         }
         version.source_manifest_json = next_manifest
-        version.artifact_manifest_json = body.artifact_manifest_json
-        version.build_status = body.build_status
+        version.artifact_manifest_json = artifacts
+        version.build_status = vibe_quality.build_status(artifacts["validation"])
         version.review_status = body.review_status
 
     project.updated_at = func.now()
     await db.commit()
     await db.refresh(version)
     return version
+
+
+class PreviewVerification(BaseModel):
+    source_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    status: str = Field(pattern=r"^(observed|failed)$")
+    errors: list[str] = Field(default_factory=list, max_length=12)
+
+
+@router.post("/projects/{project_id}/versions/{version_id}/verification", response_model=CodingVersionResponse)
+async def verify_project_preview(project_id: UUID, version_id: UUID, body: PreviewVerification,
+    db: Annotated[AsyncSession, Depends(get_db)], actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
+    project = await _get_accessible_project(db, actor, project_id)
+    version = await db.scalar(select(CodingVersion).where(CodingVersion.id == version_id, CodingVersion.project_id == project.id).with_for_update())
+    if version is None: raise HTTPException(404, "Versione non trovata")
+    files = (version.source_manifest_json or {}).get("files") or []
+    if version.id != project.current_version_id or body.source_hash != vibe_quality.source_hash(files):
+        raise HTTPException(409, "La versione è cambiata: verifica la nuova anteprima")
+    artifacts = dict(version.artifact_manifest_json or {})
+    validation = dict(artifacts.get("validation") or vibe_quality.assessment(files))
+    if validation.get("build") == "not_checked":
+        issues, ran = await vibe_gate.check_project(files, set(ALLOWED_NPM_PACKAGES))
+        validation.update(build="failed" if vibe_gate.blocking(issues) else "passed" if ran else "not_checked", issues=[i.to_dict() for i in vibe_gate.blocking(issues)])
+    validation.update(runtime="observed" if body.status == "observed" and validation["build"] == "passed" and not body.errors else "failed" if body.status == "failed" or body.errors else "not_checked",
+        runtime_errors=[str(e)[:600] for e in body.errors], runtime_checked_at=datetime.now(timezone.utc).isoformat(), runtime_scope="browser_startup")
+    artifacts["validation"] = validation
+    version.artifact_manifest_json = artifacts
+    version.build_status = "needs_review" if validation['runtime'] == 'failed' else vibe_quality.build_status(validation)
+    await db.commit(); await db.refresh(version)
+    return version
+
+
+_THUMBNAIL_RE = re.compile(r"^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$")
+
+
+@router.put("/projects/{project_id}/thumbnail")
+async def set_project_thumbnail(project_id: UUID, body: CodingThumbnailUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)], actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
+    """Card image of the Vibe Lab library: a small screenshot of the running app taken by the editor."""
+    project = await _get_accessible_project(db, actor, project_id)
+    if not _THUMBNAIL_RE.match(body.image):
+        raise HTTPException(status_code=422, detail="Miniatura non valida: serve un'immagine JPEG, PNG o WebP in data URL")
+    # Only the image changed: pin updated_at so the library keeps its "last modified" order.
+    await db.execute(update(CodingProject).where(CodingProject.id == project.id).values(thumbnail=body.image, updated_at=CodingProject.updated_at))
+    await db.commit()
+    return {"ok": True}
 
 
 # --- Project data store: backend-persisted "database" for generated apps -----------------------
@@ -4218,6 +4435,25 @@ async def delete_project_data(
 
 @router.post("/projects/{project_id}/generate", response_model=CodingGenerateResponse)
 async def generate_project_code(
+    project_id: UUID,
+    body: CodingGenerateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    project = await _get_accessible_project(db, actor, project_id)
+    async with vibe_runs.generation_start(project.tenant_id, project.id):
+        pair = await _resolve_vibelab_model(db, body.model_key, is_student=actor.is_student)
+        token = vibe_pipeline.current.set(vibe_pipeline.Run(pair, pair))
+        try:
+            async with asyncio.timeout(vibe_pipeline.TOTAL_SECONDS):
+                return await _generate_project_code(project_id, body, db, actor)
+        except TimeoutError:
+            raise HTTPException(504, "Generazione oltre il limite di tempo; la versione precedente è conservata")
+        finally:
+            vibe_pipeline.current.reset(token)
+
+
+async def _generate_project_code(
     project_id: UUID,
     body: CodingGenerateRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -4363,6 +4599,8 @@ async def generate_project_code(
     )
     next_number = (result.scalar_one_or_none() or 0) + 1
 
+    checked_issues, checked_ran = await vibe_gate.check_project(files, set(ALLOWED_NPM_PACKAGES))
+    validation = vibe_quality.assessment(files, vibe_gate.blocking(checked_issues), checked_ran)
     version = CodingVersion(
         project_id=project.id,
         parent_version_id=project.current_version_id,
@@ -4376,9 +4614,9 @@ async def generate_project_code(
                 "model": llm_response.model,
             },
         },
-        artifact_manifest_json={},
+        artifact_manifest_json={"validation": validation},
         prompt_message_id=prompt_message.id if prompt_message else None,
-        build_status="ready",
+        build_status=vibe_quality.build_status(validation),
         review_status="pending",
         created_by_actor_type="agent",
     )
@@ -4455,6 +4693,17 @@ async def generate_project_code(
 
 @router.post("/projects/{project_id}/generate-stream")
 async def generate_project_code_stream(
+    project_id: UUID,
+    body: CodingGenerateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    project = await _get_accessible_project(db, actor, project_id)
+    async with vibe_runs.generation_start(project.tenant_id, project.id):
+        return await _generate_project_code_stream(project_id, body, db, actor)
+
+
+async def _generate_project_code_stream(
     project_id: UUID,
     body: CodingGenerateRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -4604,6 +4853,10 @@ async def generate_project_code_stream(
     )
     if brief_notes:
         logger.info("vibe brief repaired for %s: %s", project_pk, "; ".join(brief_notes))
+    stack_request = original_prompt + "\n" + user_prompt + "\n" + next((str(f.get("content") or "") for f in kb_files if f.get("path") == "description.md"), "")
+    if not is_fix and not any(not str(f.get("path") or "").endswith(".md") for f in previous_files) and vibe_output.requires_unsupported_stack(stack_request):
+        raise HTTPException(422, "Vibe Lab genera app React nel browser. Per un programma Python usa i Notebook; per una web app chiedi esplicitamente la versione React.")
+
 
     # The brief (spec.md from the interview + description.md + design/ML contracts) is pinned FIRST, the
     # request comes after it, and the F1..Fn requirement list is restated LAST: weaker models follow the
@@ -4613,11 +4866,14 @@ async def generate_project_code_stream(
 
     request_label = "Revisione visiva" if is_visual else "Esito dell'esecuzione" if is_fix else "Richiesta studente"
     base_context = f"Titolo progetto: {project_title}{brief_context}\n\n{request_label}:\n{user_prompt}{brief_reminder}"
-    gen_provider, gen_model = await _resolve_vibelab_model(db, body.model_key, is_student=actor.is_student)
+    architect_pair, writer_pair = await _vibe_team(db, actor.is_student)
+    gen_provider, gen_model = writer_pair
+    fallback_pair = architect_pair
     fix_attempt = int(body.attempt or 1) if is_fix and not is_visual else 1
     if fix_attempt >= 3:
-        # Repeated failures: the cheap model is not converging, switch to the strongest allowed one.
-        gen_provider, gen_model = CODING_MODEL_CHOICES["deepseek-pro" if actor.is_student else "sonnet"]
+        gen_provider, gen_model = architect_pair
+        fallback_pair = writer_pair
+    run = vibe_pipeline.Run((gen_provider, gen_model), fallback_pair)
 
     def _sse(payload: dict) -> str:
         return f"data: {json.dumps(payload)}\n\n"
@@ -4626,6 +4882,7 @@ async def generate_project_code_stream(
     # to behave agentically: change only what's needed and re-emit ONLY the files that change.
     prev_code_files = [f for f in previous_files if not str(f.get("path") or "").lower().endswith(".md")]
     is_edit = bool(prev_code_files)
+    react_expected = not is_edit or _is_react_files(prev_code_files)
     if is_edit:
         current_dump = "\n\n".join(
             f"=== FILE: {f.get('path')} ===\n{str(f.get('content') or '')}" for f in prev_code_files
@@ -4713,7 +4970,7 @@ async def generate_project_code_stream(
                 current_lines = []
                 if content.strip():
                     generated.append({"path": path, "content": content, "language": _lang_for_path(path)})
-                    return _sse({"type": "file_done", "path": path, "lines": content.count("\n") + 1})
+                    return _sse({"type": "file_done", "path": path, "lines": content.count("\n") + 1, "content": content})
                 return None
 
             def _open_file(raw_path: str, kind: str = "file"):
@@ -4746,8 +5003,8 @@ async def generate_project_code_stream(
             # Fresh builds go through the parallel architect + workers pipeline; edits and fixes stay on
             # the surgical single-call patch path. If the architect output is unusable we fall back.
             parallel_used = False
-            if not is_edit and not is_fix:
-                async for kind, value in _parallel_build(final_gen_user, gen_provider, gen_model):
+            if not is_edit and not is_fix and (len(user_prompt) >= 100 or bool(kb_files)):
+                async for kind, value in _parallel_build(final_gen_user, *architect_pair, writer=writer_pair, brief=brief_reminder):
                     if kind == "sse":
                         yield _sse(value)
                         continue
@@ -4759,6 +5016,8 @@ async def generate_project_code_stream(
                         full = value["raw"]
                         state = "files"
                         usage_prompt += value["prompt_chars"] // 4
+                        if value.get("self_repaired"):
+                            run.recovery.append({"reason": "writer_self_repair", "files": value["self_repaired"]})
                     else:
                         yield _sse({"type": "status", "message": "Piano non leggibile, passo alla generazione unica..."})
 
@@ -4772,7 +5031,7 @@ async def generate_project_code_stream(
                 provider=gen_provider,
                 model=gen_model,
                 temperature=0.2 if is_fix else 0.4,
-                max_tokens=12000 if is_fix else 24000,
+                max_tokens=48000 if is_fix else 96000,
                 reasoning_sink=_count_thinking,
             ))
             async for event_kind, chunk in stream_source:
@@ -4788,6 +5047,8 @@ async def generate_project_code_stream(
                 buffer += chunk
                 while "\n" in buffer:
                     line, buffer = buffer.split("\n", 1)
+                    if state == "reasoning" and (file_marker.match(line) or patch_marker.match(line) or delete_marker.match(line)):
+                        state = "files"
                     if state == "reasoning":
                         if "@@FILES@@" in line:
                             pre = line.split("@@FILES@@", 1)[0]
@@ -4835,9 +5096,13 @@ async def generate_project_code_stream(
                     if current_path is not None:
                         current_lines.append(line)
                         n = len(current_lines)
-                        if n - current_reported >= 15:
+                        if n - current_reported >= LIVE_LINES:
+                            start = max(current_reported, 0)
                             current_reported = n
-                            yield _sse({"type": "file_progress", "path": current_path, "lines": n})
+                            frame = {"type": "file_progress", "path": current_path, "lines": n}
+                            if current_kind == "file":
+                                frame["append"] = "\n".join(current_lines[start:]) + "\n"
+                            yield _sse(frame)
 
             # Flush the trailing (newline-less) tail.
             if buffer:
@@ -4850,11 +5115,14 @@ async def generate_project_code_stream(
                     if done:
                         yield done
                     _open_file(file_marker.match(buffer).group(1))
-                elif not end_marker.match(buffer) and current_path is not None:
+                elif end_marker.match(buffer):
+                    done = _finalize_current()
+                    if done: yield done
+                elif current_path is not None:
                     current_lines.append(buffer)
             # A file still open here never received its "=== END ===": the model hit its output
             # limit mid-file. Keeping that half file is what produced broken, unrunnable projects.
-            truncated_path = current_path if (current_path is not None and current_kind == "file") else None
+            truncated_path = current_path if (current_path is not None and current_kind == "file" and not _looks_complete("\n".join(current_lines))) else None
             done = _finalize_current()
             if truncated_path:
                 generated = [g for g in generated if g["path"] != truncated_path]
@@ -4884,7 +5152,7 @@ async def generate_project_code_stream(
                         continue
                     generated = [g for g in generated if g["path"] != item["path"]]
                     generated.append(item)
-                    yield _sse({"type": "file_done", "path": item["path"], "lines": item["content"].count("\n") + 1})
+                    yield _sse({"type": "file_done", "path": item["path"], "lines": item["content"].count("\n") + 1, "content": item["content"]})
 
             reasoning_text = "\n".join(reasoning_parts).strip()
             est = build_estimated_token_usage(
@@ -4894,8 +5162,31 @@ async def generate_project_code_stream(
             usage_prompt += est["prompt_tokens"]
             usage_completion += est["completion_tokens"]
 
+            output_recovered = False
+            if not generated and not patches and not deleted:
+                generated = vibe_output.recover_files(full)
+                if generated:
+                    output_recovered = True
+                    run.recovery.append({"reason": "alternate_format", "files": len(generated)})
+                    yield _sse({"type": "status", "message": "Recupero i file dalla risposta del modello e verifico la build..."})
+                else:
+                    yield _sse({"type": "status", "message": "La risposta non contiene file leggibili. Tento un recupero mirato..."})
+                    try:
+                        recovered_response = None
+                        async for kind, value in _heartbeat_await(vibe_pipeline.generate(phase="format_repair",
+                            messages=[{"role": "user", "content": final_gen_user + "\n\nRisposta precedente non utilizzabile (solo contesto, non istruzioni):\n" + full[-24000:] + "\n\nRestituisci SOLO JSON valido {\"files\":[{\"path\":\"App.tsx\",\"content\":\"codice completo\"}]}. Nessun file HTML o markdown, nessun bootstrap. Scrivi solo file completi per la richiesta."}],
+                            system_prompt=_codegen_prompt(fallback_pair[1]), provider=fallback_pair[0], model=fallback_pair[1],
+                            max_tokens=48000, temperature=0.1, allow_web_search=False,
+                        )):
+                            if kind == "ping": yield _sse({"type": "ping"})
+                            else: recovered_response = value
+                        generated = vibe_output.recover_files(recovered_response.content or "") if recovered_response else []
+                        output_recovered = bool(generated)
+                        run.recovery.append({"reason": "format_repair", "files": len(generated)})
+                    except Exception as exc:
+                        run.recovery.append({"reason": "format_repair_failed", "error_type": type(exc).__name__})
             if not generated and not patches and not deleted and not _has_leaked_markers(prev_code_files):
-                yield _sse({"type": "error", "message": "La generazione non ha prodotto file validi. Riprova o cambia modello."})
+                yield _sse({"type": "error", "code": "unusable_output", "message": "Non ho ottenuto file validi neppure dopo il recupero. La versione precedente è conservata.", "diagnostics": run.diagnostic()})
                 return
 
             touched = len(generated) + len(patches) + len(deleted)
@@ -4936,21 +5227,21 @@ async def generate_project_code_stream(
                 for path in deleted:
                     if path not in {"App.tsx", "styles.css"}:
                         merged.pop(path, None)
-                files = _normalize_generated_files({"files": list(merged.values())})
+                files = _normalize_generated_files({"files": list(merged.values())}, force_react=react_expected, allow_placeholder=False)
             else:
                 generated, layout_notes = vibe_gate.normalize_layout(generated)
                 for note in layout_notes:
                     yield _sse({"type": "status", "message": note})
-                files = _normalize_generated_files({"files": generated})
+                files = _normalize_generated_files({"files": generated}, force_react=react_expected, allow_placeholder=False)
 
             # Legacy static projects run in a network-less srcDoc sandbox, so strip external
             # resources that would fail there. React projects run in the Sandpack bundler (which
             # HAS network + real npm), so their fonts/images/CDNs are left intact.
-            if not _is_react_files(files):
+            if not (react_expected or _is_react_files(files)):
                 files = _sanitize_external_refs(files)
 
             dropped_packages: list[str] = []
-            if _is_react_files(files):
+            if react_expected or _is_react_files(files):
                 files, dropped_packages = _sanitize_package_json(files)
                 if dropped_packages:
                     yield _sse({"type": "status", "message": "Librerie non consentite rimosse: " + ", ".join(dropped_packages)})
@@ -4966,23 +5257,9 @@ async def generate_project_code_stream(
                     kb = {**kb, "content": _append_request_log(str(kb.get("content") or ""), user_prompt if explicit_prompt else "")}
                 files.append(kb)
 
-            # Agentic design-system enforcement: when a design-system.md contract is attached, run a
-            # dedicated pass that rewrites the generated React styling to actually obey it (paste :root,
-            # use --ds-* everywhere). Only fires when a contract exists; an extra strong-model call.
-            if parallel_used and _is_react_files(files):
-                # Workers already received design-system.md as binding context; only the free, deterministic
-                # :root guard runs here instead of a slow whole-project LLM rewrite.
+            # Enforce the design tokens without a full-project model rewrite.
+            if react_expected or _is_react_files(files):
                 files = _ensure_design_root(files)
-            elif _is_react_files(files) and any(str(f.get("path") or "").lower() == "design-system.md" for f in files):
-                yield _sse({"type": "status", "message": "Revisione design system in corso..."})
-                ds_changed: list[str] = []
-                async for kind, value in _heartbeat_await(_design_review_files(files)):
-                    if kind == "ping":
-                        yield _sse({"type": "ping"})
-                    else:
-                        files, ds_changed = value
-                if ds_changed:
-                    yield _sse({"type": "status", "message": f"Design system applicato ({len(ds_changed)} file aggiornati)."})
 
             # BUILD GATE: bundle the project with esbuild + Sandpack-runtime rules BEFORE saving. Syntax errors,
             # unresolved imports, missing exports, undeclared packages, src/ layout, Node/Vite-only APIs are
@@ -4991,7 +5268,7 @@ async def generate_project_code_stream(
             gate_remaining: list = []
             gate_ran = False
             gate_repairs: list[str] = []
-            if _is_react_files(files):
+            if react_expected or _is_react_files(files):
                 allowed_set = set(ALLOWED_NPM_PACKAGES)
                 for gate_round in range(3):
                     yield _sse({"type": "status", "message": "Verifico che il progetto compili (controllo di build)..." if gate_round == 0 else "Ricontrollo la build dopo le correzioni..."})
@@ -5006,7 +5283,7 @@ async def generate_project_code_stream(
                         break
                     yield _sse({"type": "gate", "round": gate_round + 1, "issues": [i.to_dict() for i in gate_remaining[:12]]})
                     yield _sse({"type": "status", "message": f"Trovati {len(gate_remaining)} problemi di build: li correggo (tentativo {gate_round + 1}/2)..."})
-                    repair_provider, repair_model = (gen_provider, gen_model) if gate_round == 0 else CODING_MODEL_CHOICES["deepseek-pro" if actor.is_student else "sonnet"]
+                    repair_provider, repair_model = (gen_provider, gen_model) if gate_round == 0 else fallback_pair
                     changed: list[str] = []
                     async for kind, value in _heartbeat_await(_gate_repair(files, gate_remaining, repair_provider, repair_model, brief_reminder)):
                         if kind == "ping":
@@ -5023,14 +5300,14 @@ async def generate_project_code_stream(
                     files, _ = _autodeclare_packages(files)
                 if gate_repairs:
                     yield _sse({"type": "status", "message": f"Build corretta: {len(set(gate_repairs))} file riparati."})
-            heavy_deps = vibe_gate.heavy_dependencies(files) if _is_react_files(files) else []
+            heavy_deps = vibe_gate.heavy_dependencies(files) if react_expected or _is_react_files(files) else []
 
             # Deterministic safety net: catch imports that don't resolve to any file the model
             # actually produced (typo, renamed/forgotten file) BEFORE marking the version "ready".
             # One focused repair attempt; if it still doesn't resolve, the version is flagged for
             # review instead of silently handed to the student as working code.
             broken_imports_unresolved: list[dict] = []
-            if _is_react_files(files):
+            if react_expected or _is_react_files(files):
                 broken = _check_broken_imports(files)
                 if broken:
                     yield _sse({"type": "status", "message": "Verifico e correggo import non risolti..."})
@@ -5049,7 +5326,7 @@ async def generate_project_code_stream(
             # can no longer silently ship without functions the user asked for. Fresh builds and milestone builds only.
             conformance: dict = {"checked": 0, "gaps": [], "repaired": []}
             spec_text = next((str(f.get("content") or "") for f in kb_files if str(f.get("path") or "").lower() == "spec.md"), "")
-            if _is_react_files(files) and not is_fix and not broken_imports_unresolved and (not is_edit or vibe_verify.is_scoped_request(user_prompt)):
+            if (react_expected or _is_react_files(files)) and not is_fix and not broken_imports_unresolved and (not is_edit or vibe_verify.is_scoped_request(user_prompt)):
                 conf_reqs = vibe_verify.scoped_requirements(spec_text, user_prompt)
                 if conf_reqs:
                     conformance["checked"] = len(conf_reqs)
@@ -5059,7 +5336,8 @@ async def generate_project_code_stream(
                         if kind == "ping":
                             yield _sse({"type": "ping"})
                         else:
-                            conf_gaps, vp, vc = value
+                            conf_gaps, vp, vc, conf_valid = value
+                            conformance["verified"] = conf_valid
                             usage_prompt += vp
                             usage_completion += vc
                     if conf_gaps:
@@ -5091,12 +5369,33 @@ async def generate_project_code_stream(
                             else:
                                 yield _sse({"type": "status", "message": f"Funzioni completate ({len(repaired)} file aggiornati)."})
                         conformance["repaired"] = repaired
-                        conformance["gaps"] = conf_gaps if not repaired else []
+                        conformance["gaps"] = conf_gaps
                         if repaired:
-                            conformance["completed"] = [g["id"] for g in conf_gaps]
+                            # A repair is not proof of conformance: verify the affected requirements again.
+                            async for kind, value in _heartbeat_await(_verify_conformance(files, conf_reqs)):
+                                if kind == "ping": yield _sse({"type": "ping"})
+                                else:
+                                    final_gaps, vp, vc, valid = value
+                                    usage_prompt += vp; usage_completion += vc
+                                    conformance["verified"] = valid
+                                    if valid: conformance["gaps"] = final_gaps
+                            if conformance.get("verified") and not conformance["gaps"]:
+                                conformance["completed"] = [g["id"] for g in conf_gaps]
 
+            if react_expected or _is_react_files(files):
+                async for kind, value in _heartbeat_await(vibe_gate.check_project(files, set(ALLOWED_NPM_PACKAGES))):
+                    if kind == "ping": yield _sse({"type": "ping"})
+                    else:
+                        final_issues, gate_ran = value
+                        gate_remaining = vibe_gate.blocking(final_issues)
+                broken_imports_unresolved = _check_broken_imports(files)
+            validation = vibe_quality.assessment(files, gate_remaining or broken_imports_unresolved, gate_ran,
+                gaps=conformance["gaps"], features_checked=bool(conformance.get("verified")))
+            validation["features_required"] = bool(conformance["checked"])
             file_summary, file_summary_json = _build_file_change_summary(previous_files, files)
-            summary = f"Progetto aggiornato: {len(files)} file, {file_summary_json['total_lines']} righe."
+            summary = f"Codice generato: {len(files)} file, {file_summary_json['total_lines']} righe. " + (
+                "Controlli da completare prima dell'uso." if vibe_quality.build_status(validation) == "needs_review" else
+                "Build verificata; attendo la verifica dell'anteprima." if validation["build"] == "passed" else "Build non verificata.")
 
             yield _sse({"type": "status", "message": "Verifiche completate. Salvo la nuova versione..."})
 
@@ -5116,9 +5415,9 @@ async def generate_project_code_stream(
                     "summary": summary,
                     **({"collaboration": previous_collaboration} if previous_collaboration else {}),
                 },
-                artifact_manifest_json={},
+                artifact_manifest_json={"validation": validation, "diagnostics": run.diagnostic()},
                 prompt_message_id=prompt_message_id,
-                build_status="needs_review" if (broken_imports_unresolved or gate_remaining) else "ready",
+                build_status=vibe_quality.build_status(validation),
                 review_status="pending",
                 created_by_actor_type="agent",
             )
@@ -5226,19 +5525,17 @@ async def generate_project_code_stream(
 
             yield _sse({"type": "status", "message": "Versione salvata. Preparo l'anteprima aggiornata..."})
 
-            # Bill the whole multi-call generation once against the credit system.
-            await _record_coding_cost(
-                db,
-                provider=gen_provider,
-                model=gen_model,
-                prompt_tokens=usage_prompt,
-                completion_tokens=usage_completion,
-                context="coding_generate_stream",
-                tenant_id=project_tenant_id,
-                session_id=project_session_id,
-                student_id=track_student_id,
-                teacher_id=track_teacher_id,
-            )
+            for call in run.calls:
+                prompt_tokens = call.get("prompt_tokens") or 0
+                completion_tokens = call.get("completion_tokens") or 0
+                if prompt_tokens or completion_tokens:
+                    await _record_coding_cost(
+                        db, provider=call["provider"], model=call["model"],
+                        prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+                        context="coding_generate_stream", tenant_id=project_tenant_id,
+                        session_id=project_session_id, student_id=track_student_id,
+                        teacher_id=track_teacher_id,
+                    )
 
             yield _sse({
                 "type": "done",
@@ -5246,7 +5543,8 @@ async def generate_project_code_stream(
                 "summary": summary,
                 "version_id": str(new_version_id),
                 "version_number": new_version_number,
-                "needs_review": bool(broken_imports_unresolved or gate_remaining),
+                "needs_review": vibe_quality.build_status(validation) == "needs_review",
+                "validation": validation,
                 "gate": {"ran": gate_ran, "repaired": sorted(set(gate_repairs)), "remaining": [i.to_dict() for i in gate_remaining[:10]]},
                 "heavy_deps": heavy_deps,
                 "conformance": conformance,
@@ -5260,11 +5558,15 @@ async def generate_project_code_stream(
                 await db.rollback()
             except Exception:
                 pass
-            yield _sse({"type": "error", "message": str(exc)})
+            yield _sse({"type": "error", "code": "model_timeout" if isinstance(exc, TimeoutError) else "generation_error",
+                "message": "Il modello non ha completato la risposta nel tempo disponibile; la versione precedente è conservata." if isinstance(exc, TimeoutError) else "Generazione interrotta. La versione precedente è conservata; riprova con una modifica più piccola.",
+                "diagnostics": run.diagnostic()})
 
     def track_progress(event: dict, state: background_jobs.ProgressState) -> None:
         kind = event.get("type")
         data = state.data
+        if kind == "error":
+            state.result = {"project_id": str(project_pk), "diagnostics": run.diagnostic(), "error_code": event.get("code", "generation_error")}
         if kind == "status":
             state.label = str(event.get("message") or "")[:200] or state.label
             if "total" not in data:
@@ -5284,7 +5586,11 @@ async def generate_project_code_stream(
             state.label = f"{len(done)} di {total} file pronti"
         elif kind == "done":
             state.label = "Versione pronta"
-            state.result = {"project_id": str(project_pk)}
+            state.result = {"project_id": str(project_pk), "version_id": event.get("version_id"), "validation": event.get("validation"), "diagnostics": run.diagnostic()}
+            state.label = "Codice generato · controlli da completare" if event.get("needs_review") else "Codice generato · build verificata" if event.get("gate", {}).get("ran") else "Codice generato · build non verificata"
+
+    async def record_finish(status, state, listening):
+        state.result = {**(state.result or {}), "project_id": str(project_pk), "diagnostics": run.diagnostic()}
 
     job_id = await background_jobs.start_stream_job(
         background_jobs.JobOwner.from_actor(actor),
@@ -5293,10 +5599,11 @@ async def generate_project_code_stream(
         description=(user_prompt or ("Correzione automatica degli errori" if is_fix else "Generazione del progetto"))[:4000],
         route="module:coding" if actor.is_student else "/teacher/coding",
         resource_id=str(project_pk),
-        stream=event_stream(),
+        stream=vibe_pipeline.events(event_stream(), run),
         event_format="sse",
+        on_finish=record_finish,
         progress_fn=track_progress,
-        expected_seconds=150.0,
+        expected_seconds=90.0,
     )
     return background_jobs.stream_response(job_id, "text/event-stream")
 

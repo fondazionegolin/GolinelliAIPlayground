@@ -106,3 +106,19 @@ def describe_gaps(gaps: list[dict]) -> str:
         + (f" — {g['why']}" if g.get("why") else "")
         for g in gaps
     )
+
+
+def valid_assessment(raw: str, reqs: list[tuple[str, str]]) -> bool:
+    text = (raw or '').strip()
+    try:
+        data = json.loads(text[text.index('{'):text.rindex('}') + 1])
+        results = data['results']
+        if not isinstance(results, list): return False
+        known = {rid for rid, _ in reqs}
+        seen = set()
+        for item in results:
+            if not isinstance(item, dict) or item.get('id') in seen or item.get('id') not in known or item.get('status') not in {'ok', 'partial', 'missing'}: return False
+            seen.add(item['id'])
+        return seen == known
+    except (ValueError, KeyError, TypeError):
+        return False
