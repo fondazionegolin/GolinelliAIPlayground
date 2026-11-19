@@ -116,6 +116,8 @@ class Settings(BaseSettings):
 
     # Hardware compilation services
     PXT_COMPILER_URL: str = "http://pxt-compiler:8090"
+    # Vibe Lab quality runner (Playwright + tsc). Empty = disabled: generation falls back to the static gate only.
+    VIBE_QA_URL: str = ""
     PXT_COMPILER_TIMEOUT_SECONDS: float = 180.0
     
     # Embedding

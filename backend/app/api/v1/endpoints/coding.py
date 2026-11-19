@@ -1,7 +1,7 @@
 import re
 import httpx
 from app.services.js_imports import module_imports
-from app.services import model_roles, model_selection, vibe_brief, vibe_styles, vibe_contract, vibe_gate, vibe_verify, vibe_runs, vibe_output, vibe_pipeline, vibe_quality
+from app.services import model_roles, model_selection, vibe_brief, vibe_qa, vibe_styles, vibe_contract, vibe_gate, vibe_verify, vibe_runs, vibe_output, vibe_pipeline, vibe_quality
 import io
 import asyncio
 from contextlib import suppress
@@ -61,7 +61,7 @@ from app.services.environmental_impact import (
     build_estimated_token_usage,
     enrich_usage_with_environmental_impact,
 )
-from app.services.llm_service import llm_service
+from app.services.llm_service import LLMResponse, llm_service
 from app.services.coding_patch import apply_search_replace
 
 logger = logging.getLogger(__name__)
@@ -1413,18 +1413,21 @@ async def _coding_generate(messages: list[dict], system_prompt: str, *, temperat
     if vibe_pipeline.current.get() is not None:
         return await vibe_pipeline.generate(messages=messages, system_prompt=system_prompt,
             temperature=temperature, max_tokens=max_tokens, allow_web_search=False, phase=phase)
+    # Outside a generation run (interview, checklist, small checks) use the cheap, fast architect role chosen in
+    # Admin → Modelli — never the legacy Sonnet default, which made every small helper call expensive.
+    helper = model_roles.pair_for("coding.teacher")
     try:
         return await vibe_pipeline.generate(
             messages=messages,
             system_prompt=system_prompt,
-            provider=settings.CODING_LLM_PROVIDER,
-            model=settings.CODING_LLM_MODEL,
+            provider=helper[0],
+            model=helper[1],
             temperature=temperature,
             max_tokens=max_tokens,
             allow_web_search=False,
         )
     except Exception as exc:
-        logger.warning("coding model %s/%s failed (%s); falling back to default", settings.CODING_LLM_PROVIDER, settings.CODING_LLM_MODEL, exc)
+        logger.warning("coding model %s/%s failed (%s); falling back to default", helper[0], helper[1], exc)
         return await vibe_pipeline.generate(
             messages=messages,
             system_prompt=system_prompt,
@@ -1492,6 +1495,11 @@ async def _vibe_team(db, is_student):
     return architect, writer
 
 
+# Hidden reasoning of the architect cost 40-60 s of silence before the first token for a plan that is a dozen lines:
+# speed wins in a classroom. Writers never think (they follow the contract). Flip to True to trade time for depth.
+ARCHITECT_THINKING = False
+
+
 async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, provider: str, model: str, temperature: float = 0.4, max_tokens: int = 64000, reasoning_sink=None, phase="codegen"):
     """Streaming counterpart of _coding_generate. Yields text chunks from the chosen Coding Lab
     model, falling back to the platform default only if the primary fails before emitting."""
@@ -1500,7 +1508,7 @@ async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, p
     try:
         async for chunk in vibe_pipeline.stream(messages=messages, system_prompt=system_prompt,
             provider=provider, model=model, temperature=temperature, max_tokens=max_tokens,
-            reasoning_sink=reasoning_sink, phase=phase, thinking=phase == "architect", allow_web_search=False):
+            reasoning_sink=reasoning_sink, phase=phase, thinking=ARCHITECT_THINKING and phase == "architect", allow_web_search=False):
             started = True
             yield chunk
     except Exception as exc:
@@ -1772,8 +1780,28 @@ e in fondo una riga === END ===.
 """
 
 
+QUALITY_REPAIR_HEAD = """Sei un senior front-end engineer e designer dentro Golinelli.ai. L'app React che ricevi COMPILA, ma il controllo di
+qualita' (browser vero, TypeScript, schermi mobile/desktop, flussi d'uso, revisione visiva) ha trovato i difetti elencati sotto.
+Correggili TUTTI nei file indicati con il MINIMO cambiamento necessario, senza ridurre le funzioni del brief e senza cambiare i nomi
+degli export usati da altri file.
+- Errore di tipo/runtime: correggi la causa (proprieta' inesistente, argomenti, null/undefined), non silenziarlo con `any`.
+- Scorrimento orizzontale / mobile: max-width:100%, flex-wrap, griglie che collassano, niente larghezze fisse in px sopra 360.
+- Flusso che non riesce: la funzione deve esistere e il controllo che la avvia deve essere raggiungibile e con testo coerente.
+- Controlli che non fanno nulla: collegali a un effetto visibile oppure rimuovili.
+- Difetti visivi/estetici: rispetta la direzione artistica del brief (font, :root), gerarchia, spaziatura, immagini; niente emoji come icone.
+- Mantieni ogni classe usata nel JSX definita in un CSS.
+- Non toccare i file non coinvolti. Non scrivere index.html, index.tsx, main.tsx ne' file .md.
+
+FORMATO DI OUTPUT — nessun testo fuori, nessun backtick: per ogni file da cambiare o creare
+=== FILE: percorso ===
+<contenuto COMPLETO del file>
+e in fondo una riga === END ===.
+
+"""
+
+
 async def _gate_repair(
-    files: list[dict], issues: list, provider: str, model: str, brief: str,
+    files: list[dict], issues: list, provider: str, model: str, brief: str, head: str | None = None,
 ) -> tuple[list[dict], list[str], int, int]:
     """One targeted repair call for the issues the build gate found. Returns (files, changed_paths,
     prompt_tokens, completion_tokens). Never raises: on failure the files come back unchanged."""
@@ -1798,7 +1826,7 @@ async def _gate_repair(
     try:
         response = await vibe_pipeline.generate(phase="build_repair",
             messages=[{"role": "user", "content": user}],
-            system_prompt=GATE_REPAIR_HEAD + vibe_contract.contract_for(model),
+            system_prompt=(head or GATE_REPAIR_HEAD) + vibe_contract.contract_for(model),
             provider=provider,
             model=model,
             temperature=0.1,
@@ -1818,6 +1846,383 @@ async def _gate_repair(
     for item in fixed:
         by_path[item["path"]] = item
     return list(by_path.values()), [item["path"] for item in fixed], est["prompt_tokens"], est["completion_tokens"]
+
+
+# --- Quality loop: measure the real app, rank the defects, fix, re-measure, keep the best ---------------------
+
+STYLIST_PROMPT = """Sei un front-end designer senior dentro Golinelli.ai. Un componente React usa classi CSS che NESSUNO ha scritto:
+la pagina appare senza layout. Scrivi SOLO CSS puro (nessun markdown, nessun backtick, nessuna spiegazione) con UNA regola per OGNI
+classe elencata, coerente con il componente (leggi il JSX per capire struttura e ruolo di ogni classe).
+- Layout reale: grid/flex, gap, allineamenti, larghezze massime, immagini con aspect-ratio e object-fit, nessuna larghezza fissa sopra 360px.
+- Tipografia con gerarchia (dimensioni, pesi, interlinea) e spaziatura a scala 4/8 usando SOLO le variabili :root fornite
+  (colori, font, raggio, ombra): mai esadecimali nuovi se esiste una variabile equivalente.
+- Stati :hover, :focus-visible, :disabled dove ha senso; transizioni 150-250ms; barre/anelli di punteggio con la variabile d'accento.
+- Un blocco @media (max-width: 720px) che fa collassare le griglie in colonna e riduce spaziature e titoli.
+- Rispetta la direzione artistica (carattere, raggio, ombra) dei token: niente stile generico."""
+
+_CSS_FENCE = re.compile(r"^```[a-z]*\n|\n```\s*$", re.M)
+
+
+def _design_root(files: list[dict]) -> str:
+    css = next((str(f.get("content") or "") for f in files if str(f.get("path") or "") == "styles.css"), "")
+    imports = "\n".join(re.findall(r"@import[^;]+;", css)[:3])
+    root = re.search(r":root\s*\{[^}]*\}", css, re.S)
+    return (imports + "\n" + (root.group(0) if root else ""))[:4500]
+
+
+async def _stylist(files: list[dict], gaps: dict[str, list[str]], provider: str, model: str) -> tuple[list[dict], list[str]]:
+    """Write the CSS rules components use but no stylesheet defines: one agent per component, in parallel, appended to styles.css."""
+    by_file: dict[str, list[str]] = {}
+    for name, paths in gaps.items():
+        by_file.setdefault(paths[0], []).append(name)
+    by_path = {str(f.get("path") or ""): f for f in files}
+    tokens = _design_root(files)
+    base_css = str(by_path.get("styles.css", {}).get("content") or "")
+    defined = ", ".join(sorted(set(re.findall(r"\.(-?[_a-zA-Z][\w-]*)", base_css)))[:90])
+
+    async def one(path: str, names: list[str]) -> tuple[str, str]:
+        user = (f"TOKEN DI DESIGN (styles.css):\n{tokens}\n\nCLASSI GIA' DEFINITE (non ridefinirle): {defined or '(poche)'}\n\n"
+                f"COMPONENTE {path}:\n{str(by_path[path].get('content') or '')[:9000]}\n\nCLASSI DA STILARE (una regola ciascuna, tutte obbligatorie): {', '.join(names)}")
+        response = await vibe_pipeline.generate(phase="stylist", messages=[{"role": "user", "content": user}], system_prompt=STYLIST_PROMPT,
+            provider=provider, model=model, temperature=0.3, max_tokens=32000, allow_web_search=False)
+        css = _CSS_FENCE.sub("", (response.content or "").strip()).strip()
+        covered = sum(1 for n in names if re.search(r"\." + re.escape(n) + r"(?![\w-])", css))
+        if css.count("{") != css.count("}") or covered < max(1, len(names) // 2):
+            raise ValueError(f"CSS non valido per {path} ({covered}/{len(names)} classi)")
+        return path, css
+
+    results = await asyncio.gather(*(one(path, names) for path, names in list(by_file.items())[:8]), return_exceptions=True)
+    additions = [f"/* ── stili di {r[0]} ── */\n{r[1]}" for r in results if not isinstance(r, Exception)]
+    for r in results:
+        if isinstance(r, Exception):
+            logger.warning("stylist failed (%s)", r)
+    if not additions:
+        return files, []
+    merged = (base_css.rstrip() + "\n\n" if base_css else "") + "\n\n".join(additions) + "\n"
+    out = [f for f in files if str(f.get("path") or "") != "styles.css"] + [{"path": "styles.css", "content": merged, "language": "css"}]
+    return out, ["styles.css"]
+
+
+VIBE_CRITIC_PROMPT = """Sei un art director e QA lead senior, esigente come un cliente che paga. Ricevi gli screenshot REALI dell'app
+(mobile e desktop), le misure automatiche e il brief. Giudica l'app finita, non il codice.
+Valuta: gerarchia e composizione (si capisce subito cosa fare?), tipografia, colore e coerenza con la direzione di stile del brief,
+spaziatura e allineamenti, immagini (presenti, pertinenti, non sgranate), mobile realmente usabile, contenuti veri (niente segnaposto),
+completezza rispetto alle funzioni F1..Fn del brief visibili in schermata, e segni di pagina "da template AI" (card tutte uguali, contenuto a
+filo bordo, bottoni senza gerarchia, emoji al posto di icone, numeri nudi senza visualizzazione).
+Nel QA i servizi AI sono finti: le immagini generate sono SEGNAPOSTO a gradiente (la foto vera arriva in produzione) e le risposte AI sono testi
+di prova. NON penalizzare il segnaposto in se', ma giudica spazio, formato e cornice riservati e che sia gestito con eleganza. I font web
+vengono caricati davvero: se il carattere non e' quello del brief e' un difetto reale. Hai anche gli screenshot degli schermi raggiunti
+usando l'app (esito dei flussi): giudica anche quelli, non solo la prima pagina.
+Rispondi SOLO con JSON valido:
+{"score": 0-100, "verdict": "una frase", "defects": [{"severity": "major"|"minor", "area": "layout|tipografia|colore|immagini|gerarchia|responsive|contenuto|funzioni", "problem": "cosa non va, concreto", "fix": "cosa fare, concreto", "file": "percorso piu' probabile (styles.css, App.tsx, components/X.tsx)"}]}
+Massimo 8 difetti, i piu' importanti. "major" SOLO per cio' che un utente nota subito (layout rotto, testo illeggibile, sezioni vuote, funzioni
+del brief assenti, aspetto generico, immagini mancanti, mobile inservibile). Se l'app e' ottima, score alto e difetti vuoti."""
+
+ACCEPTANCE_AUTHOR_PROMPT = """Sei un QA engineer. Ricevi le funzioni del brief (F1..Fn) e il codice REALE dell'app (con le etichette dei controlli).
+Scrivi fino a 6 test di accettazione end-to-end, ognuno un percorso d'uso reale su una o piu' funzioni, nel DSL JSON:
+{"do":"click","text":"etichetta"} | {"do":"fill","label"|"placeholder":"...","value":"..."} | {"do":"select","label":"...","value":"..."} |
+{"do":"check","label":"..."} | {"do":"press","key":"Enter"} | {"do":"wait","ms":300} | {"do":"expectText","text":"..."} |
+{"do":"expectNotText","text":"..."} | {"do":"expectVisible","text":"..."|"selector":"..."} | {"do":"expectCount","selector":"...","min":N}.
+USA SOLO testi, etichette e placeholder che compaiono nel codice, copiati alla lettera. Niente azioni distruttive (elimina/reset).
+Ogni test: 3-10 passi e almeno un expect finale che prova l'esito (risultato mostrato, elemento comparso, schermata cambiata).
+Rispondi SOLO con un array JSON: [{"id":"T1","feature":"F1","title":"...","steps":[...]}]"""
+
+
+def _image_parts(provider: str, shots: list[tuple[str, str]]) -> list[dict]:
+    parts: list[dict] = []
+    for name, data_url in shots:
+        parts.append({"type": "text", "text": f"Screenshot {name.upper()}:"})
+        if provider == "anthropic":
+            media, _, b64 = data_url.partition(";base64,")
+            parts.append({"type": "image", "source": {"type": "base64", "media_type": media.replace("data:", "") or "image/jpeg", "data": b64}})
+        else:
+            parts.append({"type": "image_url", "image_url": {"url": data_url}})
+    return parts
+
+
+def _report_shots(report: dict, limit: int = 6) -> list[tuple[str, str]]:
+    """Screens of the real app: mobile + desktop landing, then the screens a user reaches (end of tested flows, else crawler states)."""
+    viewports = (report.get("runtime") or {}).get("viewports") or []
+    shots = [(vp["name"], vp["screenshot"]) for vp in viewports if vp.get("screenshot")]
+    if not shots:
+        return []
+    flow_shots = [(f"esito del flusso {t.get('feature') or t.get('id')}: {str(t.get('title') or '')[:60]}", t["screenshot"]) for t in report.get("acceptance") or [] if t.get("screenshot")]
+    if not flow_shots:
+        flow_shots = [(f"dopo aver premuto «{st.get('after')}»", st["screenshot"]) for st in (report.get("crawl") or {}).get("stateShots", [])]
+    return (shots + flow_shots)[:limit]
+
+
+VISUAL_FIX_HEAD = """Sei un front-end designer senior dentro Golinelli.ai. Hai davanti gli screenshot REALI dell'app (mobile, desktop e schermi
+raggiunti usando l'app) e l'elenco dei difetti trovati dal revisore. Correggili guardando cosa vedi: l'obiettivo e' che gli stessi
+screenshot, rifatti dopo la tua modifica, risultino curati.
+- Lavora soprattutto sul CSS (e sul JSX solo se la struttura lo richiede): griglie con il numero giusto di colonne e altezze uniformi
+  (align-items, aspect-ratio, object-fit), barre sticky che non coprono il contenuto (padding-bottom sul contenitore, safe area), etichette
+  non tagliate (overflow-wrap, line-clamp consapevole), controlli con stile del progetto (font, colore, raggio dai token :root), gerarchia
+  tipografica, spaziatura, mobile senza scorrimento orizzontale.
+- Rispetta la direzione artistica del brief e i token :root: nessun nuovo colore o font fuori dal sistema.
+- Mantieni i nomi delle classi e gli export usati altrove; ogni classe usata nel JSX deve restare definita.
+- Cambia SOLO cio' che serve ai difetti elencati. Non toccare index.html/index.tsx/main.tsx ne' file .md.
+
+FORMATO DI OUTPUT — nessun testo fuori, nessun backtick: per ogni file da cambiare
+=== FILE: percorso ===
+<contenuto COMPLETO del file>
+e in fondo una riga === END ===.
+"""
+
+
+async def _visual_fix(files: list[dict], defects: list, report: dict, provider: str, model: str) -> tuple[list[dict], list[str]]:
+    """The reviewer model fixes what it SEES: screenshots + defects + the involved files (CSS first). Never raises."""
+    shots = _report_shots(report, 5)
+    if not shots:
+        return files, []
+    by_path = {str(f.get("path") or ""): f for f in files}
+    involved: list[str] = []
+    for d in defects:
+        for path in [d.file, (d.file or "").rsplit(".", 1)[0] + ".css"]:
+            if path in by_path and path not in involved:
+                involved.append(path)
+    for path in sorted(by_path):  # stylesheets are where visual fixes land
+        if path.endswith(".css") and path not in involved:
+            involved.append(path)
+    bundle = "\n\n".join(f"=== FILE: {p} ===\n{str(by_path[p].get('content') or '')[:16000]}" for p in involved[:9])[:60000]
+    listing = "\n".join(f"- [{d.severity}] {d.message}" + (f" — {d.fix}" if d.fix else "") + (f" (file: {d.file})" if d.file else "") for d in defects)
+    intro = f"DIFETTI DA CORREGGERE:\n{listing}\n\nFILE DEL PROGETTO:\n{bundle}"
+    try:
+        response = await vibe_pipeline.generate(phase="visual_fix", messages=[{"role": "user", "content": [{"type": "text", "text": intro}] + _image_parts(provider, shots)}],
+            system_prompt=VISUAL_FIX_HEAD + vibe_contract.contract_for(model), provider=provider, model=model, temperature=0.1, max_tokens=16000, allow_web_search=False)
+    except Exception as exc:
+        logger.warning("visual fix failed (%s)", exc)
+        return files, []
+    fixed = [f for f in _parse_delimited_files(response.content or "") if not _platform_owned_path(f["path"])]
+    if not fixed:
+        return files, []
+    merged = {**by_path, **{f["path"]: f for f in fixed}}
+    return list(merged.values()), [f["path"] for f in fixed]
+
+
+def _progress_key(card: dict) -> tuple[int, int, int]:
+    """Lexicographic progress: fewer blockers, then fewer major defects, then the higher (noisier) overall score."""
+    counts = card.get("defects") or {}
+    return (counts.get("blocker", 0), counts.get("major", 0), -int(card.get("overall") or 0))
+
+
+async def _visual_critic(files: list[dict], report: dict, brief: str, provider: str, model: str) -> dict | None:
+    shots = _report_shots(report)
+    if not shots:
+        return None
+    viewports = (report.get("runtime") or {}).get("viewports") or []
+    measures = "; ".join(f"{vp['name']}: testo {vp.get('textLength')} car, {vp.get('interactive')} controlli, {vp.get('images')} immagini, overflowX={vp.get('overflowX')}" for vp in viewports if not vp.get("error"))
+    coverage = vibe_qa.css_coverage(files)
+    intro = f"{brief[:9000]}\n\nMISURE AUTOMATICHE: {measures}. Classi CSS usate/stilate: {coverage[1]}/{coverage[0]}.\nFile del progetto: {', '.join(str(f.get('path')) for f in files if not str(f.get('path')).endswith('.md'))}"
+    try:
+        response = await vibe_pipeline.generate(phase="critic", messages=[{"role": "user", "content": [{"type": "text", "text": intro}] + _image_parts(provider, shots)}],
+            system_prompt=VIBE_CRITIC_PROMPT, provider=provider, model=model, temperature=0.2, max_tokens=3500, allow_web_search=False)
+        data = _extract_json_object(response.content or "")
+    except Exception as exc:
+        logger.warning("visual critic failed (%s)", exc)
+        return None
+    defects = []
+    paths = {str(f.get("path")) for f in files}
+    for item in (data.get("defects") or [])[:8]:
+        if not isinstance(item, dict) or not str(item.get("problem") or "").strip():
+            continue
+        area = str(item.get("area") or "")[:20]
+        file = str(item.get("file") or "")
+        if file not in paths:
+            file = "styles.css" if area in {"layout", "tipografia", "colore", "responsive", "gerarchia"} else "App.tsx"
+        defects.append(vibe_qa.Defect("major" if item.get("severity") == "major" else "minor", "visual", f"{area}: {str(item['problem'])[:300]}", file, fix=str(item.get("fix") or "")[:300]))
+    try:
+        score = max(0, min(100, int(float(data.get("score")))))
+    except Exception:
+        score = None
+    return {"score": score, "verdict": str(data.get("verdict") or "")[:240], "defects": defects}
+
+
+async def _author_acceptance_tests(files: list[dict], reqs: list[tuple[str, str]], provider: str, model: str, previous: list[dict] | None = None) -> list[dict]:
+    code = "\n\n".join(f"=== {f['path']} ===\n{str(f.get('content') or '')[:7000]}" for f in files if str(f.get("path") or "").endswith((".tsx", ".jsx", ".ts")))[:42000]
+    listing = "\n".join(f"- {rid}: {text}" for rid, text in reqs) or "(nessuna funzione numerata: deduci i percorsi principali dall'app)"
+    try:
+        before = ("\n\nTEST DEL GIRO PRECEDENTE (mantieni gli stessi percorsi d'uso, ma riscrivi i passi con le etichette del codice ATTUALE):\n"
+                  + "\n".join(f"- {t.get('feature')}: {t.get('title')}" for t in previous)) if previous else ""
+        response = await vibe_pipeline.generate(phase="qa_author", messages=[{"role": "user", "content": f"FUNZIONI DEL BRIEF:\n{listing}\n\nCODICE:\n{code}{before}"}],
+            system_prompt=ACCEPTANCE_AUTHOR_PROMPT, provider=provider, model=model, temperature=0.2, max_tokens=8000, allow_web_search=False)
+        return vibe_qa.clean_tests(_extract_json_array(response.content or ""))
+    except Exception as exc:
+        logger.warning("acceptance authoring failed (%s)", exc)
+        return []
+
+
+def _defects_to_issues(defects: list) -> list:
+    return [vibe_gate.Issue(d.file or "App.tsx", d.message + (f" — {d.fix}" if d.fix else ""), line=d.line, rule=f"qa-{d.kind}",
+                            severity="error" if d.severity != "minor" else "warn") for d in defects]
+
+
+QUALITY_ROUNDS = 3
+
+
+async def _quality_loop(files: list[dict], *, reqs: list[tuple[str, str]], brief: str, brief_reminder: str, writer: tuple[str, str], architect: tuple[str, str], run, rounds: int = QUALITY_ROUNDS, focus: str = ""):
+    """Async generator of ("sse", frame) and a final ("result", {...}). Measures the real app in a browser, ranks the defects,
+    fixes them, re-measures and keeps the best version. Each fix starts from the best version so far (a regression is discarded,
+    not built upon). Cheap writer first, stronger models after; visual defects are fixed by the reviewer, which sees the screenshots.
+    Never raises; absent QA leaves the project unchanged."""
+    result = {"files": files, "scorecard": None, "rounds": [], "tests": 0, "ran": False}
+    if focus:
+        brief = brief + f"\n\nPRIORITA' INDICATA DALL'UTENTE per questa rifinitura: {focus}"
+    if not vibe_qa.available():
+        yield ("result", result)
+        return
+    critic = model_roles.pair_for("coding.critic")
+    if not model_selection.provider_keys().get(critic[0]):
+        critic = architect
+    best: dict | None = None  # {"key", "files", "card", "defects", "report"}
+    current = files
+    tests: list[dict] = []
+    stalls = 0
+    try:
+        for round_no in range(1, rounds + 1):
+            try:
+                if run.timeout(10 ** 6) < 240:
+                    yield ("sse", {"type": "status", "message": "Tempo quasi esaurito: chiudo con la versione migliore finora."})
+                    break
+            except TimeoutError:
+                break
+            yield ("sse", {"type": "status", "message": f"Controllo qualità, giro {round_no}/{rounds}: apro l'app in un browser vero (mobile, desktop e percorsi d'uso)..."})
+            # Tests are rewritten every round against the CURRENT labels: a fix that renames a button must not look like a broken flow.
+            async for kind, value in _heartbeat_await(_author_acceptance_tests(current, reqs, critic[0], critic[1], previous=tests)):
+                if kind == "ping": yield ("sse", {"type": "ping"})
+                else: tests = value or tests
+            report = None
+            async for kind, value in _heartbeat_await(vibe_qa.run(current, tests)):
+                if kind == "ping": yield ("sse", {"type": "ping"})
+                else: report = value
+            if report is None:
+                run.recovery.append({"reason": "qa_unavailable"})
+                yield ("sse", {"type": "status", "message": "Il controllo in browser non e' disponibile: salto la verifica visiva."})
+                break
+            result["ran"] = True
+            defects = vibe_qa.defects_from_report(report, current)
+            visual = None
+            async for kind, value in _heartbeat_await(_visual_critic(current, report, brief, critic[0], critic[1])):
+                if kind == "ping": yield ("sse", {"type": "ping"})
+                else: visual = value
+            if visual:
+                defects += visual["defects"]
+                defects.sort(key=lambda d: {"blocker": 0, "major": 1, "minor": 2}[d.severity])
+            card = vibe_qa.scorecard(report, current, defects, visual)
+            result["rounds"].append({"round": round_no, "overall": card["overall"], "defects": card["defects"], "css_coverage": card["css_coverage"]})
+            result["tests"] = len(tests)
+            yield ("sse", {"type": "quality", "round": round_no, "rounds": rounds, "score": card, "defects": [d.to_dict() for d in defects[:8]],
+                           "verdict": (visual or {}).get("verdict", ""),
+                           "screenshot": next((vp.get("screenshot") for vp in (report.get("runtime") or {}).get("viewports", []) if vp.get("name") == "desktop"), None)})
+            key = _progress_key(card)
+            improved = best is None or key < best["key"]
+            if improved:
+                best = {"key": key, "files": current, "card": card, "defects": defects, "report": report}
+                stalls = 0
+            else:
+                stalls += 1
+                yield ("sse", {"type": "status", "message": "Questa correzione non ha migliorato l'app: riparto dalla versione migliore."})
+            if vibe_qa.is_good(best["card"], best["defects"]) or round_no == rounds or stalls >= 2:
+                break
+            # Fix from the best version so far, with the defects measured ON that version.
+            base, base_defects, base_report = best["files"], best["defects"], best["report"]
+            serious = [d for d in base_defects if d.severity != "minor"] or base_defects
+            yield ("sse", {"type": "status", "message": f"Trovati {len(base_defects)} problemi ({best['card']['defects']['blocker'] + best['card']['defects']['major']} gravi, punteggio {best['card']['overall']}/100): li correggo..."})
+            fixer = writer if round_no == 1 and stalls == 0 else architect
+            fixed = base
+            gaps = vibe_qa.css_gaps(fixed)
+            if gaps:
+                async for kind, value in _heartbeat_await(_stylist(fixed, gaps, writer[0], writer[1])):
+                    if kind == "ping": yield ("sse", {"type": "ping"})
+                    else: fixed, _ = value
+            code_defects = [d for d in serious if d.kind not in ("css", "visual", "responsive")][:12]
+            if code_defects:
+                async for kind, value in _heartbeat_await(_gate_repair(fixed, _defects_to_issues(code_defects), fixer[0], fixer[1], brief_reminder, head=QUALITY_REPAIR_HEAD)):
+                    if kind == "ping": yield ("sse", {"type": "ping"})
+                    else: fixed = value[0]
+            sight_defects = [d for d in base_defects if d.kind in ("visual", "responsive") and d.severity != "minor"][:10] or [d for d in base_defects if d.kind in ("visual", "responsive")][:6]
+            if sight_defects:
+                yield ("sse", {"type": "status", "message": "Il revisore corregge cio' che vede negli screenshot..."})
+                async for kind, value in _heartbeat_await(_visual_fix(fixed, sight_defects, base_report, critic[0], critic[1])):
+                    if kind == "ping": yield ("sse", {"type": "ping"})
+                    else: fixed = value[0]
+            fixed, _ = _sanitize_package_json(fixed)
+            fixed, _ = _autodeclare_packages(fixed)
+            gate_ok = True
+            async for kind, value in _heartbeat_await(vibe_gate.check_project(fixed, set(ALLOWED_NPM_PACKAGES))):
+                if kind == "ping": yield ("sse", {"type": "ping"})
+                else: gate_ok = not vibe_gate.blocking(value[0])
+            if not gate_ok or fixed == base:
+                yield ("sse", {"type": "status", "message": "Le correzioni rompevano la build o non cambiavano nulla: tengo la versione migliore."})
+                stalls += 1
+                if stalls >= 2:
+                    break
+                current = base
+                continue
+            current = fixed
+    except Exception as exc:  # the loop is an improvement, never a reason to lose the generation
+        logger.warning("quality loop aborted (%s)", exc)
+        run.recovery.append({"reason": "quality_loop_error", "error_type": type(exc).__name__})
+    if best is not None:
+        result.update(files=best["files"], scorecard=best["card"], defects=[d.to_dict() for d in best["defects"][:12]])
+    yield ("result", result)
+
+
+async def _conformance_stage(files: list[dict], spec_text: str, user_prompt: str, provider: str, model: str, brief_reminder: str):
+    """Brief conformance: compare the code with the brief's F1..Fn, complete what is missing (one focused repair, discarded if it
+    breaks the build) and verify again. Async generator of ("sse", frame) then ("result", (files, conformance))."""
+    conformance: dict = {"checked": 0, "gaps": [], "repaired": []}
+    reqs = vibe_verify.scoped_requirements(spec_text, user_prompt)
+    if not reqs:
+        yield ("result", (files, conformance))
+        return
+    conformance["checked"] = len(reqs)
+    yield ("sse", {"type": "status", "message": f"Verifico che tutte le {len(reqs)} funzioni del brief siano presenti..."})
+    gaps: list[dict] = []
+    async for kind, value in _heartbeat_await(_verify_conformance(files, reqs)):
+        if kind == "ping":
+            yield ("sse", {"type": "ping"})
+        else:
+            gaps, _vp, _vc, valid = value
+            conformance["verified"] = valid
+    if gaps:
+        yield ("sse", {"type": "status", "message": f"Mancano o sono incomplete {len(gaps)} funzioni ({', '.join(g['id'] for g in gaps)}): le completo..."})
+        yield ("sse", {"type": "conformance", "gaps": gaps})
+        before_files = files
+        repaired: list[str] = []
+        async for kind, value in _heartbeat_await(_conformance_repair(files, gaps, provider, model, brief_reminder)):
+            if kind == "ping":
+                yield ("sse", {"type": "ping"})
+            else:
+                files, repaired, _rp, _rc = value
+        if repaired:
+            files, _ = _sanitize_package_json(files)
+            files, _ = _autodeclare_packages(files)
+            post_issues: list = []
+            async for kind, value in _heartbeat_await(vibe_gate.check_project(files, set(ALLOWED_NPM_PACKAGES))):
+                if kind == "ping":
+                    yield ("sse", {"type": "ping"})
+                else:
+                    post_issues, _ran = value
+            if vibe_gate.blocking(post_issues) or _check_broken_imports(files):
+                files, repaired = before_files, []
+                yield ("sse", {"type": "status", "message": "Il completamento rompeva la build: lo scarto e segnalo le funzioni mancanti."})
+            else:
+                yield ("sse", {"type": "status", "message": f"Funzioni completate ({len(repaired)} file aggiornati)."})
+        conformance["repaired"] = repaired
+        conformance["gaps"] = gaps
+        if repaired:  # a repair is not proof of conformance: verify the affected requirements again
+            async for kind, value in _heartbeat_await(_verify_conformance(files, reqs)):
+                if kind == "ping":
+                    yield ("sse", {"type": "ping"})
+                else:
+                    final_gaps, _vp, _vc, valid = value
+                    conformance["verified"] = valid
+                    if valid:
+                        conformance["gaps"] = final_gaps
+            if conformance.get("verified") and not conformance["gaps"]:
+                conformance["completed"] = [g["id"] for g in gaps]
+    yield ("result", (files, conformance))
 
 
 async def _verify_conformance(files: list[dict], reqs: list[tuple[str, str]]) -> tuple[list[dict], int, int, bool]:
@@ -1873,7 +2278,7 @@ async def _conformance_repair(
 # disjoint groups of files concurrently. The contract is the only source of truth between workers,
 # and the deterministic import check + the missing-file continuation catch any drift afterwards.
 
-MAX_PARALLEL_WORKERS = 6
+MAX_PARALLEL_WORKERS = 8
 
 _PLATFORM_ENTRY_PATHS = {
     "index.tsx", "index.ts", "index.jsx", "index.js", "main.tsx", "main.ts", "main.jsx", "main.js",
@@ -1894,11 +2299,11 @@ Altri worker scriveranno i componenti IN PARALLELO: tu fissi solo il contratto. 
 1) Brevissimo ragionamento in italiano (piano, viste, scelte di design), MASSIMO 8 righe.
 2) Una riga con ESATTAMENTE: @@PLAN@@
 3) Una riga per ogni file da far scrivere ai worker (App.tsx incluso, assegnato al worker 1), formato esatto:
-   <worker 1-6> | <percorso> | <scopo in 3-8 parole> | <export pubblici con firma completa>
+   <worker 1-8> | <percorso> | <scopo in 3-8 parole> | <export pubblici con firma completa>
    es. `2 | components/Header.tsx | barra di navigazione | export default function Header(props: { title: string; onNavigate: (view: View) => void })`
-   Usa da 3 a 6 worker, AL MASSIMO 2 file per worker, file piccoli e focalizzati (max ~200 righe ciascuno):
-   i worker scrivono in parallelo, quindi piu' file corti = progetto pronto prima e niente troncamenti.
-   App.tsx deve restare SNELLO (solo stato di navigazione e composizione delle viste, max ~120 righe). Gli export del contratto sono
+   Usa da 4 a 8 worker, AL MASSIMO 2 file per worker, file piccoli e focalizzati (max ~150 righe ciascuno):
+   i worker scrivono in parallelo e il tempo totale e' quello del file piu' lungo, quindi piu' file corti = progetto pronto prima.
+   Spezza le viste grandi in sotto-componenti. App.tsx deve restare SNELLO (solo stato di navigazione e composizione, max ~100 righe). Gli export del contratto sono
    l'UNICA fonte di verita': i worker li useranno alla lettera, quindi sii preciso su nomi, props e tipi.
 4) Una riga con ESATTAMENTE: @@SHARED@@
 5) I file condivisi, completi, nel formato `=== FILE: percorso ===`: types.ts (tutti i tipi/interfacce/costanti
@@ -1921,7 +2326,12 @@ Niente ragionamento, niente @@FILES@@. Scrivi SOLO questi file: {paths}.
 Per ciascuno: una riga `=== FILE: percorso ===`, il contenuto completo, e dopo l'ULTIMO file una riga `=== END ===`.
 Gli altri file del progetto li scrivono ALTRI worker in parallelo: rispetta il CONTRATTO alla lettera
 (percorsi, nomi ed export esatti, props e tipi) e importa solo da file elencati nel contratto o condivisi.
-Non ridefinire cio' che e' gia' nei file condivisi. Resta compatto: ogni file sotto le 250 righe.
+Non ridefinire cio' che e' gia' nei file condivisi. Resta compatto: ogni file sotto le 150 righe (CSS gemello compreso, max ~70 righe: solo le classi che usi).
+STILI (obbligatorio): per OGNI file .tsx che scrivi con `className`, scrivi anche il suo CSS gemello (stesso percorso, estensione .css,
+es. `components/Card.tsx` -> `components/Card.css`) e importalo in cima al componente (`import './Card.css'`). Il CSS definisce TUTTE le
+classi usate dal componente, con layout reale (grid/flex), spaziatura, gerarchia tipografica, stati hover/focus e un @media (max-width: 720px);
+usa SOLO le variabili :root dei file condivisi (colori, font, raggio, spaziatura). Nessuna classe senza regola. App.tsx e le viste
+seguono la stessa regola. I file .css gemelli vanno scritti con il loro `=== FILE: ... ===`, prima di `=== END ===`.
 
 CONTRATTO (worker | file | scopo | export):
 {contract}
@@ -2011,7 +2421,7 @@ class _DelimitedFileParser:
         if self.path is not None:
             # Models often forget the final END marker. A file whose brackets balance is complete; one cut
             # mid-expression (unbalanced) is a real output-limit truncation.
-            if _looks_complete("\n".join(self.lines)):
+            if _looks_complete("\n".join(self.lines), self.path):
                 events.extend(self._close())
             else:
                 self.truncated_path = self.path
@@ -2021,7 +2431,17 @@ class _DelimitedFileParser:
         return events
 
 
-def _looks_complete(content: str) -> bool:
+def _looks_complete(content: str, path: str = "") -> bool:
+    lower = path.lower()
+    if lower.endswith(".css"):  # not JavaScript: apostrophes in comments/urls must not read as unterminated strings
+        stripped = re.sub(r"/\*.*?\*/", "", content, flags=re.S).strip()
+        return bool(stripped) and stripped.count("{") == stripped.count("}") and stripped.endswith(("}", ";"))
+    if lower.endswith(".json"):
+        try:
+            json.loads(content)
+            return True
+        except ValueError:
+            return False
     return vibe_output.looks_complete(content)
 
 
@@ -2152,7 +2572,7 @@ async def _parallel_build(user_context: str, provider: str, model: str, *, write
     written: dict[str, dict] = {}  # path -> file, only files assigned to the worker that wrote them
     prompt_chars = len(architect_prompt)
 
-    async def run_wave(jobs: list[tuple[int, list[dict], str]]):
+    async def run_wave(jobs: list[tuple[int, list[dict], str]], team=None):
         """Run writer agents in parallel, relaying their live file frames. jobs = (worker no., items, note)."""
         nonlocal prompt_chars
         queue: asyncio.Queue = asyncio.Queue()
@@ -2160,6 +2580,7 @@ async def _parallel_build(user_context: str, provider: str, model: str, *, write
         async def run_worker(number: int, items: list[dict], note: str) -> None:
             parser = _DelimitedFileParser()
             assigned = {item["path"] for item in items}
+            assigned |= {item["path"].rsplit(".", 1)[0] + ".css" for item in items if item["path"].lower().endswith((".tsx", ".jsx"))}
             by_lower = {path.lower(): path for path in assigned}
             dropped: set[str] = set()
 
@@ -2181,9 +2602,9 @@ async def _parallel_build(user_context: str, provider: str, model: str, *, write
             try:
                 async for chunk in _coding_generate_stream(
                     messages=[{"role": "user", "content": prompt}],
-                    system_prompt=_codegen_prompt(writer[1]),
-                    provider=writer[0],
-                    model=writer[1], phase="writer",
+                    system_prompt=_codegen_prompt((team or writer)[1]),
+                    provider=(team or writer)[0],
+                    model=(team or writer)[1], phase="writer",
                     temperature=temperature,
                     max_tokens=128000,
                 ):
@@ -2240,11 +2661,22 @@ async def _parallel_build(user_context: str, provider: str, model: str, *, write
         jobs = [(len(ordered) + i + 1, [item], retry_note) for i, item in enumerate(lacking[:MAX_PARALLEL_WORKERS])]
         async for frame in run_wave(jobs):
             yield ("sse", frame)
-        still = [item["path"] for item in plan if item["path"] not in written]
-        if still:
-            logger.warning("parallel build still lacks %s after the retry wave", still)
+        still_items = [item for item in plan if item["path"] not in written]
+        if still_items:
+            logger.warning("parallel build still lacks %s after the retry wave", [i["path"] for i in still_items])
+            # Last resort, still silent for the user: a different provider (the architect's) writes what is left,
+            # a few at a time, so a rate limit or a flaky writer never turns into a slow serial continuation.
+            yield ("sse", {"type": "status", "message": f"Rifinisco gli ultimi {len(still_items)} file con un altro modello..."})
+            jobs = [(len(ordered) + len(lacking) + i + 1, [item], retry_note) for i, item in enumerate(still_items[:3])]
+            async for frame in run_wave(jobs, team=(provider, model)):
+                yield ("sse", frame)
+            left = [i["path"] for i in plan if i["path"] not in written]
+            if left:
+                logger.warning("parallel build still lacks %s after the architect wave", left)
 
+    planned_paths = {item["path"] for item in plan}
     generated: list[dict] = list(shared_by_path.values()) + [written[item["path"]] for item in plan if item["path"] in written]
+    generated += [f for path, f in written.items() if path not in planned_paths]  # companion stylesheets
 
     # Writers compile their own work: once every planned file exists, bundle the project and hand each
     # writer the build errors found in ITS files, all repaired in parallel on the writer model. Whatever
@@ -3784,13 +4216,19 @@ def _interview_clean(payload: Any, raw: str) -> tuple[str, str, list[str]]:
 SPEC_ARCHITECT_SYSTEM_PROMPT = """Sei un software architect e product lead. Trasformi un'idea di progetto web
 (breve o molto lunga, con eventuale intervista) in una SPECIFICA OPERATIVA e in un PIANO A MILESTONE.
 
+Sii CONCISO e operativo (specifica entro ~900 parole, frasi brevi, niente prosa): serve a far costruire, non a essere letta.
 Non perdere nessun requisito dell'input: scomponi, ordina, deduplica, ma conserva ogni funzione, regola, testo,
 dato e vincolo citato. Se qualcosa e` ambiguo scegli il default piu` ragionevole e annotalo in "Assunzioni".
 
 Output, ESATTAMENTE in questo ordine:
 1) La specifica in Markdown con le sezioni: # Titolo; ## Obiettivo e pubblico; ## Ruoli e permessi;
-   ## Funzioni (elenco numerato F1, F2... ciascuna con criterio di accettazione); ## Pagine / schermate
+   ## Funzioni (elenco numerato F1, F2... ciascuna con criterio di accettazione; prima quelle RICHIESTE, poi quelle PROATTIVE scritte nel formato "F7: [+] testo");
+   ## Pagine / schermate
    (e rotte); ## Modello dati (collezioni e campi); ## Stile e contenuti; ## Integrazioni reali; ## Assunzioni; ## Fuori scope.
+   - Funzioni proattive "[+]": oltre a cio' che e' stato chiesto, aggiungi 4-8 funzioni che l'utente si aspetta senza dirlo e che rendono
+     l'app davvero utile, scegliendo quelle pertinenti al soggetto: stati vuoti e di errore curati, salvataggio e ripresa del lavoro,
+     modifica/annulla/ripristino, ricerca-filtri-ordinamento nelle liste, confronto/riepilogo/condivisione/esportazione, percorso guidato
+     iniziale, aiuto contestuale, tastiera e accessibilita', mobile reale. Mai snaturare l'idea ne' superare 8; ognuna con criterio di accettazione.
    - "Stile e contenuti": se l'intervista contiene una direzione «Stile ...» riportala ALLA LETTERA (nome, font, esadecimali, raggio,
      carattere). Se manca, DEFINISCI una direzione artistica specifica per il soggetto e il pubblico (2 font Google, palette con ruoli in
      esadecimale, raggio, carattere del layout, tono dei testi): mai uno stile neutro o generico. Indica quali immagini servono.
@@ -3938,7 +4376,7 @@ async def coding_ai_interview_chat(
     }
 
 
-SPEC_TIMEOUT_SECONDS = 150
+SPEC_TIMEOUT_SECONDS = 90
 
 
 async def _run_spec(db: AsyncSession, actor: StudentOrTeacher, body: dict) -> dict:
@@ -3958,15 +4396,22 @@ async def _run_spec(db: AsyncSession, actor: StudentOrTeacher, body: dict) -> di
     spec_md, milestones, degraded = "", [], False
     try:
         architect, _ = await _vibe_team(db, actor.is_student)
-        response = await asyncio.wait_for(
-            vibe_pipeline.generate(provider=architect[0], model=architect[1], allow_web_search=False,
+        # Streamed with hidden thinking OFF: the spec is a rewrite of known input, and a reasoning model used to sit
+        # silent for 2+ minutes here, hit the timeout and fall to the (poorer) deterministic spec.
+        parts: list[str] = []
+
+        async def collect():
+            async for chunk in llm_service.generate_stream(
+                provider=architect[0], model=architect[1], allow_web_search=False, thinking=False,
                 messages=[{"role": "user", "content": content}],
-                system_prompt=SPEC_ARCHITECT_SYSTEM_PROMPT,
-                temperature=0.3,
-                max_tokens=28000,
-            ),
-            timeout=SPEC_TIMEOUT_SECONDS,
-        )
+                system_prompt=SPEC_ARCHITECT_SYSTEM_PROMPT, temperature=0.3, max_tokens=16000,
+            ):
+                parts.append(chunk)
+
+        await asyncio.wait_for(collect(), timeout=SPEC_TIMEOUT_SECONDS)
+        raw = "".join(parts)
+        response = LLMResponse(content=raw, provider=architect[0], model=architect[1],
+                               prompt_tokens=(len(content) + len(SPEC_ARCHITECT_SYSTEM_PROMPT)) // 4, completion_tokens=len(raw) // 4)
         await _record_coding_cost(
             db, provider=response.provider, model=response.model,
             prompt_tokens=response.prompt_tokens, completion_tokens=response.completion_tokens,
@@ -4298,6 +4743,23 @@ async def verify_project_preview(project_id: UUID, version_id: UUID, body: Previ
 
 
 _THUMBNAIL_RE = re.compile(r"^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$")
+
+
+@router.post("/projects/{project_id}/refine-checklist")
+async def refine_checklist(project_id: UUID, body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)], actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
+    """Checklist for the «Rifinisci» dialog: every function of the spec with its state in the current code
+    (done / partial / missing) so the user can pick what to close next. One verifier call, nothing is changed."""
+    await _get_accessible_project(db, actor, project_id)
+    files = [f for f in (body.get("files") or []) if isinstance(f, dict) and f.get("path")][:300]
+    spec_text = next((str(f.get("content") or "") for f in files if str(f.get("path")).lower() == "spec.md"), "")
+    reqs = vibe_verify.scoped_requirements(spec_text, "")
+    if not reqs:
+        return {"items": [], "verified": False}
+    gaps, _pt, _ct, valid = await _verify_conformance(files, reqs)
+    by_id = {g["id"]: g for g in gaps}
+    items = [{"id": rid, "text": text, "status": by_id[rid]["status"] if rid in by_id else "done", "why": by_id.get(rid, {}).get("why", "")} for rid, text in reqs]
+    return {"items": items, "verified": bool(valid)}
 
 
 @router.put("/projects/{project_id}/thumbnail")
@@ -4700,6 +5162,8 @@ async def generate_project_code_stream(
 ):
     project = await _get_accessible_project(db, actor, project_id)
     async with vibe_runs.generation_start(project.tenant_id, project.id):
+        if (body.mode or "").strip() == "refine":
+            return await _refine_project_stream(project_id, body, db, actor)
         return await _generate_project_code_stream(project_id, body, db, actor)
 
 
@@ -5122,7 +5586,7 @@ async def _generate_project_code_stream(
                     current_lines.append(buffer)
             # A file still open here never received its "=== END ===": the model hit its output
             # limit mid-file. Keeping that half file is what produced broken, unrunnable projects.
-            truncated_path = current_path if (current_path is not None and current_kind == "file" and not _looks_complete("\n".join(current_lines))) else None
+            truncated_path = current_path if (current_path is not None and current_kind == "file" and not _looks_complete("\n".join(current_lines), current_path)) else None
             done = _finalize_current()
             if truncated_path:
                 generated = [g for g in generated if g["path"] != truncated_path]
@@ -5138,7 +5602,7 @@ async def _generate_project_code_stream(
             if truncated_path and truncated_path not in missing_paths:
                 missing_paths.insert(0, truncated_path)
             if missing_paths and state == "files":
-                yield _sse({"type": "status", "message": f"Output troppo lungo, completo {len(missing_paths)} file mancanti..."})
+                yield _sse({"type": "status", "message": f"Completo gli ultimi {len(missing_paths)} file..."})
                 extra: list[dict] = []
                 async for kind, value in _heartbeat_await(_continue_missing_files(
                     final_gen_user, generated, missing_paths, gen_provider, gen_model,
@@ -5321,66 +5785,10 @@ async def _generate_project_code_stream(
                         yield _sse({"type": "status", "message": f"Import corretti ({len(import_fixed)} file)."})
                     broken_imports_unresolved = _check_broken_imports(files)
 
-            # BRIEF CONFORMANCE: compare the generated code with the brief's F1..Fn. Missing/stubbed features get one
-            # focused repair (then a build re-check; if the repair breaks the build it is discarded), so a project
-            # can no longer silently ship without functions the user asked for. Fresh builds and milestone builds only.
+            # Deep checks (brief conformance, real-browser quality loop) are NOT part of the default build: a school
+            # needs a project in about a minute. They run on demand, from the «Rifinisci» command (mode "refine").
             conformance: dict = {"checked": 0, "gaps": [], "repaired": []}
-            spec_text = next((str(f.get("content") or "") for f in kb_files if str(f.get("path") or "").lower() == "spec.md"), "")
-            if (react_expected or _is_react_files(files)) and not is_fix and not broken_imports_unresolved and (not is_edit or vibe_verify.is_scoped_request(user_prompt)):
-                conf_reqs = vibe_verify.scoped_requirements(spec_text, user_prompt)
-                if conf_reqs:
-                    conformance["checked"] = len(conf_reqs)
-                    yield _sse({"type": "status", "message": f"Verifico che tutte le {len(conf_reqs)} funzioni del brief siano presenti..."})
-                    conf_gaps: list[dict] = []
-                    async for kind, value in _heartbeat_await(_verify_conformance(files, conf_reqs)):
-                        if kind == "ping":
-                            yield _sse({"type": "ping"})
-                        else:
-                            conf_gaps, vp, vc, conf_valid = value
-                            conformance["verified"] = conf_valid
-                            usage_prompt += vp
-                            usage_completion += vc
-                    if conf_gaps:
-                        gap_ids = ", ".join(g["id"] for g in conf_gaps)
-                        yield _sse({"type": "status", "message": f"Mancano o sono incomplete {len(conf_gaps)} funzioni ({gap_ids}): le completo..."})
-                        yield _sse({"type": "conformance", "gaps": conf_gaps})
-                        before_files = files
-                        repaired: list[str] = []
-                        async for kind, value in _heartbeat_await(_conformance_repair(files, conf_gaps, gen_provider, gen_model, brief_reminder)):
-                            if kind == "ping":
-                                yield _sse({"type": "ping"})
-                            else:
-                                files, repaired, rp, rc = value
-                                usage_prompt += rp
-                                usage_completion += rc
-                        if repaired:
-                            files, _ = _sanitize_package_json(files)
-                            files, _ = _autodeclare_packages(files)
-                            post_issues: list = []
-                            async for kind, value in _heartbeat_await(vibe_gate.check_project(files, set(ALLOWED_NPM_PACKAGES))):
-                                if kind == "ping":
-                                    yield _sse({"type": "ping"})
-                                else:
-                                    post_issues, _ran = value
-                            if vibe_gate.blocking(post_issues) or _check_broken_imports(files):
-                                files = before_files
-                                repaired = []
-                                yield _sse({"type": "status", "message": "Il completamento rompeva la build: lo scarto e segnalo le funzioni mancanti."})
-                            else:
-                                yield _sse({"type": "status", "message": f"Funzioni completate ({len(repaired)} file aggiornati)."})
-                        conformance["repaired"] = repaired
-                        conformance["gaps"] = conf_gaps
-                        if repaired:
-                            # A repair is not proof of conformance: verify the affected requirements again.
-                            async for kind, value in _heartbeat_await(_verify_conformance(files, conf_reqs)):
-                                if kind == "ping": yield _sse({"type": "ping"})
-                                else:
-                                    final_gaps, vp, vc, valid = value
-                                    usage_prompt += vp; usage_completion += vc
-                                    conformance["verified"] = valid
-                                    if valid: conformance["gaps"] = final_gaps
-                            if conformance.get("verified") and not conformance["gaps"]:
-                                conformance["completed"] = [g["id"] for g in conf_gaps]
+            quality: dict = {"scorecard": None, "rounds": [], "tests": 0, "ran": False}
 
             if react_expected or _is_react_files(files):
                 async for kind, value in _heartbeat_await(vibe_gate.check_project(files, set(ALLOWED_NPM_PACKAGES))):
@@ -5392,6 +5800,8 @@ async def _generate_project_code_stream(
             validation = vibe_quality.assessment(files, gate_remaining or broken_imports_unresolved, gate_ran,
                 gaps=conformance["gaps"], features_checked=bool(conformance.get("verified")))
             validation["features_required"] = bool(conformance["checked"])
+            if quality.get("scorecard"):
+                validation["quality"] = {"score": quality["scorecard"], "rounds": quality["rounds"], "tests": quality.get("tests", 0), "defects": quality.get("defects", [])[:8]}
             file_summary, file_summary_json = _build_file_change_summary(previous_files, files)
             summary = f"Codice generato: {len(files)} file, {file_summary_json['total_lines']} righe. " + (
                 "Controlli da completare prima dell'uso." if vibe_quality.build_status(validation) == "needs_review" else
@@ -5604,6 +6014,162 @@ async def _generate_project_code_stream(
         on_finish=record_finish,
         progress_fn=track_progress,
         expected_seconds=90.0,
+    )
+    return background_jobs.stream_response(job_id, "text/event-stream")
+
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+async def _refine_project_stream(project_id: UUID, body: CodingGenerateRequest, db: AsyncSession, actor: StudentOrTeacher):
+    """«Rifinisci»: on-demand deep check that helps the user CLOSE the project against its brief. Completes the missing brief
+    functions, runs the app in a real browser (types, mobile, user flows, look), fixes what is wrong and saves a new version.
+    Deliberately NOT part of the default build, which must stay fast. `body.prompt` is an optional focus from the user."""
+    project = await _get_accessible_project(db, actor, project_id)
+    project_pk, project_title, current_version_id = project.id, project.title, project.current_version_id
+    project_session_id, project_tenant_id = project.session_id, project.tenant_id
+    track_student_id = actor.student.id if actor.is_student else None
+    track_teacher_id = actor.teacher.id if actor.is_teacher else None
+    focus = (body.prompt or "").strip()[:600]
+
+    previous_files: list[dict] = []
+    previous_collaboration: dict = {}
+    if current_version_id:
+        current_version = (await db.execute(select(CodingVersion).where(CodingVersion.id == current_version_id))).scalar_one_or_none()
+        if current_version:
+            manifest = current_version.source_manifest_json or {}
+            previous_files = manifest.get("files") or []
+            previous_collaboration = manifest.get("collaboration") or {}
+    if body.files:  # unsaved editor state is the base, like a normal generation
+        previous_files = [{"path": f.path, "content": f.content, "language": f.language or ""} for f in body.files if f.path and ".." not in f.path.split("/")]
+    code_files = [f for f in previous_files if not str(f.get("path") or "").lower().endswith(".md")]
+    if not code_files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Non c'è ancora codice da rifinire: genera prima il progetto")
+    if not _is_react_files(previous_files):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="La rifinitura automatica funziona sui progetti React")
+
+    kb_files = _kb_files(previous_files)
+    spec_text = next((str(f.get("content") or "") for f in kb_files if str(f.get("path") or "").lower() == "spec.md"), "")
+    brief_context = ("\n\n" + vibe_contract.brief_block(kb_files)) if kb_files else ""
+    brief_reminder = vibe_contract.brief_reminder(kb_files)
+    architect_pair, writer_pair = await _vibe_team(db, actor.is_student)
+    run = vibe_pipeline.Run(writer_pair, architect_pair)
+    request_text = f"Rifinisci il progetto secondo la specifica" + (f" (priorità: {focus})" if focus else "")
+    if vibe_verify.is_scoped_request(focus):  # «Vai!» on a checklist item: verify and complete exactly those functions
+        request_text = focus
+    prompt_message = CodingMessage(project_id=project_pk, actor_type=_actor_identity(actor)[0], actor_id=_actor_identity(actor)[1], role="user", content=request_text,
+                                   metadata_json={"kind": "refine_request"})
+    db.add(prompt_message)
+    await db.flush()
+    prompt_message_id = prompt_message.id
+    await db.commit()
+
+    async def event_stream():
+        try:
+            yield _sse({"type": "status", "message": "Rifinitura: confronto il progetto con la specifica, poi lo provo in un browser vero..."})
+            files = [dict(f) for f in previous_files]
+            conformance: dict = {"checked": 0, "gaps": [], "repaired": []}
+            async for kind, value in _conformance_stage(files, spec_text, focus, writer_pair[0], writer_pair[1], brief_reminder):
+                if kind == "sse":
+                    yield _sse(value)
+                else:
+                    files, conformance = value
+            quality: dict = {"scorecard": None, "rounds": [], "tests": 0, "ran": False}
+            async for kind, value in _quality_loop(files, reqs=vibe_contract.extract_requirements(spec_text), brief=brief_context, brief_reminder=brief_reminder,
+                                                    writer=writer_pair, architect=architect_pair, run=run, rounds=QUALITY_ROUNDS, focus=focus):
+                if kind == "sse":
+                    yield _sse(value)
+                else:
+                    quality = value
+                    files = value["files"]
+            files, dropped_packages = _sanitize_package_json(files)
+            files, _ = _autodeclare_packages(files)
+            gate_remaining: list = []
+            gate_ran = False
+            async for kind, value in _heartbeat_await(vibe_gate.check_project(files, set(ALLOWED_NPM_PACKAGES))):
+                if kind == "ping":
+                    yield _sse({"type": "ping"})
+                else:
+                    final_issues, gate_ran = value
+                    gate_remaining = vibe_gate.blocking(final_issues)
+            broken_imports_unresolved = _check_broken_imports(files)
+            if gate_remaining or broken_imports_unresolved:  # never replace a working version with a broken one
+                files = [dict(f) for f in previous_files]
+                yield _sse({"type": "status", "message": "La rifinitura non superava il controllo di build: conservo la versione attuale."})
+            validation = vibe_quality.assessment(files, [], gate_ran, gaps=conformance["gaps"], features_checked=bool(conformance.get("verified")))
+            validation["features_required"] = bool(conformance["checked"])
+            if quality.get("scorecard"):
+                validation["quality"] = {"score": quality["scorecard"], "rounds": quality["rounds"], "tests": quality.get("tests", 0), "defects": quality.get("defects", [])[:8]}
+            file_summary, file_summary_json = _build_file_change_summary(previous_files, files)
+            card = quality.get("scorecard") or {}
+            summary = ("Rifinitura completata" + (f": punteggio {card['overall']}/100" if card.get("overall") is not None else "")
+                       + (f", {len(conformance['repaired'])} file aggiornati per la specifica" if conformance.get("repaired") else "") + f". {len(files)} file, {file_summary_json['total_lines']} righe.")
+            yield _sse({"type": "status", "message": "Salvo la versione rifinita..."})
+            next_number = ((await db.execute(select(func.max(CodingVersion.version_number)).where(CodingVersion.project_id == project_pk))).scalar_one_or_none() or 0) + 1
+            version = CodingVersion(
+                project_id=project_pk, parent_version_id=current_version_id, version_number=next_number,
+                source_manifest_json={"files": files, "summary": summary, **({"collaboration": previous_collaboration} if previous_collaboration else {})},
+                artifact_manifest_json={"validation": validation, "diagnostics": run.diagnostic()},
+                prompt_message_id=prompt_message_id, build_status=vibe_quality.build_status(validation), review_status="pending", created_by_actor_type="agent",
+            )
+            db.add(version)
+            await db.flush()
+            new_version_id = version.id
+            proj = (await db.execute(select(CodingProject).where(CodingProject.id == project_pk))).scalar_one_or_none()
+            if proj:
+                proj.current_version_id = new_version_id
+                proj.status = "generated"
+            if conformance["gaps"]:
+                db.add(CodingMessage(project_id=project_pk, actor_type="agent", agent_name="Controllo brief", role="assistant",
+                    content="Dopo la rifinitura queste funzioni del brief risultano ancora mancanti o incomplete:\n" + vibe_verify.describe_gaps(conformance["gaps"]),
+                    metadata_json={"kind": "brief_warning", "version_id": str(new_version_id), "gaps": conformance["gaps"][:20]}))
+            remaining = quality.get("defects") or []
+            db.add(CodingMessage(project_id=project_pk, actor_type="agent", agent_name="Revisore", role="assistant",
+                content=summary + ("\nDifetti ancora aperti:\n" + "\n".join(f"- {d['message']}" for d in remaining[:6]) if remaining else ""),
+                metadata_json={"kind": "refine_result", "version_id": str(new_version_id), "score": card, "file_count": len(files)}))
+            await db.commit()
+            for call in run.calls:
+                if call.get("prompt_tokens") or call.get("completion_tokens"):
+                    await _record_coding_cost(db, provider=call["provider"], model=call["model"], prompt_tokens=call.get("prompt_tokens") or 0,
+                        completion_tokens=call.get("completion_tokens") or 0, context="coding_refine", tenant_id=project_tenant_id,
+                        session_id=project_session_id, student_id=track_student_id, teacher_id=track_teacher_id)
+            yield _sse({
+                "type": "done", "files": files, "summary": summary, "version_id": str(new_version_id), "version_number": next_number,
+                "needs_review": vibe_quality.build_status(validation) == "needs_review", "validation": validation,
+                "gate": {"ran": gate_ran, "repaired": [], "remaining": [i.to_dict() for i in gate_remaining[:10]]},
+                "heavy_deps": vibe_gate.heavy_dependencies(files), "conformance": conformance, "fix": False, "refine": True, "dropped_packages": dropped_packages,
+                "patches": {"applied": 0, "repaired": [], "failed": []},
+            })
+        except Exception as exc:
+            logger.exception("coding refine stream failed")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            yield _sse({"type": "error", "code": "refine_error", "message": "Rifinitura interrotta. La versione precedente è conservata.", "diagnostics": run.diagnostic()})
+
+    def track_progress(event: dict, state: background_jobs.ProgressState) -> None:
+        kind = event.get("type")
+        if kind == "status":
+            state.label = str(event.get("message") or "")[:200] or state.label
+            state.progress = max(state.progress or 0.0, 0.05)
+        elif kind == "quality":
+            state.progress = min(0.9, 0.2 + 0.7 * (int(event.get("round") or 1) / max(1, int(event.get("rounds") or 1))))
+            state.label = f"Controllo qualità, giro {event.get('round')}/{event.get('rounds')}: punteggio {(event.get('score') or {}).get('overall')}/100"
+        elif kind == "done":
+            state.result = {"project_id": str(project_pk), "version_id": event.get("version_id"), "validation": event.get("validation"), "diagnostics": run.diagnostic()}
+            state.label = "Rifinitura completata"
+        elif kind == "error":
+            state.result = {"project_id": str(project_pk), "diagnostics": run.diagnostic(), "error_code": event.get("code", "refine_error")}
+
+    async def record_finish(status_, state, listening):
+        state.result = {**(state.result or {}), "project_id": str(project_pk), "diagnostics": run.diagnostic()}
+
+    job_id = await background_jobs.start_stream_job(
+        background_jobs.JobOwner.from_actor(actor), kind="vibe_generate", title=f"Vibe Lab · rifinitura · {project_title}"[:200],
+        description=request_text[:4000], route="module:coding" if actor.is_student else "/teacher/coding", resource_id=str(project_pk),
+        stream=vibe_pipeline.events(event_stream(), run), event_format="sse", on_finish=record_finish, progress_fn=track_progress, expected_seconds=240.0,
     )
     return background_jobs.stream_response(job_id, "text/event-stream")
 

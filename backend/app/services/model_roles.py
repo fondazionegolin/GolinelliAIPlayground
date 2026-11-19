@@ -58,6 +58,8 @@ ROLES: dict[str, Role] = {r.id: r for r in [
          (settings.CODING_LLM_PROVIDER, settings.CODING_LLM_MODEL), provider_attr="CODING_LLM_PROVIDER", model_attr="CODING_LLM_MODEL", where=("Vibe Lab",)),
     Role("coding.student", "chat", "Vibe Lab · architetto (studenti)", "Come l'architetto docenti, per i progetti degli studenti (pagato dal fondo studenti).", "text",
          ("deepseek", "deepseek-v4-pro"), where=("Vibe Lab",)),
+    Role("coding.critic", "chat", "Vibe Lab · revisore e QA", "Guarda gli screenshot dell'app (mobile e desktop), giudica estetica, layout e completezza rispetto al brief e scrive i test di accettazione. Serve un modello con visione, di una famiglia diversa dagli scrittori.", "text",
+         ("anthropic", "claude-sonnet-5-5"), where=("Vibe Lab",)),
     Role("coding.writer", "chat", "Vibe Lab · scrittori di codice", "Agenti che scrivono i file in parallelo seguendo il contratto dell'architetto, compilano e si autocorreggono; applicano anche le modifiche e i fix. Scegli un modello economico, veloce e preciso nel codice.", "text",
          ("openrouter", "z-ai/glm-5.3"), where=("Vibe Lab",)),
     Role("agentic.architect", "chat", "Dataflow Studio · architetto", "Assistente che progetta i workflow del Dataflow Studio a partire da un'intenzione (serve un modello capace).", "text",

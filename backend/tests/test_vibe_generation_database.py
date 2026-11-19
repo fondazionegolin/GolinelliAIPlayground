@@ -65,6 +65,7 @@ def install_models(monkeypatch, mode):
     monkeypatch.setattr(vibe_pipeline.llm_service,'generate_stream',stream)
     monkeypatch.setattr(coding,'_resolve_vibelab_model',AsyncMock(return_value=('test','model')))
     monkeypatch.setattr(coding,'_vibe_team',AsyncMock(return_value=(('test','model'),('test','model'))))
+    monkeypatch.setattr(coding.vibe_qa,'available',lambda:False)
     monkeypatch.setattr(coding.model_selection,'default_pair',lambda _:('test','model'))
     monkeypatch.setattr(coding.model_selection,'scoped_models',AsyncMock(return_value=[]))
     monkeypatch.setattr(coding,'_record_coding_cost',AsyncMock())
@@ -132,3 +133,24 @@ async def test_postgres_start_lock_is_exclusive_and_released():
         assert exc.value.status_code==409
         async with vibe_runs.generation_start(tenant,uuid4()):pass
     async with vibe_runs.generation_start(tenant,project):pass
+
+
+async def test_default_build_has_no_review_stages_and_refine_is_on_demand(monkeypatch):
+    events, state, repairs = install_models(monkeypatch, 'canonical')
+    quality_calls = []
+
+    async def fake_loop(files, **kwargs):
+        quality_calls.append(kwargs.get('focus'))
+        yield ('result', {'files': files, 'scorecard': {'overall': 91, 'defects': {'blocker': 0, 'major': 0, 'minor': 1}, 'css_coverage': '3/3'}, 'rounds': [{'round': 1, 'overall': 91}], 'tests': 2, 'ran': True, 'defects': []})
+    monkeypatch.setattr(coding, '_quality_loop', fake_loop)
+    async with isolated() as (db, actor, project):
+        await coding.generate_project_code_stream(project.id, CodingGenerateRequest(prompt='Crea un saluto'), db, actor)
+        assert quality_calls == []  # the default build never runs the deep review
+        assert not any(e['type'] in {'quality', 'conformance'} for e in events)
+        first = project.current_version_id
+        events.clear()
+        await coding.generate_project_code_stream(project.id, CodingGenerateRequest(mode='refine', prompt='più bello su telefono'), db, actor)
+        done = next(e for e in events if e['type'] == 'done')
+        assert quality_calls == ['più bello su telefono'] and done['refine'] is True
+        assert done['validation']['quality']['score']['overall'] == 91
+        assert project.current_version_id != first

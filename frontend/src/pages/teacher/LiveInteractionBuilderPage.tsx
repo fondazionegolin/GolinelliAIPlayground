@@ -1627,35 +1627,37 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-[1400px] px-5 py-7 md:px-8">
 
-      {/* Header */}
-      <div className="mb-8 flex flex-col gap-5 pb-6 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <SectionHeading section="/teacher/live-interaction" className="text-2xl font-bold text-slate-800">Live Interaction</SectionHeading>
-            <button
-              onClick={() => setShowTutorial(v => !v)}
-              className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors"
-              title={showTutorial ? tl("Nascondi il tutorial") : tl("Come funziona: mostra il tutorial")}
-              aria-label={showTutorial ? tl("Nascondi il tutorial") : tl("Mostra il tutorial")}
-              aria-pressed={showTutorial}
-            >
-              <HelpCircle className="h-4 w-4" />
-            </button>
-          </div>
-          <p className="mt-1 text-sm text-slate-500">
-            {storedSession ? tl("Sessione: {0}", storedSession.name) : tl("Seleziona una sessione dalla navbar")}
-          </p>
+      {/* Header: same layout as the Video Lab library. */}
+      <header className="mb-8 flex flex-wrap items-end gap-4">
+        <div className="min-w-0 flex-1">
+          <SectionHeading
+            section="/teacher/live-interaction"
+            className="text-2xl font-black tracking-tight text-[var(--text-primary)]"
+            subtitle={<>
+              {tl("Quiz, sondaggi, word wall ed escape room da proiettare in classe: gli studenti rispondono dal telefono e vedi i risultati in tempo reale.")}
+              <span className="mt-1 flex items-center gap-2 font-semibold text-[var(--text-primary)]">
+                {storedSession ? tl("Classe: {0}", storedSession.name) : tl("Seleziona una sessione dalla navbar")}
+                <button
+                  onClick={() => setShowTutorial(v => !v)}
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold text-[var(--text-secondary)] hover:bg-black/5 hover:text-[var(--text-primary)]"
+                  title={showTutorial ? tl("Nascondi il tutorial") : tl("Come funziona: mostra il tutorial")}
+                  aria-pressed={showTutorial}
+                >
+                  <HelpCircle className="h-3.5 w-3.5" /> {tl("Come funziona")}
+                </button>
+              </span>
+            </>}
+            subtitleClassName="mt-3 max-w-2xl text-sm text-[var(--text-secondary)]"
+          >Live Interaction</SectionHeading>
         </div>
         {activeSessionId && (
-          <div className="flex sm:justify-end">
-            <Button className="w-full justify-center sm:w-auto" tone="accent" surface="solid" onClick={() => setShowNewSessionModal(true)}>
-              <Plus className="h-4 w-4" /> {tl("Nuova sessione")}
-            </Button>
-          </div>
+          <Button tone="accent" surface="solid" density="roomy" onClick={() => setShowNewSessionModal(true)}>
+            <Plus className="h-4 w-4" /> {tl("Nuova sessione")}
+          </Button>
         )}
-      </div>
+      </header>
 
       {showNewSessionModal && (
         <NewSessionDialog
@@ -1757,11 +1759,11 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       )}
 
       {activeSessionId && !isLoading && interactions?.length === 0 && (
-        <div className="text-center py-16 text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl">
-          <CloudLightning className="h-12 w-12 mx-auto mb-3 opacity-40" />
-          <p className="font-medium text-slate-600 mb-1">{tl("Nessuna sessione live ancora")}</p>
-          <p className="text-sm">{tl("Crea la prima sessione live per questa classe!")}</p>
-        </div>
+        <button type="button" onClick={() => setShowNewSessionModal(true)} className="ui-card flex w-full flex-col items-center gap-3 px-6 py-20 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ds-surface-muted)] text-[var(--app-accent)]"><CloudLightning className="h-6 w-6" /></span>
+          <span className="text-lg font-black text-[var(--text-primary)]">{tl("Crea la tua prima sessione live")}</span>
+          <span className="max-w-md text-sm text-[var(--text-secondary)]">{tl("Scegli un quiz, un sondaggio o un’escape room e guarda l’anteprima prima di iniziare.")}</span>
+        </button>
       )}
 
       {/* List */}

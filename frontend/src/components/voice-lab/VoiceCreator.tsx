@@ -36,16 +36,15 @@ export function VoiceCreator({ open, configured, onClose, onCreated }: {
   return <Dialog open={open} modal={false} onOpenChange={value => { if (!value && !busy) onClose() }}>
     <DialogContent size="lg" showClose={!busy} className="voice-lab-creator max-h-[90dvh] overflow-y-auto text-[var(--text-primary)]"
       onInteractOutside={event => { if ((event.target as Element)?.closest('[data-audio-panel], [data-music-trigger]')) event.preventDefault() }}>
-      <DialogHeader><DialogTitle>{tl('Crea una voce')}</DialogTitle><DialogDescription>{tl('Descrivi la voce che immagini oppure parti da campioni audio. Potrai poi usarla per leggere qualsiasi testo.')}</DialogDescription></DialogHeader>
-      <fieldset disabled={busy} className="min-w-0 space-y-5">
+      <DialogHeader><DialogTitle>{tl('Crea una voce')}</DialogTitle><DialogDescription>{tl('Descrivila o carica dei campioni, poi ascolta e salva.')}</DialogDescription></DialogHeader>
+      <fieldset disabled={busy} className="min-w-0 space-y-3">
         <div role="group" aria-label={tl('Come creare la voce')} className="inline-flex max-w-full flex-wrap gap-1.5 p-1.5" style={buildAccentNavClusterStyle()}>
-          <Button tone="neutral" surface="ghost" aria-pressed={mode === 'description'} className={mode === 'description' ? 'ds-selected' : ''} onClick={() => { setMode('description'); setError('') }}>{tl('Da una descrizione')}</Button>
-          <Button tone="neutral" surface="ghost" aria-pressed={mode === 'samples'} className={mode === 'samples' ? 'ds-selected' : ''} onClick={() => { setMode('samples'); setError('') }}>{tl('Da campioni audio')}</Button>
+          <Button density="compact" tone="neutral" surface="ghost" aria-pressed={mode === 'description'} className={mode === 'description' ? 'ds-selected' : ''} onClick={() => { setMode('description'); setError('') }}>{tl('Da una descrizione')}</Button>
+          <Button density="compact" tone="neutral" surface="ghost" aria-pressed={mode === 'samples'} className={mode === 'samples' ? 'ds-selected' : ''} onClick={() => { setMode('samples'); setError('') }}>{tl('Da campioni audio')}</Button>
         </div>
         <label className={field}>{tl('Nome della voce')}<Input maxLength={100} value={name} onChange={e => setName(e.target.value)} placeholder={tl('Per esempio: La voce del laboratorio')} /></label>
         <label className={field}>{tl('Come deve suonare?')}<Textarea rows={4} maxLength={1000} value={description} onChange={e => setDescription(e.target.value)} placeholder={tl('Una voce italiana calda, adulta e sorridente, con tono vivace e ritmo tranquillo.')} /><span className="block text-xs font-normal text-[var(--text-secondary)]">{tl('Descrivi timbro, accento, tono e ritmo.')}</span></label>
         {mode === 'description' ? <>
-          <p className="text-sm text-[var(--text-secondary)]">{tl('Creerò alcune anteprime: ascoltale e salva la voce che preferisci.')}</p>
           <p aria-live="polite" className="text-sm text-[var(--text-secondary)]">{quote.loading ? tl('Calcolo dei crediti…') : quote.error || (quote.data ? tl('Costo stimato delle anteprime: {0} crediti', quote.data.credits.toLocaleString('it-IT', { maximumFractionDigits: 2 })) : '')}</p>
           <Button disabled={!configured || !name.trim() || description.trim().length < 20 || !quote.data || quote.loading || !!quote.error} onClick={() => { setError(''); design.mutate() }}><Sparkles className="h-4 w-4" />{tl(previews.length ? 'Genera altre anteprime' : 'Crea le anteprime')}</Button>
           {previews.map((preview, index) => <div key={preview.id} className="voice-lab-options space-y-3 rounded-[var(--control-radius)] p-4">

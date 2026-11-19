@@ -40,6 +40,9 @@ ErrorBoundary), golinelli-bridge.ts, l'import di styles.css. Il bootstrap fa `im
 STRUTTURA FILE (tutti i percorsi sono relativi alla RADICE del progetto):
 - OBBLIGATORI: `App.tsx` (con `export default function App()`) e `styles.css` — nella radice, MAI dentro `src/`.
   Una cartella `src/` NON esiste: `src/App.tsx` romperebbe il progetto. Usa `components/`, `hooks/`, `lib/`, `types.ts`.
+- STILI: ogni classe usata in un `className` DEVE avere la sua regola CSS. Ogni componente con className ha un file `.css` gemello
+  (`components/Card.tsx` -> `components/Card.css`, importato con `import './Card.css'`) che definisce TUTTE le sue classi con layout
+  reale (grid/flex), spaziatura, tipografia e stati; usa solo le variabili :root di styles.css. Una classe senza regola = pagina senza layout.
 - Import relativi SENZA estensione, con la maiuscola/minuscola ESATTA del nome file (`./components/Header`
   per `components/Header.tsx`). Niente alias di percorso (`@/`, `~/`): non esistono.
 - Ogni import deve puntare a un file che SCRIVI TU in questa risposta (o gia' esistente) e il nome importato
@@ -166,7 +169,7 @@ export function useGeneratedImage(key: string, prompt: string) {
       try {
         const saved = await window.GolinelliAI.loadData({ key: 'img:' + key })
         if (typeof saved?.value === 'string' && saved.value) { if (alive) setUrl(saved.value); return }
-        const made = await slot(() => window.GolinelliAI.generateImage({ prompt }))
+        const made: any = await slot(() => window.GolinelliAI.generateImage({ prompt }))
         if (made?.image_url) {
           await window.GolinelliAI.saveData({ key: 'img:' + key, value: made.image_url }).catch(() => undefined)
           if (alive) setUrl(made.image_url)

@@ -448,7 +448,8 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
 @router.post("/voices/clone")
 async def clone_voice(db: Db, teacher: Teacher, name: Annotated[str, Form(min_length=1, max_length=100)],
                       consent: Annotated[bool, Form()], description: Annotated[str, Form(max_length=1000)] = "",
-                      remove_noise: Annotated[bool, Form()] = False, files: list[UploadFile] = UploadField(default=[])):
+                      remove_noise: Annotated[bool, Form()] = False, files: list[UploadFile] = UploadField(default=[]),
+                      recorded: Annotated[bool, Form()] = False):
     if not consent:
         raise HTTPException(422, "Conferma di avere il diritto e il consenso a clonare questa voce")
     if not 1 <= len(files) <= 10:
@@ -456,6 +457,8 @@ async def clone_voice(db: Db, teacher: Teacher, name: Annotated[str, Form(min_le
     uploads = [await read_upload(file) for file in files]
     if sum(len(v[1]) for v in uploads) > MAX_BYTES:
         raise HTTPException(413, "I campioni possono pesare al massimo 50 MB in totale")
+    if recorded and (len(uploads) != 1 or await billing.duration(uploads[0][1]) < 30):
+        raise HTTPException(422, "Registra almeno 30 secondi di voce prima di clonarla")
     await budget(db, teacher)
     result = (await eleven.request("POST", "/v1/voices/add", data={"name": name, "description": description,
         "remove_background_noise": str(remove_noise).lower()}, files=[("files", v) for v in uploads])).json()

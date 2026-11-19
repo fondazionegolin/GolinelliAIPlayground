@@ -17,19 +17,16 @@ import { MusicPromptEditor } from '@/components/voice-lab/MusicPromptEditor'
 import { MusicLibrary } from '@/components/voice-lab/MusicLibrary'
 import { RenameAudioDialog } from '@/components/voice-lab/RenameAudioDialog'
 import { AudioShareDialog } from '@/components/voice-lab/AudioShareDialog'
-import { PlaylistWorkspace } from '@/components/voice-lab/PlaylistWorkspace'
+import { MusicPlaylistPanel } from '@/components/voice-lab/MusicPlaylistPanel'
+import { CloneVoiceDialog } from '@/components/voice-lab/CloneVoiceDialog'
 import { VoiceCreator } from '@/components/voice-lab/VoiceCreator'
 import { useVoiceLabQuote } from '@/components/voice-lab/useVoiceLabQuote'
 import '@/components/voice-lab/voice-lab.css'
 import { tl } from '@/i18n/tl'
 import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 
-type Workspace = 'voice' | 'music' | 'playlists' | 'library'
-const WORKSPACES = [{ id: 'voice', label: 'Voce', icon: Mic }, { id: 'music', label: 'Musica', icon: Music }, { id: 'playlists', label: 'Playlist', icon: Headphones }] as const
-const EXPRESSIONS = [{ label: 'Regolare', value: 1, hint: 'Una lettura uniforme e controllata.' },
-  { label: 'Naturale', value: 0.5, hint: 'Un equilibrio tra continuità e variazioni espressive.' },
-  { label: 'Espressiva', value: 0, hint: 'Più variazioni di ritmo e intonazione tra le frasi.' }]
-const LANGUAGES = [['it', 'Italiano'], ['en', 'English'], ['fr', 'Français'], ['es', 'Español'], ['de', 'Deutsch'], ['pt', 'Português'], ['nl', 'Nederlands'], ['pl', 'Polski'], ['ja', '日本語'], ['zh', '中文'], ['ko', '한국어'], ['ar', 'العربية']]
+type Workspace = 'voice' | 'music' | 'library'
+const WORKSPACES = [{ id: 'voice', label: 'Voce', icon: Mic }, { id: 'music', label: 'Musica', icon: Music }] as const
 const panel = 'ui-card min-w-0 rounded-[var(--card-radius)] p-5 text-[var(--text-primary)] sm:p-6'
 const hint = 'text-sm leading-6 text-[var(--text-secondary)]'
 const loadLabAudio: AudioLoader = async (track, signal) => (await voiceLabApi.content(track.id, signal)).data
@@ -43,7 +40,16 @@ export default function VoiceLabPage() {
   const audioPlayer = useBackgroundAudio()
   const resultPanel = useRef<HTMLElement>(null)
   const [params, setParams] = useSearchParams()
-  const [workspace, setWorkspace] = useState<Workspace>('voice')
+  const initialWorkspace = params.get('workspace')
+  const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace === 'music' || initialWorkspace === 'library' ? initialWorkspace : 'voice')
+  const changeWorkspace = (next: Workspace) => {
+    setWorkspace(next)
+    setParams(current => { const updated = new URLSearchParams(current); updated.set('workspace', next); return updated }, { replace: true })
+  }
+  const selectItem = (id: string, next?: Workspace) => {
+    if (next) setWorkspace(next)
+    setParams(current => { const updated = new URLSearchParams(current); updated.set('item', id); if (next) updated.set('workspace', next); return updated }, { replace: true })
+  }
   const [source, setSource] = useState<'text' | 'recording'>('text')
   const [text, setText] = useState('')
   const [voiceTitle, setVoiceTitle] = useState('')
@@ -54,15 +60,10 @@ export default function VoiceLabPage() {
   const [aiCover, setAiCover] = useState(true)
   const coverInput = useRef<HTMLInputElement>(null)
   const [voice, setVoice] = useState('')
-  const [model, setModel] = useState('')
   const [language, setLanguage] = useState('it')
-  const [format, setFormat] = useState('mp3_44100_128')
-  const [speed, setSpeed] = useState(1)
-  const [stability, setStability] = useState(0.5)
-  const [similarity, setSimilarity] = useState(0.75)
   const [file, setFile] = useState<File | null>(null)
-  const [removeNoise, setRemoveNoise] = useState(false)
   const [creatingVoice, setCreatingVoice] = useState(false)
+  const [cloningVoice, setCloningVoice] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [renaming, setRenaming] = useState<LabItem | null>(null)
   const [playlistCandidate, setPlaylistCandidate] = useState('')
@@ -92,7 +93,7 @@ export default function VoiceLabPage() {
     toast({ variant: 'destructive', title: tl('Operazione non completata'), description: typeof detail === 'string' ? detail : tl('Controlla i dati e riprova.') })
   }
   const done = (item: LabItem) => {
-    setParams({ item: item.id }); refresh()
+    selectItem(item.id, item.kind === 'voice' ? 'voice' : undefined); refresh()
     if (item.voice_id && item.kind === 'voice') { setVoice(item.voice_id); setWorkspace('voice') }
     toast({ title: item.kind === 'voice' ? tl('Voce pronta da usare') : tl('Audio salvato nella libreria e nei Files') })
     const coverError = (item.details as { cover_error?: string }).cover_error
@@ -100,7 +101,13 @@ export default function VoiceLabPage() {
   }
   const tool = workspace === 'voice' ? source === 'text' ? 'tts' : 'convert' : workspace
   const modelPool = (models.data || []).filter(m => tool === 'convert' ? m.conversion : m.tts)
-  const activeModel = modelPool.find(m => m.model_id === model) || modelPool.find(m => m.model_id === config.data?.default_model) || modelPool[0]
+  const compatibleModels = modelPool.filter(m => source === 'recording' || m.languages?.some(l => l.language_id === language))
+  const activeModel = compatibleModels.find(m => m.model_id === config.data?.default_model) || compatibleModels[0]
+  const languageNames = new Intl.DisplayNames(['it'], { type: 'language' })
+  const languages = Array.from(new Set(modelPool.flatMap(m => (m.languages || []).map(l => l.language_id))))
+    .map(code => ({ code, name: languageNames.of(code) || code }))
+    .sort((a, b) => a.code === 'it' ? -1 : b.code === 'it' ? 1 : a.name.localeCompare(b.name, 'it'))
+  const maxCharacters = Math.min(activeModel?.max_characters || 20000, 20000)
   const chosenVoice = voices.data?.find(v => v.voice_id === voice)
   const quote = useVoiceLabQuote({ tool, text: workspace === 'music' ? musicPrompt : text, dialogue: [],
     model: workspace === 'voice' ? activeModel?.model_id || '' : '', seconds: workspace === 'music' ? seconds : 1, file: tool === 'convert' ? file : null, previewText: '', enabled: configured })
@@ -130,7 +137,7 @@ export default function VoiceLabPage() {
     action: 'music', title: musicTitle.trim() || tl('Nuovo brano'), text: musicPrompt, seconds, instrumental, cover: aiCover ? 'ai' : 'none',
   } : {
     action: source === 'text' ? 'tts' : 'convert', title: voiceTitle.trim() || tl('Nuovo audio'), text: source === 'text' ? text : '',
-    voice_id: voice, model_id: activeModel?.model_id, language, output_format: format, speed, stability, similarity, remove_noise: removeNoise,
+    voice_id: voice, model_id: activeModel?.model_id, language, output_format: 'mp3_44100_128', speed: 1, stability: 0.5, similarity: 0.75,
   }, workspace === 'voice' && source === 'recording' ? file : null)).data.job_id), onSuccess: done, onError: fail })
   const coverDone = (item: LabItem) => { qc.setQueryData(['voice-lab-item', item.id], item); audioPlayer.setCover(item.id, item.cover_url ?? null); void qc.invalidateQueries({ queryKey: ['audio-files'] }); refresh() }
   const makeCover = useMutation({ mutationFn: async (id: string) => (await voiceLabApi.generateCover(id)).data, onSuccess: coverDone, onError: fail })
@@ -143,7 +150,7 @@ export default function VoiceLabPage() {
   const busy = generating || savePreview.isPending
   const ready = configured && !busy && !!quote.data && !quote.loading && !quote.error && (workspace === 'music'
     ? !!musicPrompt.trim() && Number.isInteger(seconds) && seconds >= (config.data?.music_model?.min_seconds ?? 3) && seconds <= (config.data?.music_model?.max_seconds ?? 600)
-    : !!chosenVoice && !!activeModel && (source === 'text' ? !!text.trim() && text.length <= Math.min(activeModel.max_characters || 5000, 20000) : !!file && file.size <= 50 * 1024 * 1024))
+    : !!chosenVoice && !!activeModel && (source === 'text' ? !!text.trim() && text.length <= maxCharacters : !!file && file.size <= 50 * 1024 * 1024))
 
   async function download(item: LabItem) {
     try {
@@ -154,70 +161,69 @@ export default function VoiceLabPage() {
     } catch (error) { fail(error) }
   }
 
-  return <div className="voice-lab-workspace mx-auto max-w-[1280px] space-y-5 p-4 pb-12 md:p-7">
-    <header className="flex flex-wrap items-center justify-between gap-4">
-      <div><SectionHeading section="/teacher/audio-lab" className="text-2xl font-bold text-[var(--text-primary)] md:text-3xl" subtitle={<>{tl('Voce, musica e playlist.')}</>} subtitleClassName={`mt-1 ${hint}`}>Audio Lab</SectionHeading></div>
-      <Button tone="neutral" surface="outline" aria-pressed={workspace === 'library'} disabled={busy} onClick={() => setWorkspace(workspace === 'library' ? 'voice' : 'library')}><Library className="h-4 w-4" />{tl('La mia libreria')}</Button>
+  return <div className="voice-lab-workspace mx-auto max-w-[1160px] space-y-3 p-3 sm:p-4">
+    <header className="voice-lab-header flex flex-wrap items-center justify-between gap-3">
+      <SectionHeading compact section="/teacher/audio-lab" className="text-xl font-bold text-[var(--text-primary)]">Audio Lab</SectionHeading>
+      <nav aria-label={tl('Strumenti Audio Lab')} className="voice-lab-tabs flex gap-1 p-1" style={buildAccentNavClusterStyle()}>
+        {WORKSPACES.map(tab => <Button key={tab.id} density="compact" tone="neutral" surface="ghost" disabled={busy} aria-current={workspace === tab.id ? 'page' : undefined}
+          className={workspace === tab.id ? 'ds-selected' : ''} onClick={() => changeWorkspace(tab.id)}><tab.icon className="h-4 w-4" />{tl(tab.label)}</Button>)}
+      </nav>
+      <Button density="compact" tone="neutral" surface="outline" aria-pressed={workspace === 'library'} disabled={busy} onClick={() => changeWorkspace(workspace === 'library' ? 'voice' : 'library')}><Library className="h-4 w-4" />{tl('La mia libreria')}</Button>
     </header>
-    <nav aria-label={tl('Strumenti Audio Lab')} className="voice-lab-tabs grid grid-cols-3 gap-1.5 p-1.5" style={buildAccentNavClusterStyle()}>
-      {WORKSPACES.map(tab => <Button key={tab.id} tone="neutral" surface="ghost" disabled={busy} aria-current={workspace === tab.id ? 'page' : undefined}
-        className={`!h-auto min-h-12 gap-2 py-3 ${workspace === tab.id ? 'ds-selected' : ''}`} onClick={() => setWorkspace(tab.id)}><tab.icon className="h-4 w-4" />{tl(tab.label)}</Button>)}
-    </nav>
     {config.data && !configured && <p role="status" className={`${panel} ${hint}`}>{tl('La generazione audio non è ancora attiva. Chiedi all’amministratore di configurare ElevenLabs. La tua libreria e le playlist restano disponibili.')}</p>}
     {config.isError && <p role="alert" className={hint}>{tl('Impossibile verificare la connessione.')} <Button surface="ghost" onClick={() => void config.refetch()}>{tl('Riprova')}</Button></p>}
-    {(voices.isError || models.isError) && <p role="alert" className={hint}>{tl('Impossibile caricare le voci.')} <Button surface="ghost" onClick={() => { void voices.refetch(); void models.refetch() }}>{tl('Riprova')}</Button></p>}
-    <div className={`grid items-start gap-5 ${workspace === 'voice' || workspace === 'music' ? 'lg:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
-      <section className={`${panel} space-y-6`}>
+    {workspace === 'voice' && (voices.isError || models.isError) && <p role="alert" className={hint}>{tl('Impossibile caricare le voci.')} <Button surface="ghost" onClick={() => { void voices.refetch(); void models.refetch() }}>{tl('Riprova')}</Button></p>}
+    <div className={`grid items-start gap-3 ${workspace === 'voice' || workspace === 'music' ? 'lg:grid-cols-[minmax(0,1fr)_320px]' : ''}`}>
+      <div className="min-w-0 space-y-3"><section className={`${panel} ${workspace === 'voice' ? 'voice-lab-composer space-y-4' : workspace === 'music' ? 'voice-lab-music-composer space-y-3' : 'space-y-4'}`}>
         {workspace === 'voice' ? <>
-          <div><h2 className="text-xl font-bold">{tl('Crea il tuo audio')}</h2><p className={`mt-1 ${hint}`}>{tl('Inserisci un testo oppure carica una registrazione. Poi scegli la voce.')}</p></div>
-          <fieldset disabled={busy} className="min-w-0 space-y-5">
-            <div role="group" aria-label={tl('Tipo di input')} className="inline-flex max-w-full flex-wrap gap-1.5 p-1.5" style={buildAccentNavClusterStyle()}>
-              <Button tone="neutral" surface="ghost" aria-pressed={source === 'text'} onClick={() => setSource('text')} className={source === 'text' ? 'ds-selected' : ''}>{tl('Da un testo')}</Button>
-              <Button tone="neutral" surface="ghost" aria-pressed={source === 'recording'} onClick={() => setSource('recording')} className={source === 'recording' ? 'ds-selected' : ''}>{tl('Da una registrazione')}</Button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-bold">{tl('Crea il tuo audio')}</h2>
+            <div role="group" aria-label={tl('Tipo di input')} className="inline-flex gap-1 p-1" style={buildAccentNavClusterStyle()}>
+              <Button density="compact" tone="neutral" surface="ghost" disabled={busy} aria-pressed={source === 'text'} onClick={() => setSource('text')} className={source === 'text' ? 'ds-selected' : ''}>{tl('Da testo')}</Button>
+              <Button density="compact" tone="neutral" surface="ghost" disabled={busy} aria-pressed={source === 'recording'} onClick={() => setSource('recording')} className={source === 'recording' ? 'ds-selected' : ''}>{tl('Da registrazione')}</Button>
             </div>
+          </div>
+          <fieldset disabled={busy} className="min-w-0 space-y-3">
             {source === 'text' ? <Field label={tl('Testo da leggere')}>
-              <Textarea rows={8} maxLength={Math.min(activeModel?.max_characters || 20000, 20000)} value={text} onChange={e => setText(e.target.value)} placeholder={tl('Scrivi o incolla qui il testo che vuoi ascoltare…')} />
-              <span className="block text-right text-xs text-[var(--text-muted)]">{text.length.toLocaleString('it-IT')} / {Math.min(activeModel?.max_characters || 20000, 20000).toLocaleString('it-IT')} {tl('caratteri')}</span>
+              <Textarea className="voice-lab-script" rows={5} maxLength={maxCharacters} value={text} onChange={e => setText(e.target.value)} placeholder={tl('Scrivi o incolla il testo nella lingua che vuoi ascoltare…')} />
+              <span className="block text-right text-xs text-[var(--text-muted)]">{text.length.toLocaleString('it-IT')} / {maxCharacters.toLocaleString('it-IT')}</span>
             </Field> : <Field label={tl('Registrazione audio')}><Input type="file" accept="audio/*,.mp3,.wav,.m4a,.flac" onChange={e => setFile(e.target.files?.[0] || null)} className="h-auto min-h-12 py-3" />
-              <span className={`block ${hint}`}>{tl('Scegli un file fino a 50 MB. La nuova voce conserverà l’espressione della registrazione.')}</span>
+              <span className="block text-xs text-[var(--text-secondary)]">{tl('Fino a 50 MB. Cambia la voce mantenendo lingua ed espressione originali.')}</span>
               {file && file.size > 50 * 1024 * 1024 && <span role="alert" className="block text-sm text-[var(--brand-red-text)]">{tl('Il file supera 50 MB. Scegli una registrazione più breve.')}</span>}
             </Field>}
-            <div className="flex flex-wrap items-end gap-3"><div className="min-w-0 flex-1"><Field label={tl('Voce')}><SearchableSelect value={voice} onChange={setVoice} label={tl('Scegli una voce')}
-              options={(voices.data || []).map(v => ({ value: v.voice_id, label: v.name, description: v.owned ? tl('Creata da te') : v.description || v.category, searchText: v.voice_id }))} disabled={!configured || busy} /></Field></div>
-              <Button tone="neutral" surface="outline" disabled={!configured} onClick={() => setCreatingVoice(true)}><Plus className="h-4 w-4" />{tl('Crea una voce')}</Button></div>
-            {chosenVoice?.preview_url?.startsWith('https://') && <details className="text-sm"><summary className="cursor-pointer font-semibold text-[var(--text-secondary)]">{tl('Ascolta la voce scelta')}</summary><div className="mt-3"><AudioPlayer tracks={[{ id: chosenVoice.preview_url, title: chosenVoice.name }]} load={loadVoiceSample} queue={false} /></div></details>}
-            {source === 'text' && <>
-              <fieldset className="space-y-2"><legend className="mb-2 text-sm font-semibold">{tl('Espressività')}</legend><div className="grid grid-cols-3 gap-1.5 p-1.5" style={buildAccentNavClusterStyle()}>{EXPRESSIONS.map(expression => <Button key={expression.value} tone="neutral" surface="ghost" aria-pressed={stability === expression.value}
-                className={stability === expression.value ? 'ds-selected' : ''} onClick={() => setStability(expression.value)}>{tl(expression.label)}</Button>)}</div><p className={hint}>{tl(EXPRESSIONS.find(e => e.value === stability)!.hint)}</p></fieldset>
-              <Field label={tl('Velocità · {0}×', speed.toFixed(2))}><input aria-label={tl('Velocità della voce')} className="voice-lab-range w-full" type="range" min="0.7" max="1.2" step="0.05" value={speed} onChange={e => setSpeed(Number(e.target.value))} /><span className="flex justify-between text-xs text-[var(--text-muted)]"><span>{tl('Più lenta')}</span><span>{tl('Più veloce')}</span></span></Field>
-            </>}
-            <details className="voice-lab-options rounded-[var(--control-radius)] p-4"><summary className="cursor-pointer text-sm font-semibold">{tl('Opzioni audio')}</summary><div className="mt-4 space-y-4">
-              <Field label={tl('Titolo dell’audio (facoltativo)')}><Input maxLength={200} value={voiceTitle} onChange={e => setVoiceTitle(e.target.value)} placeholder={tl('Per esempio: Introduzione alla lezione')} /></Field>
-              {source === 'text' && <Field label={tl('Lingua')}><Select value={language} onChange={e => setLanguage(e.target.value)}>{LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</Select></Field>}
-              <Field label={tl('Modello vocale')}><SearchableSelect value={activeModel?.model_id || ''} onChange={setModel} label={tl('Scegli un modello')} options={modelPool.map(m => ({ value: m.model_id, label: m.name }))} disabled={!configured} /></Field>
-              <Field label={tl('Formato audio')}><Select value={format} onChange={e => setFormat(e.target.value)}>{(config.data?.output_formats || ['mp3_44100_128']).map(f => <option key={f} value={f}>{f.startsWith('mp3') ? `MP3 · ${f.endsWith('192') ? '192' : '128'} kbps` : f.startsWith('wav') ? 'WAV · 44.1 kHz' : 'Opus · 128 kbps'}</option>)}</Select></Field>
-              {source === 'text' ? <Field label={tl('Fedeltà alla voce · {0}%', Math.round(similarity * 100))}><input aria-label={tl('Fedeltà alla voce')} className="voice-lab-range w-full" type="range" min="0" max="1" step="0.05" value={similarity} onChange={e => setSimilarity(Number(e.target.value))} /></Field>
-                : <label className="flex items-center gap-2 text-sm"><input className="voice-lab-check" type="checkbox" checked={removeNoise} onChange={e => setRemoveNoise(e.target.checked)} />{tl('Riduci il rumore di fondo')}</label>}
-            </div></details>
+            <div className={`grid items-start gap-3 ${source === 'text' ? 'sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)]' : ''}`}>
+              {source === 'text' && <Field label={tl('Lingua dell’audio')}><Select aria-label={tl('Lingua dell’audio')} value={language} disabled={!configured || !languages.length} onChange={e => setLanguage(e.target.value)}>
+                {!languages.some(l => l.code === language) && <option value={language}>{languageNames.of(language)}</option>}
+                {languages.map(({ code, name }) => <option key={code} value={code}>{name}</option>)}
+              </Select></Field>}
+              <div className="min-w-0 space-y-2"><Field label={tl('Voce')}><SearchableSelect value={voice} onChange={setVoice} label={tl(voices.isLoading ? 'Caricamento voci…' : 'Scegli una voce')}
+                options={(voices.data || []).map(v => ({ value: v.voice_id, label: v.name, description: v.owned ? tl('Creata da te') : v.description || v.category, searchText: v.voice_id }))} disabled={!configured || busy} /></Field>
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <Button density="compact" tone="neutral" surface="ghost" disabled={!configured} onClick={() => setCreatingVoice(true)}><Plus className="h-3.5 w-3.5" />{tl('Crea una voce')}</Button>
+                  <Button density="compact" tone="neutral" surface="ghost" disabled={!configured} onClick={() => setCloningVoice(true)}><Mic className="h-3.5 w-3.5" />{tl('Clona la tua voce')}</Button>
+                  {chosenVoice?.preview_url?.startsWith('https://') && <Button density="compact" tone="neutral" surface="ghost" onClick={() => audioPlayer.playTracks([{ id: chosenVoice.preview_url!, title: chosenVoice.name }], loadVoiceSample)}><Headphones className="h-3.5 w-3.5" />{tl('Ascolta')}</Button>}
+                </div>
+              </div>
+            </div>
+            {source === 'text' && models.isSuccess && !activeModel && <p role="alert" className={hint}>{tl('Questa lingua non è disponibile. Scegli una lingua dal menu.')}</p>}
+            <Field label={tl('Titolo (facoltativo)')}><Input maxLength={200} value={voiceTitle} onChange={e => setVoiceTitle(e.target.value)} placeholder={tl('Nuovo audio')} /></Field>
           </fieldset>
         </> : workspace === 'music' ? <>
           <h2 className="text-xl font-bold">{tl('Crea musica')}</h2>
           <fieldset disabled={busy} className="min-w-0 space-y-4">
-            <MusicPromptEditor value={musicPrompt} onChange={setMusicPrompt} disabled={busy} />
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
               <Field label={tl('Titolo (facoltativo)')}><Input maxLength={200} value={musicTitle} onChange={e => setMusicTitle(e.target.value)} placeholder={tl('Nuovo brano')} /></Field>
               <Field label={tl('Durata · secondi')}><Input type="number" min={config.data?.music_model?.min_seconds ?? 3} max={config.data?.music_model?.max_seconds ?? 600} disabled={!!config.data?.music_model?.fixed_seconds} value={config.data?.music_model?.fixed_seconds ?? (Number.isFinite(seconds) ? seconds : '')} onChange={e => setSeconds(e.target.valueAsNumber)} title={tl('Da {0} a {1} secondi', config.data?.music_model?.min_seconds ?? 3, config.data?.music_model?.max_seconds ?? 600)} /></Field>
-              {config.data?.music_model && <p className="text-[11px] text-[var(--text-secondary)] sm:col-span-2">{tl('Modello: {0} · {1}', config.data.music_model.label, config.data.music_model.price_note)}{config.data.music_model.fixed_seconds ? ` · ${tl('durata fissa {0} s', config.data.music_model.fixed_seconds)}` : ''} · {tl('si sceglie in Admin → Modelli')}</p>}
+
             </div>
+            <MusicPromptEditor compact value={musicPrompt} onChange={setMusicPrompt} disabled={busy} />
             <details className="text-sm"><summary className="cursor-pointer font-medium text-[var(--text-secondary)]">{tl('Opzioni')}</summary><div className="mt-3 space-y-3">
+              {config.data?.music_model && <p className="text-[11px] text-[var(--text-secondary)]">{tl('Modello: {0} · {1}', config.data.music_model.label, config.data.music_model.price_note)}{config.data.music_model.fixed_seconds ? ` · ${tl('durata fissa {0} s', config.data.music_model.fixed_seconds)}` : ''} · {tl('si sceglie in Admin → Modelli')}</p>}
               <label className="flex items-center gap-2"><input className="voice-lab-check" type="checkbox" checked={instrumental} onChange={e => setInstrumental(e.target.checked)} />{tl('Solo strumentale')}</label>
               <label className="flex items-center gap-2"><input className="voice-lab-check" type="checkbox" checked={aiCover} onChange={e => setAiCover(e.target.checked)} />{tl('Genera copertina')}</label>
               <p className="text-xs text-[var(--text-secondary)]">{tl('Descrivi genere, strumenti e atmosfera, evitando nomi di artisti e brani esistenti.')}</p>
             </div></details>
           </fieldset>
-        </> : workspace === 'playlists' ? <>
-          <div><h2 className="text-xl font-bold">{tl('Le tue playlist')}</h2><p className={`mt-1 ${hint}`}>{tl('Raccogli voci e musica, scegli l’ordine delle tracce e condividi con la classe.')}</p></div>
-          <PlaylistWorkspace items={library.data || []} candidate={playlistCandidate} />
         </> : <>
           <div><h2 className="text-xl font-bold">{tl('La mia libreria')}</h2><p className={`mt-1 ${hint}`}>{tl('Ritrova le tue voci e gli audio salvati.')}</p></div>
           <SearchPill aria-label={tl('Cerca nella libreria')} placeholder={tl('Cerca un audio o una voce…')} value={librarySearch} onValueChange={setLibrarySearch} />
@@ -226,25 +232,33 @@ export default function VoiceLabPage() {
           <div className="grid gap-3 sm:grid-cols-2">{(library.data || []).filter(item => item.title.toLowerCase().includes(librarySearch.toLowerCase())).map(item => <article key={item.id} className="voice-lab-options space-y-3 rounded-[var(--control-radius)] p-4">
             {item.kind === 'audio' && <AudioCover url={item.cover_url} className="w-full rounded-xl" iconClassName="h-8 w-8" />}
             <h3 className="font-semibold">{item.title}</h3>{item.artist_name && <p className="text-xs text-[var(--text-secondary)]">{item.artist_name}</p>}<p className="text-xs text-[var(--text-muted)]">{tl(item.kind === 'voice' ? 'Voce personalizzata' : item.service === 'music' ? 'Musica' : item.kind === 'preview' ? 'Anteprima voce' : 'Audio')} · {new Date(item.created_at).toLocaleDateString('it-IT')}</p>
-            <div className="flex flex-wrap gap-2"><Button density="compact" tone="neutral" surface="outline" onClick={() => { setParams({ item: item.id }); setWorkspace(item.service === 'music' ? 'music' : 'voice'); if (item.mime_type?.startsWith('audio/')) audioPlayer.playTracks([{ id: item.id, title: item.title, artist_name: item.artist_name, mime_type: item.mime_type, cover_url: item.cover_url }], loadLabAudio) }}>{tl(item.kind === 'voice' ? 'Apri voce' : 'Apri e ascolta')}</Button>
+            <div className="flex flex-wrap gap-2"><Button density="compact" tone="neutral" surface="outline" onClick={() => { selectItem(item.id, item.service === 'music' ? 'music' : 'voice'); if (item.mime_type?.startsWith('audio/')) audioPlayer.playTracks([{ id: item.id, title: item.title, artist_name: item.artist_name, mime_type: item.mime_type, cover_url: item.cover_url }], loadLabAudio) }}>{tl(item.kind === 'voice' ? 'Apri voce' : 'Apri e ascolta')}</Button>
               {item.kind === 'voice' && <IconButton aria-label={tl('Elimina voce {0}', item.title)} tone="danger" surface="ghost" disabled={deleteVoice.isPending} onClick={() => { if (window.confirm(tl('Eliminare definitivamente la voce {0}?', item.title))) deleteVoice.mutate(item.id) }}><Trash2 className="h-4 w-4" /></IconButton>}</div>
           </article>)}</div>
           {!library.isLoading && !library.isError && !(library.data || []).filter(item => item.title.toLowerCase().includes(librarySearch.toLowerCase())).length && <p className={hint}>{tl(librarySearch ? 'Nessun risultato per questa ricerca.' : 'I tuoi primi audio compariranno qui.')}</p>}
         </>}
-        {(workspace === 'voice' || workspace === 'music') && <div className="space-y-3">
+        {workspace === 'music' && generating && <GenerationProgress job={job} />}
+        {(workspace === 'voice' || workspace === 'music') && <div className="flex flex-wrap items-center justify-between gap-3">
           <QuoteDisplay quote={quote} coverCredits={workspace === 'music' && aiCover ? config.data?.cover_credits || 0 : 0} />
-          <Button tone="accent" surface="solid" disabled={!ready} onClick={() => generate.mutate()}>{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : workspace === 'music' ? <Music className="h-4 w-4" /> : <Mic className="h-4 w-4" />}{tl(generating ? 'Generazione in corso…' : workspace === 'music' ? 'Genera musica' : 'Genera voce')}</Button>
+          <Button tone="accent" surface="solid" disabled={!ready} onClick={() => generate.mutate()}>{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : workspace === 'music' ? <Music className="h-4 w-4" /> : <Mic className="h-4 w-4" />}{tl(generating ? 'Generazione in corso…' : workspace === 'music' ? 'Genera musica' : 'Crea audio')}</Button>
 
         </div>}
       </section>
-      {(workspace === 'voice' || workspace === 'music') && <aside ref={resultPanel} className={`${panel} space-y-4 lg:sticky lg:top-5`} aria-label={tl('Risultato Audio Lab')}>
-        <div className="flex items-center justify-between gap-3"><h2 className="font-bold">{tl(workspace === 'music' ? 'Il tuo brano' : 'Il tuo audio')}</h2>{selectedId && <IconButton tone="neutral" surface="ghost" aria-label={tl('Aggiorna risultato')} onClick={() => void selected.refetch()}><RefreshCw className={`h-4 w-4 ${selected.isFetching ? 'animate-spin' : ''}`} /></IconButton>}</div>
+    {workspace === 'music' && <MusicLibrary items={library.data || []} loading={library.isLoading} error={library.isError} retry={() => void library.refetch()}
+      onOpen={item => audioPlayer.playTracks([{ id: item.id, title: item.title, artist_name: item.artist_name, mime_type: item.mime_type, cover_url: item.cover_url }], loadLabAudio)}
+      onAdd={item => setPlaylistCandidate(item.details.drive_item_id || item.id)}
+      onPlay={item => { selectItem(item.id); audioPlayer.playTracks([{ id: item.id, title: item.title, artist_name: item.artist_name, mime_type: item.mime_type, cover_url: item.cover_url }], loadLabAudio) }}
+      onCover={id => makeCover.mutate(id)} coverBusy={coverBusy} coveringId={makeCover.isPending ? makeCover.variables : undefined} configured={configured} coverCredits={config.data?.cover_credits || 0} />}
+      </div>
+      {workspace === 'music' && <MusicPlaylistPanel items={library.data || []} candidate={playlistCandidate} onCandidateAdded={() => setPlaylistCandidate('')} />}
+      {workspace === 'voice' && <aside ref={resultPanel} className={`${panel} voice-lab-result space-y-3 lg:sticky lg:top-5`} aria-label={tl('Risultato Audio Lab')}>
+        <div className="flex items-center justify-between gap-3"><h2 className="font-bold">{tl('Il tuo audio')}</h2>{selectedId && <IconButton tone="neutral" surface="ghost" aria-label={tl('Aggiorna risultato')} onClick={() => void selected.refetch()}><RefreshCw className={`h-4 w-4 ${selected.isFetching ? 'animate-spin' : ''}`} /></IconButton>}</div>
         {generating && <GenerationProgress job={job} />}
         {selected.isLoading && <Loader2 aria-label={tl('Caricamento audio')} className="h-5 w-5 animate-spin" />}
         {selected.isError && <p role="alert" className={hint}>{tl('Audio non disponibile. Prova ad aprirlo dalla libreria.')}</p>}
         {selected.data ? <>
           {selected.data.kind === 'audio' && <div className="space-y-2">
-            <AudioCover url={selected.data.cover_url} className="w-full rounded-2xl" />
+            <AudioCover url={selected.data.cover_url} className="mx-auto w-full max-w-[160px] rounded-2xl" />
             {selected.data.mime_type?.startsWith('audio/') && <details className="text-sm"><summary className="cursor-pointer text-[var(--text-secondary)]">{tl('Copertina')}</summary><div className="mt-2 flex flex-wrap gap-2">
               <Button density="compact" tone="neutral" surface="outline" disabled={coverBusy || !configured} onClick={() => makeCover.mutate(selected.data!.id)}>{makeCover.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{tl(selected.data.cover_url ? 'Nuova copertina IA' : 'Crea copertina con IA')}</Button>
               {config.data && <span className="self-center text-xs text-[var(--text-secondary)]">{tl('circa {0} crediti', config.data.cover_credits.toLocaleString('it-IT', { maximumFractionDigits: 2 }))}</span>}
@@ -262,18 +276,15 @@ export default function VoiceLabPage() {
           {selected.data.details.transcript?.text && <p className="max-h-72 overflow-auto whitespace-pre-wrap text-sm">{selected.data.details.transcript.text}</p>}
           <details className="text-sm"><summary className="cursor-pointer font-medium text-[var(--text-secondary)]">{tl('Altro')}</summary><div className="mt-3 flex flex-col gap-2">
             {selected.data.content_url && <Button tone="neutral" surface="outline" fullWidth onClick={() => void download(selected.data!)}><Download className="h-4 w-4" />{tl('Scarica')}</Button>}
-            {selected.data.mime_type?.startsWith('audio/') && <Button tone="neutral" surface="outline" fullWidth onClick={() => { setPlaylistCandidate(selected.data.details.drive_item_id || selectedId); setWorkspace('playlists') }}><Plus className="h-4 w-4" />{tl('Aggiungi a una playlist')}</Button>}
+            {selected.data.mime_type?.startsWith('audio/') && <Button tone="neutral" surface="outline" fullWidth onClick={() => { setPlaylistCandidate(selected.data.details.drive_item_id || selectedId); changeWorkspace('music') }}><Plus className="h-4 w-4" />{tl('Aggiungi a una playlist')}</Button>}
             {selected.data.details.drive_item_id && <Button tone="neutral" surface="outline" fullWidth onClick={() => setSharing(true)}><Share2 className="h-4 w-4" />{tl('Condividi con una sessione')}</Button>}
           </div>
           {selected.data.details.credits !== undefined && <p className="text-xs text-[var(--text-muted)]">{tl('Consumo: {0} crediti', selected.data.details.credits.toLocaleString('it-IT', { maximumFractionDigits: 2 }))}</p>}</details>
         </> : !selectedId && <div className="py-7 text-center"><Headphones className="mx-auto mb-3 h-9 w-9 text-[var(--text-secondary)]" /><p className={hint}>{tl('Il tuo prossimo audio, qui.')}</p></div>}
       </aside>}
     </div>
-    {workspace === 'music' && <MusicLibrary items={library.data || []} loading={library.isLoading} error={library.isError} retry={() => void library.refetch()}
-      onOpen={item => { setParams({ item: item.id }); resultPanel.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }) }}
-      onPlay={item => { setParams({ item: item.id }); audioPlayer.playTracks([{ id: item.id, title: item.title, artist_name: item.artist_name, mime_type: item.mime_type, cover_url: item.cover_url }], loadLabAudio) }}
-      onCover={id => makeCover.mutate(id)} coverBusy={coverBusy} coveringId={makeCover.isPending ? makeCover.variables : undefined} configured={configured} coverCredits={config.data?.cover_credits || 0} />}
     <RenameAudioDialog item={renaming} onClose={() => setRenaming(null)} />
+    {cloningVoice && <CloneVoiceDialog configured={configured} onClose={() => setCloningVoice(false)} onCreated={item => { done(item); setCloningVoice(false) }} />}
     <VoiceCreator open={creatingVoice} configured={configured} onClose={() => setCreatingVoice(false)} onCreated={item => { done(item); setCreatingVoice(false) }} />
     {sharing && selected.data?.details.drive_item_id && <AudioShareDialog itemId={selected.data.details.drive_item_id} title={selected.data.title} onClose={() => setSharing(false)} />}
   </div>

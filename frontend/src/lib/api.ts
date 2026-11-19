@@ -274,6 +274,8 @@ export const codingApi = {
   putSharedData: (projectId: string, key: string, value: unknown) => api.put(`/coding/projects/${projectId}/shared/${encodeURIComponent(key)}`, { value }),
   appendSharedData: (projectId: string, key: string, value: unknown) => api.post(`/coding/projects/${projectId}/shared/${encodeURIComponent(key)}/append`, { value }),
   aiVision: (data: { image: string; prompt?: string }) => api.post('/coding/ai/vision', data),
+  refineChecklist: (projectId: string, files: { path: string; content: string }[]) =>
+    api.post(`/coding/projects/${projectId}/refine-checklist`, { files }, { timeout: 120000 }),
   setThumbnail: (projectId: string, image: string) => api.put(`/coding/projects/${projectId}/thumbnail`, { image }),
   aiPlaces: (data: { query?: string; lat?: number; lon?: number; limit?: number; country?: string; zoom?: number }) => api.post('/coding/ai/places', data),
   interview: (data: { title?: string; prompt?: string }) =>

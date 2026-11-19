@@ -46,6 +46,7 @@ import { codingApi, getApiAuthHeaders, llmApi, studentApi } from '@/lib/api'
 import { cancelJob, findActiveJob, followJobStream, notifyJobsChanged } from '@/lib/backgroundJobs'
 import { editorKeymap, getEditorExtensions } from '@/components/notebook/editorConfig'
 import { Button } from '@/components/ui/button'
+import RefineDialog from '@/components/coding/RefineDialog'
 import DesignSystemStudio from '@/components/coding/DesignSystemStudio'
 import CodingSandpackPreview, { type SandpackRuntimeError } from '@/components/coding/CodingSandpackPreview'
 import { useScopedModels } from '@/components/models/ScopedModelSelect'
@@ -394,7 +395,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     }
   }
   const activeWorkbenchRef = useRef<string>('preview')
-  const [generationMode, setGenerationMode] = useState<'build' | 'fix'>('build')
+  const [generationMode, setGenerationMode] = useState<'build' | 'fix' | 'refine'>('build')
+  const [refineOpen, setRefineOpen] = useState(false)
   const [diffView, setDiffView] = useState<{ path: string; oldContent: string; newContent: string } | null>(null)
   const openPreviewFullscreen = () => {
     fullscreenLoads.current = 0
@@ -447,6 +449,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   // Text of the files while the writer agents produce them: the code inspector shows them live.
   const [liveContents, setLiveContents] = useState<Record<string, string>>({})
   const [liveThinking, setLiveThinking] = useState('')
+  const [liveQuality, setLiveQuality] = useState<LiveQuality | null>(null)
   const [liveSelectedPath, setLiveSelectedPath] = useState<string | null>(null)
   const liveFollowRef = useRef(true)
   // Files being written right now: with several writer agents the status line must say so.
@@ -1341,7 +1344,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         } catch {
           continue
         }
-        if (event.type === 'thinking') {
+        if (event.type === 'quality') {
+          // Real-browser quality check: score + the defects found, so the wait shows what the system is improving.
+          setLiveQuality({
+            round: Number(event.round) || 1, rounds: Number(event.rounds) || 1, overall: Number(event.score?.overall ?? 0), css: String(event.score?.css_coverage || ''),
+            visual: event.score?.visual ?? null, counts: event.score?.defects || { blocker: 0, major: 0, minor: 0 },
+            defects: Array.isArray(event.defects) ? event.defects : [], verdict: String(event.verdict || ''), screenshot: event.screenshot || null,
+          })
+          setLiveStatus(tl("Controllo qualità, giro {0}/{1}: punteggio {2}/100", Number(event.round) || 1, Number(event.rounds) || 1, Number(event.score?.overall ?? 0)))
+        } else if (event.type === 'thinking') {
           // Hidden reasoning of the architect, streamed so the wait is never a silent timer.
           setLiveThinking((prev) => (prev + (event.content || '')).slice(-6000))
         } else if (event.type === 'reasoning') {
@@ -1406,19 +1417,19 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     return generatedFiles
   }
 
-  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], fix?: { errors: string[]; mode?: 'fix' | 'visual'; attempt?: number }, extras?: { attachments?: string[]; documents?: VibeDocument[] }) => {
+  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], fix?: { errors: string[]; mode?: 'fix' | 'visual'; attempt?: number }, extras?: { attachments?: string[]; documents?: VibeDocument[]; refine?: { focus: string } }) => {
     if (generationAbortRef.current) return false
     const controller = new AbortController()
     generationAbortRef.current = controller
     generationNeedsReview.current = false
     setGenerating(true)
-    setGenerationMode(fix ? 'fix' : 'build')
+    setGenerationMode(fix ? 'fix' : extras?.refine ? 'refine' : 'build')
     if (!fix || fix.mode === 'visual') setVisualReview(null)
     setError(null)
-    setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear()
+    setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear(); setLiveQuality(null)
     setLivePlan([])
     setLiveFiles([])
-    setLiveStatus(fix ? tl("Leggo gli errori dell’anteprima e preparo una correzione mirata…") : tl("Preparo il progetto e il contesto della richiesta…"))
+    setLiveStatus(fix ? tl("Leggo gli errori dell’anteprima e preparo una correzione mirata…") : extras?.refine ? tl("Avvio la rifinitura: confronto il progetto con la specifica…") : tl("Preparo il progetto e il contesto della richiesta…"))
     // A fresh user-driven generation starts a new fix budget; an auto-fix iteration spends from it.
     if (!fix) {
       autoFixAttempts.current = 0
@@ -1438,7 +1449,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         },
         credentials: 'include',
         signal: controller.signal,
-        body: JSON.stringify(fix
+        body: JSON.stringify(extras?.refine
+          ? { mode: 'refine', prompt: extras.refine.focus.trim() || undefined, files: baseFiles.length ? baseFiles : undefined }
+          : fix
           ? { mode: fix.mode || 'fix', errors: fix.errors, attempt: fix.attempt, files: baseFiles.length ? baseFiles : undefined }
           : {
               prompt: nextPrompt ? constrainGenerationPrompt(nextPrompt) : nextPrompt,
@@ -1481,7 +1494,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         notifyJobsChanged()
       }
       setGenerating(false)
-      setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear()
+      setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear(); setLiveQuality(null)
       setLivePlan([])
       setLiveFiles([])
       setLiveStatus('')
@@ -1644,7 +1657,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setGenerating(true)
     setGenerationMode('build')
     setError(null)
-    setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear()
+    setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear(); setLiveQuality(null)
     setLivePlan([])
     setLiveFiles([])
     setLiveStatus(tl("Generazione in corso in background: riprendo da dove era arrivata…"))
@@ -1672,7 +1685,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         generationJobIdRef.current = null
       }
       setGenerating(false)
-      setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear()
+      setLiveReasoning(''); setLiveThinking(''); setLiveContents({}); setLiveSelectedPath(null); liveFollowRef.current = true; writingPaths.current.clear(); setLiveQuality(null)
       setLivePlan([])
       setLiveFiles([])
       setLiveStatus('')
@@ -2057,6 +2070,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           creating={creating}
         />
       )}
+      {selectedProject && (
+        <RefineDialog
+          open={refineOpen}
+          projectId={selectedProject.id}
+          files={files}
+          onClose={() => setRefineOpen(false)}
+          onGo={(focus) => { setRefineOpen(false); if (selectedProjectId) void generateCode(selectedProjectId, undefined, undefined, undefined, { refine: { focus } }) }}
+        />
+      )}
       {versionsOpen && selectedProject && (
         <div className="fixed inset-0 z-[70] flex items-start justify-end bg-black/30 p-3 sm:p-4" onClick={() => setVersionsOpen(false)}>
           <div
@@ -2111,6 +2133,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </Button>
             {selectedProject && <span className="min-w-0 flex-1 truncate text-sm font-black text-[var(--text-primary)]">{selectedProject.title}</span>}
             {!selectedProject && <span className="flex-1" />}
+            {selectedProject && files.length > 0 && isReactProject(files) && (
+              <Button type="button" variant="ghost" density="compact" onClick={() => setRefineOpen(true)} disabled={generating || creating || draftSaving}
+                title={tl("Rifinisci: completa le funzioni mancanti, prova l'app in un browser vero e corregge i difetti")}>
+                <Wand2 className="h-4 w-4" /> {tl("Rifinisci")}
+              </Button>
+            )}
             {selectedProject && (
               <Button type="button" variant="ghost" density="compact" onClick={() => setVersionsOpen(true)} title={tl("Versioni, commit e aggiornamenti")}>
                 <History className="h-4 w-4" /> {tl("Versioni")}{sortedVersions.length ? ` · ${sortedVersions.length}` : ''}{pendingCommits.length ? ` · ${pendingCommits.length} commit` : ''}
@@ -2419,10 +2447,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       />
                     ))
                   )}
-                  {buildPlan && buildPlan.projectId === selectedProjectId && (
+                  {buildPlan && buildPlan.projectId === selectedProjectId && buildPlan.milestones.length > 1 && (
                     <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900">
                       <p className="font-bold">
-                        {tl("Piano di costruzione")} · {generating ? tl("in corso") : tl("in pausa")} {buildPlan.next + 1}/{buildPlan.milestones.length}
+                        {tl("Progetto a tappe")} · {generating ? tl("in corso") : tl("interrotto")} · {tl("tappa")} {buildPlan.next + 1} {tl("di")} {buildPlan.milestones.length}
                       </p>
                       <ol className="mt-1 list-decimal space-y-0.5 pl-4">
                         {buildPlan.milestones.map((m, i) => (
@@ -2431,14 +2459,14 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       </ol>
                       {!generating && (
                         <button type="button" onClick={() => void resumeBuildPlan()} className="mt-2 rounded-full bg-indigo-600 px-3 py-1 font-bold text-white">
-                          {tl("Riprendi dalla milestone")} {buildPlan.next + 1}
+                          {tl("Continua dalla tappa")} {buildPlan.next + 1}
                         </button>
                       )}
                     </div>
                   )}
                   {generating && (
                     <div className="sticky bottom-0 z-20 rounded-2xl border border-[color:var(--border-subtle)] bg-white/95 p-2 shadow-[var(--shadow-lg)] backdrop-blur-xl">
-                      <LiveGenerationPanel status={liveStatus} reasoning={liveReasoning} thinking={liveThinking} plan={livePlan} files={liveFiles} mode={generationMode} onStop={stopGeneration} />
+                      <LiveGenerationPanel status={liveStatus} reasoning={liveReasoning} thinking={liveThinking} quality={liveQuality} plan={livePlan} files={liveFiles} mode={generationMode} onStop={stopGeneration} />
                     </div>
                   )}
                   <div ref={conversationEndRef} />
@@ -3693,6 +3721,13 @@ function PublicationBanner({ url, onClose }: { url: string; onClose: () => void 
   )
 }
 
+type LiveQuality = {
+  round: number; rounds: number; overall: number; css: string; visual: number | null
+  counts: { blocker: number; major: number; minor: number }
+  defects: { severity: string; kind: string; message: string; file?: string }[]
+  verdict: string; screenshot?: string | null
+}
+
 type LiveFile = { path: string; lines: number; status: 'queued' | 'writing' | 'done'; op?: 'file' | 'patch' | 'delete' }
 
 // Console chatter that is not a bug in the student's app: never worth a fix turn.
@@ -3803,6 +3838,7 @@ function LiveGenerationPanel({
   status,
   reasoning,
   thinking = '',
+  quality = null,
   plan,
   files,
   mode,
@@ -3811,9 +3847,10 @@ function LiveGenerationPanel({
   status: string
   reasoning: string
   thinking?: string
+  quality?: LiveQuality | null
   plan: { path: string; purpose: string }[]
   files: LiveFile[]
-  mode: 'build' | 'fix'
+  mode: 'build' | 'fix' | 'refine'
   onStop: () => void
 }) {
   const reasoningRef = useRef<HTMLDivElement>(null)
@@ -3838,7 +3875,7 @@ function LiveGenerationPanel({
       <div className="rounded-2xl border border-amber-300/55 bg-amber-50/85 p-3 shadow-sm ring-1 ring-amber-100/80">
         <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-800">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          {mode === 'fix' ? tl("Verificatore") : reasoning || thinking ? tl("Architetto") : tl("Sto progettando la struttura...")}
+          {mode === 'refine' ? tl("Revisore") : mode === 'fix' ? tl("Verificatore") : reasoning || thinking ? tl("Architetto") : tl("Sto progettando la struttura...")}
         </div>
         {thinking && !reasoning && (
           <div ref={thinkingRef} className="mb-2 max-h-28 overflow-y-auto whitespace-pre-wrap rounded-xl border border-amber-200/80 bg-white/[0.6] p-2.5 font-mono text-[11px] leading-4 text-slate-600" aria-label={tl("Ragionamento dell'architetto")}>
@@ -3851,6 +3888,34 @@ function LiveGenerationPanel({
           </div>
         )}
       </div>
+
+      {quality && (
+        <div className="rounded-2xl border border-emerald-300/60 bg-emerald-50/90 p-3 shadow-sm ring-1 ring-emerald-100/80" role="status" aria-live="polite">
+          <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wide text-emerald-800">
+            <span>{tl("Controllo qualità")} · {tl("giro")} {quality.round}/{quality.rounds}</span>
+            <span className="text-base">{quality.overall}<span className="text-[10px] font-bold">/100</span></span>
+          </div>
+          <div className="flex gap-3">
+            {quality.screenshot && <img src={quality.screenshot} alt="" className="hidden h-24 w-32 shrink-0 rounded-lg object-cover object-top ring-1 ring-emerald-200 sm:block" />}
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
+                {quality.counts.blocker + quality.counts.major > 0
+                  ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-700">{quality.counts.blocker + quality.counts.major} {tl("gravi")}</span>
+                  : <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">{tl("nessun difetto grave")}</span>}
+                {quality.counts.minor > 0 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{quality.counts.minor} {tl("lievi")}</span>}
+                {quality.visual != null && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-violet-700">{tl("aspetto")} {quality.visual}</span>}
+                {quality.css && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">CSS {quality.css}</span>}
+              </div>
+              {quality.verdict && <p className="text-[11px] leading-snug text-slate-700">{quality.verdict}</p>}
+              <ul className="space-y-0.5 text-[11px] leading-snug text-slate-600">
+                {quality.defects.slice(0, 4).map((defect, index) => (
+                  <li key={index} className="flex gap-1.5"><span className={defect.severity === 'minor' ? 'text-slate-400' : 'text-rose-500'}>●</span><span className="min-w-0 break-words">{defect.message}</span></li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
 
       {files.length > 0 && (
         <div className="rounded-2xl border border-sky-300/60 bg-sky-50/90 p-3 shadow-sm ring-1 ring-sky-100/80">

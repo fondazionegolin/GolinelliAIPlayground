@@ -37,3 +37,25 @@
 .voice-lab-options {
   background: var(--ds-surface-muted);
 }
+
+.voice-lab-script {
+  height: clamp(110px, 18dvh, 160px);
+  resize: none;
+}
+
+@media (max-width: 639px) {
+  .voice-lab-header nav {
+    order: 3;
+    width: 100%;
+  }
+
+  .voice-lab-header nav > button {
+    flex: 1;
+  }
+}
+
+.voice-lab-music-composer { padding: 1rem; }
+.voice-lab-music-tracks { max-height: 220px; }
+@media (min-width: 1024px) {
+  .voice-lab-music-tracks { max-height: max(76px, calc(100dvh - 630px)); }
+}

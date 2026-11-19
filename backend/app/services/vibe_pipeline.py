@@ -6,12 +6,12 @@ from dataclasses import dataclass, field
 
 from app.services.llm_service import LLMResponse, llm_service
 
-TOTAL_SECONDS = 360.0
+TOTAL_SECONDS = 1200.0  # a finished, verified project beats a fast broken one: the quality loop needs room
 STREAM_SECONDS = 240.0
 IDLE_SECONDS = 75.0
 REPAIR_SECONDS = 60.0
 MAX_OUTPUT_TOKENS = 128_000  # ceiling accepted by every enabled provider (verified); output limits are 4x the old ones on purpose
-MAX_CALLS = 30  # architect + up to 4 writers + their self-repair + continuation/gate/conformance passes
+MAX_CALLS = 60  # architect + up to 4 writers + their self-repair + continuation/gate/conformance passes
 
 
 @dataclass
@@ -47,11 +47,32 @@ async def generate(**kwargs):
     (60 s timeouts with nothing saved), while the stream is bounded by inactivity and the run budget."""
     phase = kwargs.pop('phase', 'completion')
     run = current.get()
-    if run is None: return await llm_service.generate(**kwargs)
+    if run is None:
+        # Small helper calls outside a run (interview, checklist): reasoning models would think silently for
+        # minutes on a non-streaming call, so those providers go through the stream with thinking off.
+        if kwargs.get('provider') in ('deepseek', 'openrouter') and not any(isinstance(m.get('content'), list) for m in kwargs.get('messages') or []):
+            parts = [c async for c in llm_service.generate_stream(thinking=False, **{k: v for k, v in kwargs.items() if k != 'anthropic_options'})]
+            text = ''.join(parts)
+            return LLMResponse(content=text, provider=kwargs['provider'], model=kwargs.get('model') or '',
+                               prompt_tokens=sum(len(str(m.get('content', ''))) for m in kwargs.get('messages', [])) // 4, completion_tokens=len(text) // 4)
+        return await llm_service.generate(**kwargs)
     if kwargs.get('max_tokens'): kwargs['max_tokens'] = min(kwargs['max_tokens'], MAX_OUTPUT_TOKENS)
     # All verification/repair helpers stay within the section's model policy as well.
     kwargs.setdefault('provider', run.primary[0]); kwargs.setdefault('model', run.primary[1])
     kwargs.pop('anthropic_options', None)
+    if any(isinstance(m.get('content'), list) for m in kwargs.get('messages') or []):
+        # Image input (screenshot review): provider adapters take it only on the non-streaming path.
+        call = run.begin(kwargs['provider'], kwargs['model'], phase)
+        start = time.monotonic()
+        try:
+            async with asyncio.timeout(run.timeout(120.0)):
+                value = await llm_service.generate(**kwargs)
+            call.update(status='completed', response_chars=len(value.content or ''), prompt_tokens=getattr(value, 'prompt_tokens', None), completion_tokens=getattr(value, 'completion_tokens', None))
+            return value
+        except BaseException as exc:
+            call.update(status='timeout' if isinstance(exc, TimeoutError) else 'cancelled' if isinstance(exc, asyncio.CancelledError) else 'error', error_type=type(exc).__name__)
+            raise
+        finally: call['elapsed_ms'] = round((time.monotonic() - start) * 1000)
     kwargs.setdefault('thinking', False)
     parts: list[str] = []
     async for chunk in stream(phase=phase, **kwargs):

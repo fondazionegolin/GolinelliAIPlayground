@@ -69,16 +69,26 @@ def audio(response: httpx.Response) -> bytes:
 
 
 async def account_voices() -> list[dict]:
+    def voice_row(v):
+        return {"voice_id": v["voice_id"], "name": v["name"], "description": v.get("description") or "",
+                "category": v.get("category"), "preview_url": v.get("preview_url"), "labels": v.get("labels") or {}}
+
     result = []
     cursor = None
     for _ in range(100):
         params = {"page_size": 100}
         if cursor:
             params["next_page_token"] = cursor
-        data = (await request("GET", "/v2/voices", params=params)).json()
-        result.extend({"voice_id": v["voice_id"], "name": v["name"], "description": v.get("description") or "",
-                       "category": v.get("category"), "preview_url": v.get("preview_url"), "labels": v.get("labels") or {}}
-                      for v in data.get("voices", []))
+        try:
+            data = (await request("GET", "/v2/voices", params=params)).json()
+        except HTTPException as exc:
+            if exc.status_code not in {502, 503, 504}:
+                raise
+            # Read-only fallback: the complete legacy catalogue uses the same account and key.
+            # Ownership filtering remains in visible_voices, for either endpoint.
+            data = (await request("GET", "/v1/voices")).json()
+            return [voice_row(v) for v in data.get("voices", [])]
+        result.extend(voice_row(v) for v in data.get("voices", []))
         next_cursor = data.get("next_page_token")
         if not data.get("has_more") or not next_cursor or next_cursor == cursor:
             return result

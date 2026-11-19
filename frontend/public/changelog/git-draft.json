@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-18T12:41:33.691387+00:00",
-  "version_label": "2026.11.18-21dd58a4",
+  "generated_at": "2026-11-18T22:59:32.578181+00:00",
+  "version_label": "2026.11.18-1b372beb",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 29 commit dall'ultima release pubblicata.",
-  "git_ref": "21dd58a4ddc8c80fced140307acdfa8e69878dfd",
+  "summary": "Bozza generata automaticamente da 31 commit dall'ultima release pubblicata.",
+  "git_ref": "1b372beb7eea866f48dff89c7001f36c2758110c",
   "items": [
     {
       "category": "new",
@@ -149,6 +149,16 @@
       "category": "new",
       "title": "Smart-canvas: copy/paste, grid snap, curved connector, floating tool pill, fullscreen; fix class chat dock click",
       "description": "Smart-canvas: copy/paste, grid snap, curved connector, floating tool pill, fullscreen; fix class chat dock click"
+    },
+    {
+      "category": "new",
+      "title": "Boards: content-first task modal, multi-select move, external assignees; presentation styles",
+      "description": "Boards: content-first task modal, multi-select move, external assignees; presentation styles"
+    },
+    {
+      "category": "new",
+      "title": "Vibe-lab: model team, parallel writers, live code, authentic design, library landing",
+      "description": "Vibe-lab: model team, parallel writers, live code, authentic design, library landing"
     }
   ]
 }

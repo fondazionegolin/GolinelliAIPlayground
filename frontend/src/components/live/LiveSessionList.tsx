@@ -1,9 +1,9 @@
 import { SearchPill } from '@/design/primitives/SearchPill'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Button } from '@/design'
-import LiveSlidePreview, { KIND_META, slideKind, slideText, type PreviewSlide, type SlideKind } from '@/components/live/LiveSlidePreview'
-import { Atom, BarChart3, BookOpen, Brain, Building2, Calculator, Code2, Compass, Copy, Cpu, Dna, Droplets, FileBarChart2, FlaskConical, Globe, Heart, KeyRound, Landmark, Languages, Leaf, Lightbulb, ListChecks, MoreHorizontal, Mountain, Music, Palette, Pencil, Play, Puzzle, Pyramid, Radio, Rocket, Scale, Share2, Shield, Sparkles, Square, Trash2, Trophy, Microscope, Zap, ChevronDown, ChevronLeft, ChevronRight, Eye, Plus, X, type LucideIcon } from '@/components/icons'
+import { Button, Select } from '@/design'
+import LiveSlidePreview, { KIND_META, slideKind, slideText, type PreviewSlide } from '@/components/live/LiveSlidePreview'
+import { Atom, BarChart3, BookOpen, Brain, Building2, Calculator, Code2, Compass, Copy, Cpu, Dna, Droplets, FileBarChart2, FlaskConical, Globe, Heart, KeyRound, Landmark, Languages, Leaf, Lightbulb, ListChecks, MoreHorizontal, Mountain, Music, Palette, Pencil, Play, Puzzle, Pyramid, Radio, Rocket, Scale, Share2, Shield, Sparkles, Square, Trash2, Trophy, Microscope, Zap, ChevronLeft, ChevronRight, X, type LucideIcon } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 
 export interface LiveSessionItem {
@@ -145,16 +145,6 @@ const unit = (item: LiveSessionItem) => `${item.slides_count} ${item.interaction
 const slidesOf = (item: LiveSessionItem) => (item.slides_json || []) as PreviewSlide[]
 const isEscape = (item: LiveSessionItem) => item.interaction_type === 'escape_room'
 
-/** Per-kind counts of an item's slides, e.g. 4 × risposta multipla, 1 × word wall. */
-function kindCounts(item: LiveSessionItem) {
-  const counts = new Map<SlideKind, number>()
-  for (const slide of slidesOf(item)) {
-    const kind = slideKind(slide, isEscape(item))
-    counts.set(kind, (counts.get(kind) ?? 0) + 1)
-  }
-  return [...counts.entries()]
-}
-
 function StatusBadge({ item }: { item: LiveSessionItem }) {
   const active = item.status === 'ACTIVE'
   const lobby = isOpenLobby(item)
@@ -168,74 +158,37 @@ function StatusBadge({ item }: { item: LiveSessionItem }) {
   )
 }
 
-function KindChips({ item }: { item: LiveSessionItem }) {
-  const counts = kindCounts(item)
-  if (!counts.length) return null
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {counts.map(([kind, count]) => {
-        const { icon: KindIcon, color, label } = KIND_META[kind]
-        return (
-          <span key={kind} title={label} className="flex items-center gap-1 rounded-full bg-[var(--ds-field-bg)] py-0.5 pl-1 pr-2 text-[11px] font-semibold text-[var(--text-secondary)]">
-            <span className="flex h-4 w-4 items-center justify-center rounded-full text-white" style={{ background: color }}><KindIcon className="h-2.5 w-2.5" /></span>
-            {count} {label}
-          </span>
-        )
-      })}
-    </div>
-  )
+/** One readable line about what the session contains: its first question or clue. */
+function summary(item: LiveSessionItem) {
+  const first = slidesOf(item).map((slide) => slideText(slide)).find((text) => text && text.trim())
+  return first?.trim() || (isEscape(item) ? tl("Escape room senza indizi") : tl("Nessuna domanda ancora"))
 }
 
-function Tile({ item, actions, onPreview }: { item: LiveSessionItem; actions: Actions; onPreview: (item: LiveSessionItem) => void }) {
-  const active = item.status === 'ACTIVE'
-  const closed = item.status === 'CLOSED'
-  const first = slidesOf(item)[0]
-  const { Icon, color } = sessionEmblem(item)
+/** Explorer card: cover with the topic emblem, title and one line of content. Everything else lives in the detail. */
+function Card({ item, actions, onOpen }: { item: LiveSessionItem; actions: Actions; onOpen: (item: LiveSessionItem) => void }) {
+  const { Icon, color, label } = sessionEmblem(item)
+  const active = item.status === 'ACTIVE' || isOpenLobby(item)
   return (
-    <article className="flex flex-col gap-3 rounded-3xl bg-[var(--ds-well-tile)] p-3 shadow-sm transition hover:bg-[var(--ds-well-tile-hover)]">
-      <button type="button" onClick={() => onPreview(item)} aria-label={tl("Anteprima di {0}", item.title)} className="group relative block overflow-hidden rounded-2xl text-left">
-        <div className="pointer-events-none h-44">
-          {first
-            ? <LiveSlidePreview slide={first} escape={isEscape(item)} compact />
-            : <div className="flex h-full items-center justify-center rounded-2xl bg-[var(--ds-field-bg)] text-sm text-[var(--text-secondary)]">{tl("Nessuna slide")}</div>}
+    <article className="ui-card ui-card-interactive group relative overflow-hidden">
+      <button type="button" onClick={() => onOpen(item)} aria-label={tl("Apri {0}", item.title)} className="block w-full text-left">
+        <div className="relative aspect-video overflow-hidden" style={{ background: `linear-gradient(135deg, ${color} 0%, ${color}b3 55%, ${color}66 100%)` }}>
+          <Icon className="absolute -bottom-6 -right-4 h-36 w-36 text-white/20" strokeWidth={1.2} aria-hidden />
+          <span className="ds-squircle absolute bottom-4 left-4 flex h-12 w-12 items-center justify-center bg-white/20 text-white" aria-hidden><Icon className="h-6 w-6" strokeWidth={1.7} /></span>
+          <span className={`absolute left-3 top-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold text-white ${active ? 'bg-emerald-600' : 'bg-black/55'}`}>
+            {active && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}
+            {item.status === 'ACTIVE' ? tl("In corso") : isOpenLobby(item) ? tl("Lobby aperta") : item.status === 'CLOSED' ? tl("Conclusa") : tl("Bozza")}
+          </span>
         </div>
-        <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-sm font-bold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
-          <Eye className="mr-1.5 h-4 w-4" />{tl("Anteprima")}
-        </span>
+        <div className="px-4 pb-4 pt-3">
+          <h2 className="line-clamp-1 text-sm font-black text-[var(--text-primary)]" title={item.title}>{item.title}</h2>
+          <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-xs leading-5 text-[var(--text-secondary)]">{summary(item)}</p>
+          <p className="mt-2 text-[11px] text-[var(--text-secondary)] opacity-80">{isEscape(item) ? 'Escape Room' : label} · {unit(item)}</p>
+        </div>
       </button>
-
-      <div className="flex items-start gap-3 px-1">
-        <span className="ds-squircle flex h-10 w-10 shrink-0 items-center justify-center text-white" style={{ background: color }} aria-hidden><Icon className="h-5 w-5" strokeWidth={1.7} /></span>
-        <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 break-words text-sm font-bold leading-snug text-[var(--text-primary)]" title={item.title}>{item.title}</h3>
-          <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{isEscape(item) ? 'Escape Room' : tl("Quiz")} · {unit(item)} · {date(item.created_at)}</p>
-        </div>
-        <StatusBadge item={item} />
-      </div>
-
-      <div className="px-1"><KindChips item={item} /></div>
-
-      <div className="mt-auto flex items-center gap-2">
-        {closed ? (
-          <Button tone="neutral" surface="solid" className="h-10 flex-1 justify-center" onClick={() => actions.onOpen(item)}><FileBarChart2 className="h-4 w-4" /> Report</Button>
-        ) : (
-          <Button tone="accent" surface="solid" className="h-10 flex-1 justify-center" onClick={() => actions.onOpen(item)}>
-            {active ? <><Radio className="h-4 w-4" /> {tl("Pannello live")}</> : <><Play className="h-4 w-4" /> {tl("Avvia")}</>}
-          </Button>
-        )}
+      <div className="absolute right-2 top-2 rounded-xl bg-black/30 text-white opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 [&_button]:text-white">
         <ItemMenu item={item} actions={actions} />
       </div>
     </article>
-  )
-}
-
-function NewTile({ onNew }: { onNew: () => void }) {
-  return (
-    <button type="button" onClick={onNew} className="flex min-h-[18rem] flex-col items-center justify-center gap-3 rounded-3xl bg-[var(--ds-well-tile)]/60 p-6 text-center text-[var(--text-secondary)] transition hover:bg-[var(--ds-well-tile)] hover:text-[var(--text-primary)]">
-      <span className="ds-squircle flex h-14 w-14 items-center justify-center bg-[var(--ds-field-bg)]"><Plus className="h-6 w-6" /></span>
-      <span className="text-sm font-bold">{tl("Nuova sessione")}</span>
-      <span className="max-w-[14rem] text-xs leading-5">{tl("Scegli il tipo e guarda l’anteprima prima di iniziare")}</span>
-    </button>
   )
 }
 
@@ -313,13 +266,12 @@ type StatusFilter = 'all' | 'ACTIVE' | 'DRAFT' | 'CLOSED'
 type TypeFilter = 'all' | 'slides' | 'escape_room'
 type SortKey = 'recent' | 'oldest' | 'name'
 
-/** Live activities of a session: centred search, tiles with a real preview of the content, all framed on a darker well. */
-export default function LiveSessionList({ items, onNew, ...actions }: { items: LiveSessionItem[]; onNew?: () => void } & Actions) {
+/** Live activities of a session, laid out like the Video Lab library: one filter row, clean cards on a darker well; details open on click. */
+export default function LiveSessionList({ items, ...actions }: { items: LiveSessionItem[]; onNew?: () => void } & Actions) {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [type, setType] = useState<TypeFilter>('all')
   const [sort, setSort] = useState<SortKey>('recent')
-  const [showAllArchive, setShowAllArchive] = useState(false)
   const [previewId, setPreviewId] = useState<string | null>(null)
   const previewItem = items.find((item) => item.id === previewId) ?? null
 
@@ -340,35 +292,31 @@ export default function LiveSessionList({ items, onNew, ...actions }: { items: L
     return list.sort((a, b) => sort === 'name' ? a.title.localeCompare(b.title, 'it') : sort === 'oldest' ? time(a) - time(b) : time(b) - time(a))
   }, [items, query, status, type, sort])
 
-  const active = visible.filter((i) => i.status === 'ACTIVE')
+  // Running sessions first, then drafts, then the archive; the chosen sort applies inside each group.
+  const rank = (i: LiveSessionItem) => (i.status === 'ACTIVE' || isOpenLobby(i) ? 0 : i.status === 'DRAFT' ? 1 : 2)
+  const ordered = [...visible].sort((a, b) => rank(a) - rank(b))
   const pending = items.filter(isPending)
-  const drafts = visible.filter((i) => i.status === 'DRAFT')
-  const archive = visible.filter((i) => i.status === 'CLOSED')
-  const archiveShown = showAllArchive || archive.length <= 6 ? archive : archive.slice(0, 6)
-  const newTile = onNew && !query ? <NewTile onNew={onNew} /> : null
-
-  const chips: Array<[StatusFilter, string]> = [['all', tl("Tutte")], ['ACTIVE', tl("In corso")], ['DRAFT', tl("Bozze")], ['CLOSED', tl("Archivio")]]
-  const selectClass = 'h-9 rounded-xl border-0 bg-[var(--ds-field-bg)] px-3 text-xs font-semibold text-[var(--ds-field-ink)]'
+  const chips: Array<[StatusFilter, string]> = [['all', tl("Tutte")], ['ACTIVE', tl("In corso")], ['DRAFT', tl("Bozze")], ['CLOSED', tl("Concluse")]]
 
   return (
-    <div className="space-y-6">
-      <div className="mx-auto flex max-w-3xl flex-col items-center gap-3">
-        <SearchPill value={query} placeholder={tl("Cerca per titolo, argomento o domanda")} aria-label={tl("Cerca sessioni")} onValueChange={setQuery} className="w-full" />
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <div className="flex flex-wrap items-center justify-center gap-1.5" role="group" aria-label={tl("Filtra per stato")}>
-            {chips.map(([id, label]) => (
-              <button key={id} type="button" onClick={() => setStatus(id)} aria-pressed={status === id}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${status === id ? 'ds-selected text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-black/5'}`}>
-                {label} <span className="opacity-60">{counts[id]}</span>
-              </button>
-            ))}
-          </div>
-          <select value={type} onChange={(event) => setType(event.target.value as TypeFilter)} aria-label={tl("Filtra per tipo")} className={selectClass}>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <SearchPill value={query} placeholder={tl("Cerca per titolo, argomento o domanda")} aria-label={tl("Cerca sessioni")} onValueChange={setQuery} className="w-full sm:w-80" />
+        <div className="flex flex-wrap items-center gap-1" role="group" aria-label={tl("Filtra per stato")}>
+          {chips.map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setStatus(id)} aria-pressed={status === id}
+              className={`rounded-full px-3.5 py-2 text-xs font-bold transition ${status === id ? 'ds-selected text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-black/5'}`}>
+              {label} <span className="opacity-60">{counts[id]}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 sm:ml-auto">
+          <Select density="compact" value={type} onChange={(event) => setType(event.target.value as TypeFilter)} aria-label={tl("Filtra per tipo")} className="w-auto text-xs font-semibold">
             <option value="all">{tl("Tutti i tipi")}</option><option value="slides">{tl("Quiz e sondaggi")}</option><option value="escape_room">Escape Room</option>
-          </select>
-          <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label={tl("Ordina")} className={selectClass}>
+          </Select>
+          <Select density="compact" value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label={tl("Ordina")} className="w-auto text-xs font-semibold">
             <option value="recent">{tl("Più recenti")}</option><option value="oldest">{tl("Più vecchie")}</option><option value="name">{tl("Nome A–Z")}</option>
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -389,54 +337,19 @@ export default function LiveSessionList({ items, onNew, ...actions }: { items: L
         </div>
       )}
 
-      <div className="space-y-8 rounded-[2rem] bg-[var(--ds-well)] p-4 sm:p-6">
-        {active.length > 0 && (
-          <Section title={tl("In corso")} hint={tl("Sessioni live attive adesso")} count={active.length}>
-            <Grid>{active.map((item) => <Tile key={item.id} item={item} actions={actions} onPreview={(i) => setPreviewId(i.id)} />)}</Grid>
-          </Section>
-        )}
-        {(drafts.length > 0 || (active.length === 0 && newTile)) && (
-          <Section title={tl("Da preparare")} hint={tl("Controlla i contenuti e avvia quando sei pronto")} count={drafts.length}>
-            <Grid>{newTile}{drafts.map((item) => <Tile key={item.id} item={item} actions={actions} onPreview={(i) => setPreviewId(i.id)} />)}</Grid>
-          </Section>
-        )}
-        {archive.length > 0 && (
-          <Section title={tl("Archivio")} hint={tl("Sessioni concluse: report e riutilizzo")} count={archive.length}>
-            <Grid>{archiveShown.map((item) => <Tile key={item.id} item={item} actions={actions} onPreview={(i) => setPreviewId(i.id)} />)}</Grid>
-            {archive.length > 6 && (
-              <button type="button" onClick={() => setShowAllArchive((value) => !value)} className="mx-auto mt-4 flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold text-[var(--text-secondary)] transition hover:bg-black/5">
-                {showAllArchive ? tl("Mostra meno") : tl("Mostra tutte ({0})", archive.length)}<ChevronDown className={`h-3.5 w-3.5 transition ${showAllArchive ? 'rotate-180' : ''}`} />
-              </button>
-            )}
-          </Section>
-        )}
-        {visible.length === 0 && (
-          <div className="py-14 text-center text-[var(--text-secondary)]">
-            <Zap className="mx-auto mb-2 h-8 w-8 opacity-40" />
-            <p className="text-sm font-medium text-[var(--text-primary)]">{tl("Nessuna sessione corrisponde ai filtri")}</p>
-            <button type="button" onClick={() => { setQuery(''); setStatus('all'); setType('all') }} className="mt-2 text-xs font-bold text-[var(--app-accent,#7c3aed)] underline">{tl("Azzera i filtri")}</button>
-          </div>
-        )}
-      </div>
+      {ordered.length > 0 ? (
+        <div className="ds-well grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {ordered.map((item) => <Card key={item.id} item={item} actions={actions} onOpen={(i) => setPreviewId(i.id)} />)}
+        </div>
+      ) : (
+        <div className="ds-well py-14 text-center text-[var(--text-secondary)]">
+          <Zap className="mx-auto mb-2 h-8 w-8 opacity-40" />
+          <p className="text-sm font-medium text-[var(--text-primary)]">{tl("Nessuna sessione corrisponde ai filtri")}</p>
+          <button type="button" onClick={() => { setQuery(''); setStatus('all'); setType('all') }} className="mt-2 text-xs font-bold text-[var(--app-accent,#7c3aed)] underline">{tl("Azzera i filtri")}</button>
+        </div>
+      )}
 
       {previewItem && <PreviewDialog item={previewItem} actions={actions} onClose={() => setPreviewId(null)} />}
     </div>
   )
-}
-
-function Section({ title, hint, count, children }: { title: string; hint: string; count: number; children: React.ReactNode }) {
-  return (
-    <section>
-      <div className="mb-3 flex items-baseline gap-3 px-1">
-        <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--text-primary)]">{title}</h2>
-        <span className="rounded-full bg-[var(--ds-well-tile)] px-2.5 py-0.5 text-xs font-bold text-[var(--text-secondary)]">{count}</span>
-        <p className="hidden text-xs text-[var(--text-secondary)] sm:block">{hint}</p>
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{children}</div>
 }

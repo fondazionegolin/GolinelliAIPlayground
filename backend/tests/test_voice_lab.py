@@ -227,3 +227,51 @@ def test_track_title_validation_rejects_empty_controls_and_oversize(title):
 def test_artist_credit_is_server_controlled():
     with pytest.raises(ValidationError):
         routes.TrackUpdate(title='Jazz', artist_name='Un altro autore')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('seconds', [0.5, 29.99, 30.0, 45.0])
+async def test_recorded_clone_checks_duration_before_provider_and_is_private(monkeypatch, seconds):
+    teacher, db = actor(), db_stub()
+    added = []
+    db.add = added.append
+    monkeypatch.setattr(routes.billing, 'duration', AsyncMock(return_value=seconds))
+    monkeypatch.setattr(routes, 'budget', AsyncMock())
+    provider = AsyncMock(return_value=httpx.Response(200, json={'voice_id': 'my-recorded-voice'}))
+    monkeypatch.setattr(eleven, 'request', provider)
+    sample = UploadFile(io.BytesIO(b'recorded audio'), filename='my-voice.wav', headers=Headers({'content-type': 'audio/wav'}))
+    if seconds < 30:
+        with pytest.raises(HTTPException) as exc:
+            await routes.clone_voice(db, teacher, 'My voice', True, '', False, [sample], recorded=True)
+        assert exc.value.status_code == 422
+        provider.assert_not_called()
+        assert not added
+    else:
+        result = await routes.clone_voice(db, teacher, 'My voice', True, '', False, [sample], recorded=True)
+        provider.assert_awaited_once()
+        assert result['voice_id'] == 'my-recorded-voice'
+        assert added[0].owner_id == teacher.id
+        assert added[0].tenant_id == teacher.tenant_id
+        assert added[0].service == 'clone'
+        assert added[0].details['consent_confirmed']
+
+
+@pytest.mark.asyncio
+async def test_voice_catalogue_falls_back_on_upstream_failure(monkeypatch):
+    request = AsyncMock(side_effect=[HTTPException(502, 'Upstream unavailable'), httpx.Response(200, json={
+        'voices': [{'voice_id': 'voice123', 'name': 'Anna'}]})])
+    monkeypatch.setattr(eleven, 'request', request)
+    assert await eleven.account_voices() == [{'voice_id': 'voice123', 'name': 'Anna', 'description': '',
+        'category': None, 'preview_url': None, 'labels': {}}]
+    assert [call.args for call in request.call_args_list] == [('GET', '/v2/voices'), ('GET', '/v1/voices')]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', [401, 403, 429])
+async def test_voice_catalogue_does_not_fallback_on_access_or_rate_errors(monkeypatch, status):
+    request = AsyncMock(side_effect=HTTPException(status, 'Provider error'))
+    monkeypatch.setattr(eleven, 'request', request)
+    with pytest.raises(HTTPException) as exc:
+        await eleven.account_voices()
+    assert exc.value.status_code == status
+    request.assert_awaited_once()
