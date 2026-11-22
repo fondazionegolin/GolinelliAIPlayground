@@ -157,7 +157,7 @@ function ModelLivePreview({ projectId }: { projectId: string }) {
         {state === 'loading' && <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-white/80"><Loader2 className="h-4 w-4 animate-spin" /> {tl("Avvio anteprima…")}</div>}
         {state === 'error' && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-5 text-center text-sm text-white/80"><Camera className="h-7 w-7" />{message}</div>}
         {state === 'ready' && (
-          <span className="absolute inset-x-3 bottom-3 rounded-2xl px-4 py-2 text-center text-sm font-black text-white backdrop-blur" style={{ background: sure ? labels[best]?.color || '#7b69c9' : 'rgba(30,41,59,.82)' }}>
+          <span className="absolute inset-x-3 bottom-3 rounded-2xl px-4 py-2 text-center text-sm font-semibold text-white backdrop-blur" style={{ background: sure ? labels[best]?.color || '#7b69c9' : 'rgba(30,41,59,.82)' }}>
             {!detected ? tl("Nessun riconoscimento: mostrati alla webcam") : sure ? `${labels[best]?.name} · ${Math.round(probs![best] * 100)}%` : tl("Non sono sicuro")}
           </span>
         )}
@@ -212,7 +212,7 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
           <div className="flex gap-3">
             <span className="ds-squircle flex h-11 w-11 shrink-0 items-center justify-center text-white" style={{ background: '#7b69c9' }}><Brain className="h-5 w-5" /></span>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">{tl("Modelli del Lab ML")}</h2>
+              <h2 className="text-lg font-semibold text-slate-900">{tl("Modelli del Lab ML")}</h2>
               <p className="mt-0.5 text-xs leading-5 text-slate-500">{tl("Usa nello sketch un modello che hai addestrato: gesti delle mani, pose del corpo o immagini. Provalo dal vivo, poi inseriscilo nel codice.")}</p>
             </div>
           </div>
@@ -232,10 +232,10 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
                 <button key={project.id} type="button" onClick={() => setSelectedId(project.id)} className={`flex w-full items-center gap-3 rounded-2xl p-2.5 text-left transition ${active ? 'bg-violet-50 ring-2 ring-violet-200 dark:bg-violet-500/10' : 'hover:bg-slate-50 dark:hover:bg-white/5'}`}>
                   <span className="ds-squircle flex h-10 w-10 shrink-0 items-center justify-center text-white" style={{ background: MODE_COLOR[kind] }}><Icon className="h-5 w-5" strokeWidth={1.7} /></span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-slate-900">{project.name}</span>
+                    <span className="block truncate text-sm font-semibold text-slate-900">{project.name}</span>
                     <span className="block truncate text-[11px] text-slate-500">{MODE_LABEL[kind]} · {project.classes.length} {tl("classi")}</span>
                   </span>
-                  {project.has_model === false && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-700">{tl("Da preparare")}</span>}
+                  {project.has_model === false && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-semibold text-amber-700">{tl("Da preparare")}</span>}
                   {attachedIds.includes(project.id) && <Check className="h-4 w-4 shrink-0 text-emerald-500" />}
                 </button>
               )
@@ -247,7 +247,7 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
             {!selected ? <p className="py-16 text-center text-sm text-slate-400">{tl("Scegli un modello per vedere come funziona.")}</p> : needsPreparing ? (
               <div className="mx-auto max-w-md space-y-4 py-10 text-center">
                 <span className="ds-squircle mx-auto flex h-14 w-14 items-center justify-center text-white" style={{ background: MODE_COLOR[mode] }}><Brain className="h-7 w-7" /></span>
-                <h3 className="text-base font-bold text-slate-900">«{selected.name}{tl("» va preparato")}</h3>
+                <h3 className="text-base font-semibold text-slate-900">«{selected.name}{tl("» va preparato")}</h3>
                 <p className="text-sm leading-6 text-slate-500">{tl("Questo progetto ha i suoi esempi ma non ha ancora un modello pronto per gli sketch. Lo preparo adesso dagli esempi salvati: ci vuole un attimo e non cambia il progetto.")}</p>
                 {prepError && <p className="rounded-xl bg-rose-50 p-3 text-xs leading-5 text-rose-700">{prepError}</p>}
                 <Button tone="accent" surface="solid" onClick={() => void runPrepare()} disabled={preparing}>
@@ -257,17 +257,17 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
             ) : (
               <div className="grid gap-5 lg:grid-cols-2">
                 <div>
-                  <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">{tl("Anteprima di funzionamento")}</h3>
+                  <h3 className="mb-2 text-xs font-semibold text-slate-400">{tl("Anteprima di funzionamento")}</h3>
                   <ModelLivePreview key={selected.id} projectId={selected.id} />
                   <p className="mt-2 text-[11px] leading-4 text-slate-400">{tl("Prova le tue")} {mode === 'hand' ? 'gesti' : mode === 'pose' ? 'movimenti' : mode === 'face' ? 'espressioni' : tl("oggetti")}{tl(": è esattamente ciò che vedrà lo sketch.")}</p>
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">{tl("Classi riconosciute")}</h3>
-                    <div className="flex flex-wrap gap-1.5">{selected.classes.map((cls) => <span key={cls.id} className="rounded-full px-2.5 py-1 text-xs font-bold text-white" style={{ background: cls.color }}>{cls.name}</span>)}</div>
+                    <h3 className="mb-2 text-xs font-semibold text-slate-400">{tl("Classi riconosciute")}</h3>
+                    <div className="flex flex-wrap gap-1.5">{selected.classes.map((cls) => <span key={cls.id} className="rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ background: cls.color }}>{cls.name}</span>)}</div>
                   </div>
                   <div>
-                    <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">{tl("Regole d’uso nello sketch")}</h3>
+                    <h3 className="mb-2 text-xs font-semibold text-slate-400">{tl("Regole d’uso nello sketch")}</h3>
                     <ul className="space-y-1.5 text-xs leading-5 text-slate-600">
                       <li>{tl("• Non serve importare nulla:")} <code className="rounded bg-slate-100 px-1 dark:bg-white/10">GolinelliML</code> {tl("è già nella pagina.")}</li>
                       <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">result.label</code> {tl("è la classe riconosciuta, oppure")} <b>null</b> {tl("se il modello non è sicuro.")}</li>

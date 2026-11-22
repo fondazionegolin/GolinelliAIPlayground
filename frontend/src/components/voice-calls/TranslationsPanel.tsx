@@ -72,7 +72,7 @@ function ShareDialog({ analysis, recording, open, onOpenChange }: { analysis: Ca
         </DialogHeader>
         <DialogBody>
           <div className="grid gap-4">
-            <label className="grid gap-1.5 text-xs font-bold">{tl("Sessione")}
+            <label className="grid gap-1.5 text-xs font-semibold">{tl("Sessione")}
               <Select value={sessionId} onChange={(e) => setSessionId(e.target.value)} aria-label={tl("Sessione")}>
                 <option value="">{sessions.isLoading ? tl("Caricamento…") : tl("Scegli una sessione")}</option>
                 {(sessions.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.class_name} · {s.title}</option>)}
@@ -81,7 +81,7 @@ function ShareDialog({ analysis, recording, open, onOpenChange }: { analysis: Ca
             <div role="radiogroup" aria-label={tl("Destinatario")} className="grid grid-cols-2 gap-2">
               {([['class', tl("Tutta la classe")], ['student', tl("Un solo studente")]] as const).map(([value, label]) => (
                 <button key={value} type="button" role="radio" aria-checked={target === value} onClick={() => setTarget(value)}
-                  className={`rounded-2xl px-3 py-2.5 text-sm font-bold transition-colors ${target === value ? 'ds-selected' : 'bg-[var(--ds-surface-muted)] hover:bg-[var(--ds-control-hover)]'}`}>{label}</button>
+                  className={`rounded-2xl px-3 py-2.5 text-sm font-semibold transition-colors ${target === value ? 'ds-selected' : 'bg-[var(--ds-surface-muted)] hover:bg-[var(--ds-control-hover)]'}`}>{label}</button>
               ))}
             </div>
             {target === 'student' && (
@@ -115,7 +115,7 @@ function TranslationCard({ analysis, recording, onSpeak, speaking, onDelete }: {
       <header className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <button type="button" aria-expanded={open} className="flex min-w-0 flex-1 basis-40 items-center gap-3 text-left" onClick={() => setOpen((v) => !v)}>
           <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--ds-surface-muted)] text-[var(--text-secondary)]"><Languages className="h-4 w-4" /></span>
-          <span className="truncate text-sm font-bold">{analysis.title}</span>
+          <span className="truncate text-sm font-semibold">{analysis.title}</span>
           <ChevronDown className={`h-4 w-4 flex-shrink-0 text-[var(--text-secondary)] transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
         <div className="flex items-center gap-1">
@@ -209,7 +209,7 @@ export function TranslationsPanel({ recording, analyses, hasSummary }: { recordi
   return (
     <div className="grid gap-4">
       <section className="grid gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--ds-surface)] p-4">
-        <div className="flex items-center gap-2 text-sm font-bold"><Languages className="h-4 w-4 text-[var(--text-secondary)]" />{tl("Traduci per chi non parla ancora italiano")}</div>
+        <div className="flex items-center gap-2 text-sm font-semibold"><Languages className="h-4 w-4 text-[var(--text-secondary)]" />{tl("Traduci per chi non parla ancora italiano")}</div>
         <Select value={language} onChange={(e) => setLanguage(e.target.value)} aria-label={tl("Lingua")}>
           {(catalogue?.languages ?? []).map((l) => <option key={l.code} value={l.code}>{l.name} · {l.native}</option>)}
         </Select>

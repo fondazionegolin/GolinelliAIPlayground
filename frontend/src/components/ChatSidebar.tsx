@@ -392,7 +392,7 @@ export default function ChatSidebar({
       if (activeTab === 'private' && activePrivateChat) {
         // Send private message
         if (messageText || uploadedUrls.length > 0) {
-          sendPrivateMessage(activePrivateChat, messageText || tl("📎 Allegato"), uploadedUrls, filenameMap)
+          sendPrivateMessage(activePrivateChat, messageText || tl("Allegato"), uploadedUrls, filenameMap)
         }
       } else {
         // Send public message
@@ -400,7 +400,7 @@ export default function ChatSidebar({
           const replyId = replyingTo?.id
           const replyPrev = replyingTo ? `${replyingTo.sender_name || 'Utente'}: ${replyingTo.text.slice(0, 80)}` : undefined
           setReplyingTo(null)
-          await sendPublicMessage(messageText || tl("📎 Allegato"), uploadedUrls, filenameMap, replyId, replyPrev)
+          await sendPublicMessage(messageText || tl("Allegato"), uploadedUrls, filenameMap, replyId, replyPrev)
         }
       }
     } catch (e) {
@@ -441,7 +441,7 @@ export default function ChatSidebar({
     if (e.dataTransfer.types.includes(DRIVE_ITEM_MIME)) {
       try {
         const dropped = await filesFromUniversalDrag(e.dataTransfer)
-        if (dropped.length) await shareDroppedFilesToSession(dropped, `📎 ${dropped.map((file) => file.name).join(', ')}`)
+        if (dropped.length) await shareDroppedFilesToSession(dropped,`${dropped.map((file) => file.name).join(',')}`)
       } catch (err) {
         console.error('Failed to handle drive item drop', err)
       }
@@ -461,7 +461,7 @@ export default function ChatSidebar({
         const fileObj = new globalThis.File([blob], data.filename || 'file', {
           type: data.mime_type || blob.type || 'application/octet-stream'
         })
-        await shareDroppedFilesToSession([fileObj], `📎 ${data.filename || 'File condiviso'}`)
+        await shareDroppedFilesToSession([fileObj],`${data.filename ||'File condiviso'}`)
         return
       } catch (err) {
         console.error('Failed to handle session file drop', err)
@@ -488,7 +488,7 @@ export default function ChatSidebar({
         const fileType = blob.type || 'image/png'
         // Create file object
         const fileObj = new (window.File as any)([blob], filename, { type: fileType }) as File
-        await shareDroppedFilesToSession([fileObj], `🖼️ ${filename}`)
+        await shareDroppedFilesToSession([fileObj],`${filename}`)
         return
       } catch (err) {
         console.error('Failed to parse custom drag data', err)
@@ -504,11 +504,11 @@ export default function ChatSidebar({
           const response = await fetch(data.blobUrl)
           const blob = await response.blob()
           const fileObj = new (window.File as any)([blob], data.filename, { type: 'application/pdf' }) as File
-          await shareDroppedFilesToSession([fileObj], `📄 ${data.title || data.filename}`)
+          await shareDroppedFilesToSession([fileObj],`${data.title || data.filename}`)
         } else if (data.content) {
           const blob = new Blob([data.content], { type: data.mimeType || 'text/plain' })
           const fileObj = new (window.File as any)([blob], data.filename, { type: data.mimeType || 'text/plain' }) as File
-          await shareDroppedFilesToSession([fileObj], `📄 ${data.title || data.filename}`)
+          await shareDroppedFilesToSession([fileObj],`${data.title || data.filename}`)
         }
         return
       } catch (err) {
@@ -523,7 +523,7 @@ export default function ChatSidebar({
         const blob = new Blob([csvData], { type: 'text/csv' })
         const filename = `dataset_${Date.now()}.csv`
         const fileObj = new (window.File as any)([blob], filename, { type: 'text/csv' }) as File
-        await shareDroppedFilesToSession([fileObj], `📊 ${filename}`)
+        await shareDroppedFilesToSession([fileObj],`${filename}`)
         return
       } catch (err) {
         console.error('Failed to parse CSV drag data', err)
@@ -694,7 +694,7 @@ export default function ChatSidebar({
     if (isSystem) {
       return (
         <div key={msg.id} className="flex justify-center">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter bg-slate-100 px-2 py-0.5 rounded">
+          <span className="text-[10px] font-semibold text-slate-400 tracking-tighter bg-slate-100 px-2 py-0.5 rounded">
             {content}
           </span>
         </div>
@@ -732,7 +732,7 @@ export default function ChatSidebar({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="text-[10px] font-bold text-neutral-900 uppercase">{t('chat_sidebar.new_assistant')}</span>
+                  <span className="text-[10px] font-semibold text-neutral-900">{t('chat_sidebar.new_assistant')}</span>
                 </div>
                 <p className="text-xs font-semibold text-slate-800 truncate">{data.name}</p>
                 {data.synopsis && (
@@ -769,7 +769,7 @@ export default function ChatSidebar({
                 {callCode ? <Video className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[10px] font-bold uppercase text-neutral-900">
+                <div className="text-[10px] font-semibold text-neutral-900">
                   {started ? tl("Videochiamata in corso") : when ? tl("Tra 10 minuti · ore {0}", when) : t('chat_sidebar.notification')}
                 </div>
                 <p className="truncate text-xs font-semibold text-slate-800">{String(data.title || content)}</p>
@@ -797,7 +797,7 @@ export default function ChatSidebar({
         >
           <div className="flex items-center gap-2 mb-1">
             <Bell className="h-3 w-3 text-neutral-900" />
-            <span className="text-[10px] font-bold text-neutral-900 uppercase">{t('chat_sidebar.notification')}</span>
+            <span className="text-[10px] font-semibold text-neutral-900">{t('chat_sidebar.notification')}</span>
           </div>
           <p className="text-xs font-semibold text-slate-800 group-hover:text-neutral-900">{content}</p>
         </div>
@@ -850,7 +850,7 @@ export default function ChatSidebar({
                   className="w-full h-full object-cover rounded-full"
                 />
               ) : (
-                <AvatarFallback className={`text-[9px] font-black ${isMe ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`}>
+                <AvatarFallback className={`text-[9px] font-semibold ${isMe ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`}>
                   {(msg.sender_name || '?').substring(0, 2).toUpperCase()}
                 </AvatarFallback>
               )}
@@ -859,14 +859,14 @@ export default function ChatSidebar({
         </div>
 
         <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : 'items-start'}`}>
-          <span className="mx-1 mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-tighter text-slate-500">
+          <span className="mx-1 mb-1 inline-flex items-center gap-1 text-[10px] font-semibold tracking-tighter text-slate-500">
             {msg.sender_is_class_owner && (
               <GraduationCap className="h-3 w-3 text-violet-600" aria-label={tl("Docente proprietario della classe")} />
             )}
             {msg.sender_name || (isMe ? currentUserName : tl("Utente"))}
           </span>
           <div className={`
-            px-3.5 py-2.5 text-xs leading-snug shadow-sm backdrop-blur-md transition-all relative select-text cursor-text
+            px-3.5 py-2.5 text-xs leading-snug shadow-sm backdrop-blur-md transition relative select-text cursor-text
             ${isMe
               ? messageAccentTheme
                 ? 'rounded-2xl rounded-tr-none'
@@ -918,7 +918,7 @@ export default function ChatSidebar({
                         <Brain className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-violet-700">{tl("ToyGPT condiviso")}</p>
+                        <p className="truncate text-[10px] font-semibold text-violet-700">{tl("ToyGPT condiviso")}</p>
                         <p className="truncate text-xs font-semibold text-slate-800">{att.name || tl("Modello ToyGPT")}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">
                           {att.saved_epoch ?? 0} epoch · {Number(att.param_count || 0).toLocaleString()} {tl("parametri · vocab")} {att.vocab_size ?? 0}
@@ -954,7 +954,7 @@ export default function ChatSidebar({
                         <File className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-sky-700">{tl("Progetto Vibe Lab")}</p>
+                        <p className="truncate text-[10px] font-semibold text-sky-700">{tl("Progetto Vibe Lab")}</p>
                         <p className="truncate text-xs font-semibold text-slate-800">{att.title || tl("Mini app condivisa")}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">
                           {att.file_count ?? 0} {tl("file ·")} {att.total_lines ?? 0} righe
@@ -989,7 +989,7 @@ export default function ChatSidebar({
                         <CornerUpLeft className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-[var(--logo-violet-strong)]">Commit Vibe Lab</p>
+                        <p className="truncate text-[10px] font-semibold text-[var(--logo-violet-strong)]">Commit Vibe Lab</p>
                         <p className="truncate text-xs font-semibold text-slate-800">
                           {att.contributor_name || tl("Studente")} {tl("ha inviato una proposta")}
                         </p>
@@ -1112,7 +1112,7 @@ export default function ChatSidebar({
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-300 shadow-sm">
             <MessagesSquare className="h-6 w-6" />
           </div>
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{t('chat_sidebar.no_private_chat')}</p>
+          <p className="text-xs font-semibold text-slate-500">{t('chat_sidebar.no_private_chat')}</p>
           <p className="mt-1 max-w-48 text-[11px] leading-relaxed text-slate-400">
             {userType === 'teacher' ? t('chat_sidebar.start_chat_from_students') : t('chat_sidebar.wait_teacher_private_chat')}
           </p>
@@ -1126,7 +1126,7 @@ export default function ChatSidebar({
       <div className="flex-1 flex overflow-hidden bg-white">
         {/* Vertical tabs for private chats */}
         <div className="w-[76px] flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50/80 px-2 py-3">
-          <div className="mb-3 text-center text-[9px] font-bold uppercase tracking-wide text-slate-400">
+          <div className="mb-3 text-center text-[9px] font-semibold text-slate-400">
             Private
           </div>
           <div className="flex flex-col items-center gap-2">
@@ -1137,7 +1137,7 @@ export default function ChatSidebar({
                 setActivePrivateChat(chat.oderId)
                 markPrivateChatRead(chat.oderId)
               }}
-              className={`relative flex h-12 w-12 items-center justify-center rounded-2xl border transition-all ${activePrivateChat === chat.oderId
+              className={`relative flex h-12 w-12 items-center justify-center rounded-2xl border transition ${activePrivateChat === chat.oderId
                 ? 'border-[var(--app-accent)] bg-[var(--app-accent-soft)] shadow-sm'
                 : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-white'
                 }`}
@@ -1151,7 +1151,7 @@ export default function ChatSidebar({
                     className="w-full h-full object-cover rounded-full"
                   />
                 ) : (
-                  <AvatarFallback className={`text-xs font-bold ${activePrivateChat === chat.oderId
+                  <AvatarFallback className={`text-xs font-semibold ${activePrivateChat === chat.oderId
                     ? 'bg-[var(--app-accent)] text-white'
                     : 'bg-slate-200 text-slate-600'
                     }`}>
@@ -1160,7 +1160,7 @@ export default function ChatSidebar({
                 )}
               </Avatar>
               {chat.unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center">
                   {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
                 </span>
               )}
@@ -1183,16 +1183,16 @@ export default function ChatSidebar({
                       className="h-full w-full rounded-full object-cover"
                     />
                   ) : (
-                    <AvatarFallback className="bg-[var(--app-accent-soft)] text-xs font-black text-[var(--app-accent-text)]">
+                    <AvatarFallback className="bg-[var(--app-accent-soft)] text-xs font-semibold text-[var(--app-accent-text)]">
                       {(currentChat?.peerName || tl("Chat")).substring(0, 2).toUpperCase()}
                     </AvatarFallback>
                   )}
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-slate-800">
+                  <p className="truncate text-sm font-semibold text-slate-800">
                     {currentChat?.peerName || tl("Chat privata")}
                   </p>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  <p className="text-[10px] font-semibold text-slate-400">
                     {tl("Chat privata")}
                   </p>
                 </div>
@@ -1204,7 +1204,7 @@ export default function ChatSidebar({
                     <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-300 shadow-sm">
                       <MessageCircle className="h-5 w-5" />
                     </div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('chat_sidebar.start_conversation')}</p>
+                    <p className="text-xs font-semibold text-slate-400">{t('chat_sidebar.start_conversation')}</p>
                   </div>
                 ) : (
                   currentChatMessages.map((msg, idx) => renderMessage(msg, idx, currentChatMessages))
@@ -1216,7 +1216,7 @@ export default function ChatSidebar({
               <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-300 shadow-sm">
                 <MessageCircle className="h-5 w-5" />
               </div>
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('chat_sidebar.select_chat')}</p>
+              <p className="text-xs font-semibold text-slate-400">{t('chat_sidebar.select_chat')}</p>
             </div>
           )}
         </div>
@@ -1241,7 +1241,7 @@ export default function ChatSidebar({
             </div>
           )}
           {!hasMorePublicMessages && messages.length > 0 && (
-            <div className="text-center text-[10px] text-slate-300 uppercase tracking-wider">{t('chat_sidebar.chat_start')}</div>
+            <div className="text-center text-[10px] text-slate-300">{t('chat_sidebar.chat_start')}</div>
           )}
           {messages.length === 0 && (
             loadingInitialMessages ? (
@@ -1261,7 +1261,7 @@ export default function ChatSidebar({
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
                 <MessageSquare className="h-8 w-8 mb-2" />
-                <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.no_messages')}</p>
+                <p className="text-[10px] font-medium">{t('chat_sidebar.no_messages')}</p>
               </div>
             )
           )}
@@ -1270,7 +1270,7 @@ export default function ChatSidebar({
         </div>
         {isUserScrolledUp && (
           <button
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] text-[11px] font-medium shadow-lg hover:bg-[image:var(--selection-active-bg-hover)] transition-all z-10"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] text-[11px] font-medium shadow-lg hover:bg-[image:var(--selection-active-bg-hover)] transition z-10"
             onClick={() => {
               const container = scrollRef.current
               if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
@@ -1306,7 +1306,7 @@ export default function ChatSidebar({
         title={sidebarLabels.resize}
       >
         <span
-          className={`h-full rounded-full transition-all ${isResizing
+          className={`h-full rounded-full transition ${isResizing
             ? 'w-1.5 bg-[#181b1e]'
             : 'w-1 bg-slate-300/80 group-hover:w-1.5 group-hover:bg-[#181b1e]'
             }`}
@@ -1316,8 +1316,8 @@ export default function ChatSidebar({
       {/* Header with connection status */}
       <div className={`${embedded ? 'hidden' : 'grid'} grid-cols-[1fr_auto_1fr] items-center gap-2 bg-[var(--ds-surface)] px-4 py-3 shadow-[var(--ds-shadow-1)]`}>
         <div className="flex min-w-0 items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-          <h3 className="font-bold text-xs uppercase tracking-widest text-slate-500">
+          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+          <h3 className="font-semibold text-xs text-slate-500">
             {userType === 'student' ? sidebarLabels.studentHeader : sidebarLabels.teacherHeader}
           </h3>
         </div>
@@ -1392,7 +1392,7 @@ export default function ChatSidebar({
                 } : {})}
                 className={[
                   'ui-control-label group relative flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 py-1.5 rounded-[var(--selection-radius)]',
-                  'border-0 transition-all duration-150 focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]',
+                  'border-0 transition duration-150 focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]',
                   isTabActive
                     ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-[var(--selection-shadow)]'
                     : 'bg-transparent text-slate-600 shadow-none hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] hover:shadow-[var(--ds-shadow-1)]',
@@ -1491,7 +1491,7 @@ export default function ChatSidebar({
               </button>
             </div>
           )}
-          <div className="ds-control relative flex items-center rounded-[24px] p-1.5 transition-all focus-within:shadow-[var(--ds-shadow-focus)]">
+          <div className="ds-control relative flex items-center rounded-[24px] p-1.5 transition focus-within:shadow-[var(--ds-shadow-focus)]">
             <input
               ref={fileInputRef}
               type="file"
@@ -1530,7 +1530,7 @@ export default function ChatSidebar({
               size="icon"
               onClick={handleSend}
               disabled={!inputText.trim() && attachedFiles.length === 0}
-              className={`h-8 w-8 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
+              className={`h-8 w-8 rounded-full transition flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
                 ? 'bg-slate-100 text-slate-300'
                 : 'border-0 bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-active-bg-hover)] text-[var(--selection-active-text)] shadow-[var(--ds-shadow-control)]'
                 }`}
@@ -1555,7 +1555,7 @@ export default function ChatSidebar({
                   <Brain className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-base font-black text-slate-900">{activeToyLMModel.name || tl("Modello ToyGPT")}</p>
+                  <p className="truncate text-base font-semibold text-slate-900">{activeToyLMModel.name || tl("Modello ToyGPT")}</p>
                   <p className="text-xs text-slate-500">
                     {activeToyLMModel.saved_epoch ?? 0} epoch · {Number(activeToyLMModel.param_count || 0).toLocaleString()} parametri
                   </p>

@@ -147,7 +147,7 @@ export default function PublicTeacherbotChatPage() {
             : resolvedIcon.kind === 'emoji' ? <span className="text-3xl">{resolvedIcon.emoji}</span>
             : <Bot className="h-8 w-8" />}
         </div>
-        <h1 className="text-xl font-bold text-slate-900">{linkInfo.name}</h1>
+        <h1 className="text-xl font-semibold text-slate-900">{linkInfo.name}</h1>
         {linkInfo.synopsis && <p className="mt-1 text-sm text-slate-500">{linkInfo.synopsis}</p>}
         <form
           className="mt-6 space-y-3"

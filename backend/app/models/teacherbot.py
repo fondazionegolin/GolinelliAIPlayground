@@ -39,6 +39,7 @@ class Teacherbot(Base):
     enable_inquiry = Column(Boolean, default=False, nullable=False)  # Investigative NPC interrogation (implies live voice)
     inquiry_config = Column(JSONB, nullable=True)  # Persona, hidden truth, tiered clues, flag tuning
     enable_escape_room = Column(Boolean, default=False, nullable=False)
+    enable_math_editor = Column(Boolean, default=False, server_default='false', nullable=False)  # students get a formula editor in the chat
     enable_reporting = Column(Boolean, default=False, nullable=False)
     report_prompt = Column(Text, nullable=True)  # Custom prompt for report generation
     llm_provider = Column(String, nullable=True)  # Override default provider

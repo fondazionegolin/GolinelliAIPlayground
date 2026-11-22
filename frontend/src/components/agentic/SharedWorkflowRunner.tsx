@@ -75,7 +75,7 @@ export default function SharedWorkflowRunner({ app, adapter, allowDrive = true }
       {!run && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
           <div className="space-y-1">
-            <h2 className="text-xl font-black text-[var(--text-primary)]">{app.title}</h2>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)]">{app.title}</h2>
             {app.author && <p className="text-xs text-[var(--text-secondary)]">{tl("di {0}", app.author)}</p>}
           </div>
           <Button onClick={start} disabled={busy} tone="accent" surface="solid" className="rounded-full">
@@ -149,14 +149,14 @@ function ResultCards({ app, run, working, allowDrive, onExplore }: { app: Shared
         const entries = Object.entries(output)
         return (
           <section key={item.node_instance_id} className="space-y-2 rounded-2xl bg-[var(--surface-muted)] p-3">
-            <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]">{item.label}</p>
+            <p className="text-[10px] font-semibold text-[var(--text-secondary)]">{item.label}</p>
             {hasArtifacts(shown) && <ArtifactPreviews artifacts={shown} nodeLabel={item.label} />}
             {entries.map(([port, value]) => {
               if (isTable(value)) return <ResultTable key={port} port={port} table={value} />
               if (isPlot(value)) return <Button key={port} onClick={() => onExplore({ kind: 'plot', title: value.title || item.label, plot: value })} tone="neutral" surface="outline" density="compact" className="rounded-full">{tl("Apri il grafico")}</Button>
               if (typeof value === 'string' && value.startsWith('data:image/')) return null
               if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return <p key={port} className="whitespace-pre-wrap text-sm text-[var(--text-primary)]">{String(value)}</p>
-              if (value && typeof value === 'object' && port === 'metrics') return <dl key={port} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{Object.entries(value as Record<string, unknown>).map(([key, metric]) => <div key={key} className="rounded-xl bg-[var(--surface-base)] px-3 py-2"><dt className="text-[10px] font-bold uppercase text-[var(--text-secondary)]">{key}</dt><dd className="text-sm font-black text-[var(--text-primary)]">{formatCompact(metric)}</dd></div>)}</dl>
+              if (value && typeof value === 'object' && port === 'metrics') return <dl key={port} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{Object.entries(value as Record<string, unknown>).map(([key, metric]) => <div key={key} className="rounded-xl bg-[var(--surface-base)] px-3 py-2"><dt className="text-[10px] font-semibold text-[var(--text-secondary)]">{key}</dt><dd className="text-sm font-semibold text-[var(--text-primary)]">{formatCompact(metric)}</dd></div>)}</dl>
               return null
             })}
           </section>
@@ -171,10 +171,10 @@ function ResultTable({ port, table }: { port: string; table: TableValue }) {
   const rows = table.rows.slice(0, 100)
   return (
     <div className="space-y-1">
-      <p className="text-[10px] font-bold text-[var(--text-secondary)]">{port} · {tl("{0} righe", table.rowCount ?? table.rows.length)}</p>
+      <p className="text-[10px] font-semibold text-[var(--text-secondary)]">{port} · {tl("{0} righe", table.rowCount ?? table.rows.length)}</p>
       <div className="max-h-80 overflow-auto rounded-xl bg-[var(--surface-base)]">
         <table className="w-full text-left text-xs">
-          <thead className="sticky top-0 bg-[var(--surface-muted)]"><tr>{columns.map((column) => <th key={column} className="px-3 py-1.5 font-black text-[var(--text-primary)]">{column}</th>)}</tr></thead>
+          <thead className="sticky top-0 bg-[var(--surface-muted)]"><tr>{columns.map((column) => <th key={column} className="px-3 py-1.5 font-semibold text-[var(--text-primary)]">{column}</th>)}</tr></thead>
           <tbody>{rows.map((row, index) => <tr key={index} className="border-t border-[var(--border-subtle)]">{columns.map((column) => <td key={column} className="whitespace-nowrap px-3 py-1 text-[var(--text-primary)]">{formatCompact(row[column])}</td>)}</tr>)}</tbody>
         </table>
       </div>

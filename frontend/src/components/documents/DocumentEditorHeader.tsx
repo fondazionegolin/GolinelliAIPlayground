@@ -1,6 +1,7 @@
 import { SectionIllustration } from '@/design/primitives/SectionHeading'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChevronLeft, Download, Loader2, RectangleHorizontal, RectangleVertical, Ruler } from '@/components/icons'
+import { ChevronLeft, Download, Loader2, MessageSquareText, RectangleHorizontal, RectangleVertical, Ruler } from '@/components/icons'
+import { Button } from '@/design'
 import { PAGE_SIZE_OPTIONS, type PageSetup } from '@/lib/documentPage'
 import { tl } from '@/i18n/tl'
 import { GoogleWorkspaceExportDialog } from './GoogleWorkspaceExportDialog'
@@ -66,7 +67,7 @@ export function DocumentEditorHeader({
           placeholder={titlePlaceholder}
           aria-label={titlePlaceholder}
           size={Math.max(8, Math.min(40, (title || titlePlaceholder || '').length + 1))}
-          className="min-w-0 max-w-[min(34vw,380px)] truncate rounded-lg bg-transparent px-2 py-1 font-emphasis text-sm font-bold text-slate-900 outline-none transition-colors placeholder:text-slate-400 hover:bg-[var(--ds-control-hover)] focus:bg-[var(--ds-control-hover)] focus:shadow-[var(--ds-shadow-focus)] disabled:hover:bg-transparent"
+          className="min-w-0 max-w-[min(34vw,380px)] truncate rounded-lg bg-transparent px-2 py-1 font-emphasis text-sm font-semibold text-slate-900 outline-none transition-colors placeholder:text-slate-400 hover:bg-[var(--ds-control-hover)] focus:bg-[var(--ds-control-hover)] focus:shadow-[var(--ds-shadow-focus)] disabled:hover:bg-transparent"
         />
         {saveLabel && (
           <span className="hidden shrink-0 items-center gap-1.5 text-[11px] font-semibold text-slate-400 lg:inline-flex" aria-live="polite">
@@ -90,6 +91,23 @@ export function DocumentEditorHeader({
 }
 
 /** Icon-only header tool; the label becomes tooltip + accessible name. */
+/** Opens the Document Builder: a labelled call-to-action (solid when closed, soft while the panel is open). */
+export function HeaderAssistantButton({ open, onClick, label }: { open: boolean; onClick: () => void; label: string }) {
+  return (
+    <Button
+      tone="accent"
+      surface={open ? 'soft' : 'solid'}
+      density="compact"
+      className="shrink-0 gap-1.5 rounded-full px-3.5"
+      onClick={onClick}
+      aria-pressed={open}
+      title={open ? tl("Chiudi l’assistente") : tl("Apri l’assistente: scrive, riformula, formatta e analizza il documento")}
+    >
+      <MessageSquareText className="h-4 w-4" />{label}
+    </Button>
+  )
+}
+
 export function HeaderIconButton({ label, onClick, active = false, emphasis = false, disabled = false, children }: {
   label: string
   onClick: () => void
@@ -156,7 +174,7 @@ export function HeaderExportMenu<T extends string>({ label, formats, exporting =
       </HeaderIconButton>
       {open && (
         <div role="menu" className="ds-popover absolute right-0 top-full z-50 mt-2 min-w-[190px] rounded-2xl p-1.5">
-          <p className="px-2.5 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+          <p className="px-2.5 pb-1 pt-1 text-[10px] font-semibold text-slate-400">{label}</p>
           {googleWorkspace && (
             <button
               type="button"
@@ -211,7 +229,7 @@ export function HeaderPageSetupMenu({ value, onChange, disabled = false }: {
   }, [open])
 
   const option = (active: boolean) =>
-    `flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-bold transition-colors ${active
+    `flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-semibold transition-colors ${active
       ? 'bg-[image:var(--ds-choice-bg)] text-[var(--ds-choice-ink)] shadow-[var(--ds-shadow-1)]'
       : 'text-slate-500 hover:bg-[var(--ds-control-hover)] hover:text-slate-900'}`
 
@@ -223,7 +241,7 @@ export function HeaderPageSetupMenu({ value, onChange, disabled = false }: {
       {open && (
         <div className="ds-popover absolute right-0 top-full z-50 mt-2 w-[220px] space-y-3 rounded-2xl p-3">
           <div>
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">{tl("Formato")}</p>
+            <p className="mb-1.5 text-[10px] font-semibold text-slate-400">{tl("Formato")}</p>
             <div className="flex gap-1">
               {PAGE_SIZE_OPTIONS.map((size) => (
                 <button key={size.value} type="button" className={option(value.size === size.value)} onClick={() => onChange({ ...value, size: size.value })}>
@@ -233,7 +251,7 @@ export function HeaderPageSetupMenu({ value, onChange, disabled = false }: {
             </div>
           </div>
           <div>
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">{tl("Orientamento")}</p>
+            <p className="mb-1.5 text-[10px] font-semibold text-slate-400">{tl("Orientamento")}</p>
             <div className="flex gap-1">
               <button type="button" className={option(value.orientation === 'portrait')} onClick={() => onChange({ ...value, orientation: 'portrait' })}>
                 <RectangleVertical className="h-3.5 w-3.5" /> {tl("Verticale")}

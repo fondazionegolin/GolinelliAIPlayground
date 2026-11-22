@@ -88,6 +88,7 @@ class TeacherbotCreate(BaseModel):
     enable_inquiry: bool = False
     inquiry_config: Optional[InquiryConfig] = None
     enable_escape_room: bool = False
+    enable_math_editor: bool = False
     enable_reporting: bool = False
     report_prompt: Optional[str] = None
     llm_provider: Optional[str] = None
@@ -108,6 +109,7 @@ class TeacherbotUpdate(BaseModel):
     enable_inquiry: Optional[bool] = None
     inquiry_config: Optional[InquiryConfig] = None
     enable_escape_room: Optional[bool] = None
+    enable_math_editor: Optional[bool] = None
     enable_reporting: Optional[bool] = None
     report_prompt: Optional[str] = None
     llm_provider: Optional[str] = None
@@ -133,6 +135,7 @@ class TeacherbotResponse(BaseModel):
     enable_inquiry: bool = False
     inquiry_config: Optional[dict[str, Any]] = None
     enable_escape_room: bool
+    enable_math_editor: bool = False
     enable_reporting: bool
     report_prompt: Optional[str]
     llm_provider: Optional[str]
@@ -158,6 +161,7 @@ class TeacherbotListResponse(BaseModel):
     is_proactive: bool
     enable_reporting: bool
     enable_escape_room: bool = False
+    enable_math_editor: bool = False
     created_at: datetime
     updated_at: datetime
     publication_count: int = 0
@@ -333,6 +337,7 @@ class StudentTeacherbotResponse(BaseModel):
     enable_live_voice: bool = False
     enable_inquiry: bool = False
     enable_escape_room: bool = False
+    enable_math_editor: bool = False
     is_studentbot: bool = False
 
     class Config:

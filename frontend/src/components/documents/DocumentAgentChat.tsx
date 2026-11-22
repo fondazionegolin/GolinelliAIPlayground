@@ -27,7 +27,20 @@ export type DocumentAssistContext = {
 
 type AgentStep = { agent?: string; summary?: string }
 type Proposal = Record<string, unknown> & { kind?: string }
-type Plan = { understanding: string; approach: 'format' | 'write' | 'rewrite' | 'ask'; question?: string; operations: FormatOperation[]; write?: WriteSpec | null }
+type AnalysisItem = { issue: string; fix: string }
+type Analysis = {
+  summary: string
+  scores: Record<string, number>
+  strengths: string[]
+  formatting: AnalysisItem[]
+  structure: AnalysisItem[]
+  content: AnalysisItem[]
+  language: AnalysisItem[]
+  priorities: string[]
+  suggestions: string[]
+  operations: FormatOperation[]
+}
+type Plan = { understanding: string; approach: 'format' | 'write' | 'rewrite' | 'analyze' | 'ask'; question?: string; operations: FormatOperation[]; write?: WriteSpec | null }
 type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
@@ -50,6 +63,10 @@ type ChatMessage = {
   understood?: boolean
   /** Kept on a written proposal so it can be refined («più lungo», «più formale»…). */
   writeInfo?: { prompt: string; plan: Plan; target: DocumentAssistContext }
+  /** Review of the document (nothing edited); its formatting fixes can be applied in one click. */
+  analysis?: Analysis
+  analysisTarget?: DocumentAssistContext
+  analysisApplied?: boolean
 }
 
 type Props = {
@@ -66,6 +83,8 @@ type Props = {
   onApplyOperations?: (operations: FormatOperation[], target: DocumentAssistContext) => string[]
   /** Title, outline and the text around the insertion point, for writing tasks. */
   getWritingContext?: (target: DocumentAssistContext) => Record<string, unknown>
+  /** Full text of the document/selection (headings marked with #) for the analysis step. */
+  getAnalysisText?: (target: DocumentAssistContext) => string
   onApply: (proposal: Proposal) => void
   /** Puts a generated illustration into the image block with this id (block ids are unique in the deck). */
   onPatchImage?: (blockId: string, url: string) => void
@@ -135,7 +154,7 @@ const CURSOR_SUGGESTIONS: Array<[string, string]> = [
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
-export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, onApply, onPatchImage, deckTheme, currentSlides, currentSlideIndex, initialPrompt, onInitialPromptSent, onClose }: Props) {
+export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, getAnalysisText, onApply, onPatchImage, deckTheme, currentSlides, currentSlideIndex, initialPrompt, onInitialPromptSent, onClose }: Props) {
   const [input, setInput] = useState('')
   const composerRef = useRef<HTMLTextAreaElement>(null)
   useAutoGrow(composerRef, input)
@@ -332,6 +351,11 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
       const plan = (response.data as { plan: Plan }).plan
       if (plan.approach === 'ask') {
         pushAssistant(plan.question || plan.understanding)
+      } else if (plan.approach === 'analyze') {
+        pushAssistant(plan.understanding, { understood: true })
+        setLoading(false)
+        await runAnalyze(prompt, target)
+        return
       } else if (plan.approach === 'format') {
         // Formatting applies instantly: confirm the interpretation first.
         pushAssistant(plan.understanding, { plan, planPrompt: prompt, planTarget: target, status: 'pending' })
@@ -349,6 +373,37 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
       setRetryNotice('')
       setLoading(false)
     }
+  }
+
+  /** Review: formatting, structure, content and language, with fixes the user can apply or ask for. */
+  const runAnalyze = async (prompt: string, target: DocumentAssistContext) => {
+    setLoading(true)
+    setRetryNotice('')
+    try {
+      const response = await callAssist({
+        prompt,
+        mode: 'analyze',
+        target: { kind: target.kind, ...(target.kind === 'selected_text' ? { text: target.target.text } : {}) },
+        document_context: documentContext,
+        document_stats: getDocumentStats?.(target),
+        analysis_text: getAnalysisText?.(target),
+      }, { timeout: 180000, retries: false })
+      const analysis = (response.data as { analysis?: Analysis }).analysis
+      if (!analysis) throw new Error(tl("Analisi non disponibile"))
+      pushAssistant(analysis.summary || tl("Ecco la mia analisi del documento."), { analysis, analysisTarget: target })
+    } catch (error: any) {
+      pushAssistant(failureText(error))
+    } finally {
+      setRetryNotice('')
+      setLoading(false)
+    }
+  }
+
+  const applyAnalysisFormatting = (message: ChatMessage) => {
+    if (!message.analysis?.operations.length || !message.analysisTarget || !onApplyOperations) return
+    const lines = onApplyOperations(message.analysis.operations, message.analysisTarget)
+    setMessages((current) => current.map((item) => item.id === message.id ? { ...item, analysisApplied: true } : item))
+    pushAssistant(lines.length ? tl("Fatto: {0}. Puoi annullare con Ctrl+Z.", lines.join(' · ')) : tl("Non c’era nulla da cambiare: il documento era già così."))
   }
 
   /** Writing tasks (expand / continue / draft / summarise): the agent writes with the document as context. */
@@ -409,7 +464,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
     if (!info?.plan.write || !proposal?.html || loading) return
     updateProposalStatus(message.id, 'rejected')
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: 'user', content: refinement.label }])
-    const spec = { ...info.plan.write, target_words: Math.max(20, Math.min(2500, Math.round(info.plan.write.target_words * refinement.factor))) }
+    const spec = { ...info.plan.write, target_words: Math.max(20, Math.min(8000, Math.round(info.plan.write.target_words * refinement.factor))) }
     await runWrite(refinement.instruction, info.plan, info.target, proposal.html, spec)
   }
 
@@ -465,7 +520,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
       <header className="flex min-h-16 items-center gap-3 border-b border-slate-200 px-4 py-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700"><Bot className="h-5 w-5" /></span>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-black text-slate-950">Document Builder</h3>
+          <h3 className="text-sm font-semibold text-slate-950">Document Builder</h3>
           <p className="truncate text-[11px] font-medium text-slate-500">{isDocument ? tl("Scrive, espande, riformula e impagina nel contesto del documento") : tl("Modifiche contestuali con conferma")}</p>
         </div>
         <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi assistente")}><X className="h-4 w-4" /></button>
@@ -473,13 +528,13 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
 
       <div className="border-b border-slate-100 bg-slate-50/80 p-3">
         {isDocument && (
-          <div className="mb-2 grid grid-cols-2 rounded-xl bg-slate-200/70 p-1 text-[11px] font-bold">
+          <div className="mb-2 grid grid-cols-2 rounded-xl bg-slate-200/70 p-1 text-[11px] font-semibold">
             <button type="button" onClick={() => setScope('current')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'current' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>{tl("Tutto il documento")}</button>
             <button type="button" disabled={!selectionContext} onClick={() => setScope('selection')} className={`rounded-lg px-2 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-40 ${scope === 'selection' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`} title={selectionContext ? undefined : tl("Seleziona del testo nel documento")}>{tl("Selezione")}</button>
           </div>
         )}
         {!isDocument && (selectionContext || presentationContext) && (
-          <div className={`mb-2 grid ${selectionContext && presentationContext ? 'grid-cols-3' : 'grid-cols-2'} rounded-xl bg-slate-200/70 p-1 text-[11px] font-bold`}>
+          <div className={`mb-2 grid ${selectionContext && presentationContext ? 'grid-cols-3' : 'grid-cols-2'} rounded-xl bg-slate-200/70 p-1 text-[11px] font-semibold`}>
             <button type="button" onClick={() => setScope('current')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'current' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>{tl("Slide / oggetto")}</button>
             {selectionContext && <button type="button" onClick={() => setScope('selection')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'selection' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>{tl("Selezionate")}</button>}
             {presentationContext && <button type="button" onClick={() => setScope('presentation')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'presentation' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>{tl("Intera presentazione")}</button>}
@@ -489,7 +544,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
           <div className="flex items-start gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2.5">
             <MousePointer2 className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
             <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-wide text-violet-700">{activeContext.label}</p>
+              <p className="text-[10px] font-semibold text-violet-700">{activeContext.label}</p>
               <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-600">{activeContext.detail}</p>
             </div>
           </div>
@@ -502,14 +557,14 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
         {messages.length === 0 && (
           <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-4 text-xs leading-5 text-violet-950">
             {isDocument
-              ? tl("Sono il tuo co-autore. Posso continuare un testo da dove si ferma, svilupparlo a partire da titolo e incipit, espandere o riassumere una selezione, riformulare e sistemare la formattazione: sempre tenendo conto di tutto il documento. Metti il cursore dove vuoi che scriva, oppure seleziona il testo da elaborare. Vedi la proposta prima che venga inserita.")
+              ? tl("Sono il tuo co-autore. Posso continuare un testo da dove si ferma, svilupparlo a partire da titolo e incipit (anche documenti lunghi, sezione per sezione), espandere o riassumere una selezione, riformulare, sistemare la formattazione e analizzare il documento (struttura, formattazione, contenuto, lingua). Metti il cursore dove vuoi che scriva, oppure seleziona il testo da elaborare. Vedi la proposta prima che venga inserita.")
               : tl("Seleziona ciò che vuoi cambiare: lo analizzerò e mostrerò la proposta prima di applicarla.")}
           </div>
         )}
         {messages.map((message) => {
           if (message.kind === 'agent_step') return (
             <div key={message.id} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
-              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-sky-700">{message.agentName || tl("Agente")}</p>
+              <p className="mb-1 text-[10px] font-semibold text-sky-700">{message.agentName || tl("Agente")}</p>
               <p className="text-xs leading-5 text-slate-700">{message.content}</p>
             </div>
           )
@@ -517,29 +572,32 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
           return (
             <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[92%] rounded-2xl px-3.5 py-3 text-xs leading-5 shadow-sm ${isUser ? 'rounded-br-md bg-slate-950 text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-700'}`}>
-                {(message.plan || message.understood) && !isUser && <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-violet-700">{tl("Ho capito così")}</p>}
+                {(message.plan || message.understood) && !isUser && <p className="mb-1 text-[10px] font-semibold text-violet-700">{tl("Ho capito così")}</p>}
                 <p className="whitespace-pre-wrap">{message.content}</p>
                 {message.plan && (
                   message.status === 'pending' ? (
                     <div className="mt-3 space-y-2">
                       <p className="text-[11px] font-semibold text-slate-500">{message.plan.approach === 'format' ? tl("Applico solo la formattazione, senza toccare le parole.") : tl("Riscriverò il testo e vedrai la proposta prima di applicarla.")} {tl("Procedo?")}</p>
                       <div className="flex gap-2">
-                        <button type="button" onClick={() => correctPlan(message)} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">{tl("No, correggo")}</button>
-                        <button type="button" onClick={() => void confirmPlan(message)} disabled={loading} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-40"><Check className="h-3.5 w-3.5" />{tl("Sì, procedi")}</button>
+                        <button type="button" onClick={() => correctPlan(message)} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">{tl("No, correggo")}</button>
+                        <button type="button" onClick={() => void confirmPlan(message)} disabled={loading} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-40"><Check className="h-3.5 w-3.5" />{tl("Sì, procedi")}</button>
                       </div>
                     </div>
                   ) : (
-                    <p className={`mt-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? tl("Confermato") : tl("Non confermato")}</p>
+                    <p className={`mt-2 text-[10px] font-semibold ${message.status === 'applied'? 'text-emerald-700': 'text-slate-400'}`}>{message.status === 'applied' ? tl("Confermato") : tl("Non confermato")}</p>
                   )
                 )}
+                {message.analysis && <AnalysisCard analysis={message.analysis} applied={Boolean(message.analysisApplied)} loading={loading}
+                  onApplyFormatting={onApplyOperations ? () => applyAnalysisFormatting(message) : undefined}
+                  onSuggestion={(text) => void send(text)} />}
                 {message.proposal && message.proposal.kind === 'write' ? (
                   <div className="mt-3 overflow-hidden rounded-xl border border-violet-200 bg-white text-slate-700">
-                    <div className="flex items-center justify-between gap-2 bg-violet-50 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-violet-700">
+                    <div className="flex items-center justify-between gap-2 bg-violet-50 px-3 py-2 text-[10px] font-semibold text-violet-700">
                       <span>{PLACEMENT_LABEL[message.proposal.placement as WritePlacement] ?? tl("Testo proposto")}</span>
                       <span className="shrink-0">{String(message.proposal.words)} parole</span>
                     </div>
                     <div
-                      className="max-h-72 overflow-y-auto px-3 py-2.5 text-[12px] leading-5 text-slate-800 [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:text-[13px] [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:font-bold [&_li]:ml-4 [&_ol]:list-decimal [&_p]:mb-2 [&_ul]:list-disc"
+                      className="max-h-72 overflow-y-auto px-3 py-2.5 text-[12px] leading-5 text-slate-800 [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:text-[13px] [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:font-semibold [&_li]:ml-4 [&_ol]:list-decimal [&_p]:mb-2 [&_ul]:list-disc"
                       dangerouslySetInnerHTML={{ __html: sanitizeDocumentHtml(String(message.proposal.html || '')) }}
                     />
                     {message.beforePreview && message.proposal.placement === 'replace_selection' && (
@@ -556,17 +614,17 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
                           ))}
                         </div>
                         <div className="flex gap-2 border-t border-slate-200 bg-white p-2">
-                          <button type="button" onClick={() => updateProposalStatus(message.id, 'rejected')} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">{tl("Rifiuta")}</button>
-                          <button type="button" onClick={() => { onApply(message.proposal!); updateProposalStatus(message.id, 'applied') }} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800"><Check className="h-3.5 w-3.5" />{tl("Inserisci")}</button>
+                          <button type="button" onClick={() => updateProposalStatus(message.id, 'rejected')} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">{tl("Rifiuta")}</button>
+                          <button type="button" onClick={() => { onApply(message.proposal!); updateProposalStatus(message.id, 'applied') }} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-semibold text-white hover:bg-slate-800"><Check className="h-3.5 w-3.5" />{tl("Inserisci")}</button>
                         </div>
                       </>
                     ) : (
-                      <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? tl("Testo inserito · Ctrl+Z per annullare") : tl("Proposta scartata")}</p>
+                      <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-semibold ${message.status === 'applied'? 'text-emerald-700': 'text-slate-400'}`}>{message.status === 'applied' ? tl("Testo inserito · Ctrl+Z per annullare") : tl("Proposta scartata")}</p>
                     )}
                   </div>
                 ) : message.proposal && message.proposal.auto_apply ? (
                   <div className="mt-3 overflow-hidden rounded-xl border border-violet-200 bg-white text-slate-700">
-                    <div className="flex items-center gap-1.5 bg-violet-50 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-violet-700">
+                    <div className="flex items-center gap-1.5 bg-violet-50 px-3 py-2 text-[10px] font-semibold text-violet-700">
                       <ImageIcon className="h-3.5 w-3.5" />{message.proposal.image_mode === 'edit' ? tl("Immagine modificata") : tl("Nuova immagine")}
                     </div>
                     <img
@@ -576,13 +634,13 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
                     />
                     {message.status === 'applied' ? (
                       <div className="flex items-center justify-between gap-2 border-t border-slate-200 px-3 py-2">
-                        <span className="text-[10px] font-black uppercase tracking-wide text-emerald-700">{tl("Sostituita nella slide")}</span>
-                        <button type="button" onClick={() => restorePreviousImage(message)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100">
+                        <span className="text-[10px] font-semibold text-emerald-700">{tl("Sostituita nella slide")}</span>
+                        <button type="button" onClick={() => restorePreviousImage(message)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100">
                           <Undo2 className="h-3.5 w-3.5" />{tl("Ripristina precedente")}
                         </button>
                       </div>
                     ) : (
-                      <p className="border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-400">{tl("Immagine precedente ripristinata")}</p>
+                      <p className="border-t border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-400">{tl("Immagine precedente ripristinata")}</p>
                     )}
                   </div>
                 ) : message.proposal && (
@@ -597,23 +655,23 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
                       />
                     ) : (
                     <div className="grid grid-cols-2 divide-x divide-slate-200">
-                      <div className="min-w-0 p-2.5"><p className="mb-1 text-[9px] font-black uppercase tracking-wide text-red-600">{tl("Prima")}</p><p className="line-clamp-5 whitespace-pre-wrap text-[11px] leading-4">{message.beforePreview}</p></div>
-                      <div className="min-w-0 p-2.5"><p className="mb-1 text-[9px] font-black uppercase tracking-wide text-sky-700">{tl("Proposta")}</p><p className="line-clamp-5 whitespace-pre-wrap text-[11px] leading-4">{proposalPreview(message.proposal)}</p></div>
+                      <div className="min-w-0 p-2.5"><p className="mb-1 text-[9px] font-semibold text-red-600">{tl("Prima")}</p><p className="line-clamp-5 whitespace-pre-wrap text-[11px] leading-4">{message.beforePreview}</p></div>
+                      <div className="min-w-0 p-2.5"><p className="mb-1 text-[9px] font-semibold text-sky-700">{tl("Proposta")}</p><p className="line-clamp-5 whitespace-pre-wrap text-[11px] leading-4">{proposalPreview(message.proposal)}</p></div>
                     </div>
                     )}
                     {message.status === 'pending' ? (
                       <div className="flex gap-2 border-t border-slate-200 bg-white p-2">
-                        <button type="button" onClick={() => updateProposalStatus(message.id, 'rejected')} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">{tl("Rifiuta")}</button>
-                        <button type="button" onClick={() => applyProposal(message)} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800"><Check className="h-3.5 w-3.5" />{tl("Applica")}</button>
+                        <button type="button" onClick={() => updateProposalStatus(message.id, 'rejected')} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">{tl("Rifiuta")}</button>
+                        <button type="button" onClick={() => applyProposal(message)} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-semibold text-white hover:bg-slate-800"><Check className="h-3.5 w-3.5" />{tl("Applica")}</button>
                       </div>
                     ) : (
-                      <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? tl("Modifica applicata") : tl("Proposta rifiutata")}</p>
+                      <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-semibold ${message.status === 'applied'? 'text-emerald-700': 'text-slate-400'}`}>{message.status === 'applied' ? tl("Modifica applicata") : tl("Proposta rifiutata")}</p>
                     )}
                     {message.placeholders && !message.images && (
                       <div className="flex items-center gap-2 border-t border-slate-200 bg-violet-50 px-3 py-2 text-[11px] text-violet-900">
                         <ImageIcon className="h-3.5 w-3.5 shrink-0" />
                         <span className="flex-1">{tl("{0} segnaposto con il prompt: clicca «Genera immagine» sulla slide, o generale tutte ora.", message.placeholders.length)}</span>
-                        {onPatchImage && <button type="button" onClick={() => generateAll(message)} className="shrink-0 rounded-lg bg-violet-600 px-2.5 py-1 font-bold text-white hover:bg-violet-700">{tl("Genera tutte")}</button>}
+                        {onPatchImage && <button type="button" onClick={() => generateAll(message)} className="shrink-0 rounded-lg bg-violet-600 px-2.5 py-1 font-semibold text-white hover:bg-violet-700">{tl("Genera tutte")}</button>}
                       </div>
                     )}
                     {message.images && (
@@ -669,5 +727,74 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
         </div>
       </footer>
     </aside>
+  )
+}
+
+const ANALYSIS_SECTIONS: Array<{ key: 'formatting' | 'structure' | 'content' | 'language'; label: string }> = [
+  { key: 'formatting', label: tl("Formattazione") },
+  { key: 'structure', label: tl("Struttura") },
+  { key: 'content', label: tl("Contenuto") },
+  { key: 'language', label: tl("Lingua e stile") },
+]
+
+/** Structured review: scores, strengths, issues with fixes per area, priorities and one-click follow-ups. */
+function AnalysisCard({ analysis, applied, loading, onApplyFormatting, onSuggestion }: {
+  analysis: Analysis
+  applied: boolean
+  loading: boolean
+  onApplyFormatting?: () => void
+  onSuggestion: (text: string) => void
+}) {
+  const scores = Object.entries(analysis.scores || {})
+  return (
+    <div className="mt-3 space-y-2.5 text-slate-700">
+      {scores.length > 0 && (
+        <div className="grid grid-cols-2 gap-1.5">
+          {scores.map(([label, value]) => (
+            <div key={label} className="rounded-lg bg-slate-50 px-2 py-1.5">
+              <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500"><span className="truncate">{label}</span><span>{value}/5</span></div>
+              <div className="mt-1 h-1 rounded-full bg-slate-200"><div className="h-1 rounded-full bg-violet-500" style={{ width: `${(value / 5) * 100}%` }} /></div>
+            </div>
+          ))}
+        </div>
+      )}
+      {analysis.strengths.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-emerald-700">{tl("Punti di forza")}</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">{analysis.strengths.map((item) => <li key={item}>{item}</li>)}</ul>
+        </div>
+      )}
+      {ANALYSIS_SECTIONS.map(({ key, label }) => analysis[key].length > 0 && (
+        <details key={key} open={key === 'formatting' || key === 'content'} className="rounded-xl border border-slate-200 bg-white">
+          <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold text-slate-600">{label} · {analysis[key].length}</summary>
+          <ul className="space-y-2 border-t border-slate-100 px-3 py-2">
+            {analysis[key].map((item, index) => (
+              <li key={index}>
+                <p className="font-semibold text-slate-800">{item.issue}</p>
+                {item.fix && <p className="mt-0.5 text-slate-600">→ {item.fix}</p>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+      {analysis.priorities.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-violet-700">{tl("Priorità")}</p>
+          <ol className="mt-1 list-decimal space-y-0.5 pl-4">{analysis.priorities.map((item) => <li key={item}>{item}</li>)}</ol>
+        </div>
+      )}
+      {onApplyFormatting && analysis.operations.length > 0 && (
+        <button type="button" disabled={applied || loading} onClick={onApplyFormatting} className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-40">
+          <Check className="h-3.5 w-3.5" />{applied ? tl("Formattazione applicata") : tl("Applica la formattazione consigliata")}
+        </button>
+      )}
+      {analysis.suggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {analysis.suggestions.map((text) => (
+            <button key={text} type="button" disabled={loading} onClick={() => onSuggestion(text)} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-left text-[11px] font-semibold text-slate-600 transition hover:border-violet-300 hover:text-violet-700 disabled:opacity-40">{text}</button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

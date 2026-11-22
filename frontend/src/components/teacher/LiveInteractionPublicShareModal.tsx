@@ -66,8 +66,8 @@ export default function LiveInteractionPublicShareModal({ interactionId, title, 
       <div className={presentation ? 'w-full max-w-6xl text-center' : ''}>
         <div className={presentation ? '' : 'flex items-start justify-between gap-4'}>
           <div className={presentation ? 'text-center' : ''}>
-            <p className={`text-xs font-black uppercase tracking-[0.2em] ${presentation ? 'text-violet-300' : 'text-violet-600'}`}>Live Interaction</p>
-            <h2 className={`${presentation ? 'mt-3 text-5xl' : 'mt-1 text-2xl'} font-black`}>{title}</h2>
+            <p className={`text-xs font-semibold ${presentation ? 'text-violet-300': 'text-violet-600'}`}>Live Interaction</p>
+            <h2 className={`${presentation ? 'mt-3 text-5xl' : 'mt-1 text-2xl'} font-semibold`}>{title}</h2>
             <p className={`mt-2 ${presentation ? 'text-xl text-white/70' : 'text-sm text-slate-500'}`}>{tl("Scansiona il QR code o apri il link. Non serve un account.")}</p>
           </div>
           {!presentation && <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>}
@@ -82,11 +82,11 @@ export default function LiveInteractionPublicShareModal({ interactionId, title, 
             </div>
             <div className={presentation ? 'space-y-7' : 'mt-5 space-y-3'}>
               <div className={`rounded-2xl ${presentation ? 'bg-white/10 p-6 ring-1 ring-white/15' : 'border border-slate-200 bg-slate-50 p-4'}`}>
-                <p className={`text-xs font-black uppercase tracking-widest ${presentation ? 'text-white/50' : 'text-slate-400'}`}>{tl("Codice Live temporaneo")}</p>
-                <p className={`${presentation ? 'mt-2 text-6xl text-amber-300' : 'mt-1 text-3xl text-violet-700'} font-black tracking-[0.18em]`}>{link.access_code}</p>
+                <p className={`text-xs font-semibold ${presentation ? 'text-white/50': 'text-slate-400'}`}>{tl("Codice Live temporaneo")}</p>
+                <p className={`${presentation ? 'mt-2 text-6xl text-amber-300' : 'mt-1 text-3xl text-violet-700'} font-semibold tracking-[0.18em]`}>{link.access_code}</p>
               </div>
               <div className={`rounded-2xl ${presentation ? 'bg-white/10 p-6 ring-1 ring-white/15' : 'border border-slate-200 p-4'}`}>
-                <p className={`text-xs font-black uppercase tracking-widest ${presentation ? 'text-white/50' : 'text-slate-400'}`}>{tl("Link diretto")}</p>
+                <p className={`text-xs font-semibold ${presentation ? 'text-white/50': 'text-slate-400'}`}>{tl("Link diretto")}</p>
                 <p className={`mt-1 break-all font-mono ${presentation ? 'text-xl text-violet-200' : 'text-sm text-slate-700'}`}>{publicUrl}</p>
               </div>
               <div className={`flex items-center gap-2 ${presentation ? 'text-base text-emerald-300' : 'text-xs text-emerald-700'}`}><ShieldCheck className="h-5 w-5" /> {tl("Gli ospiti entrano con un nickname e sono controllati dal master.")}</div>
@@ -110,7 +110,7 @@ export default function LiveInteractionPublicShareModal({ interactionId, title, 
           <Button tone="neutral" surface="outline" density="compact" onClick={() => window.open(publicUrl, '_blank', 'noopener,noreferrer')}><ExternalLink className="h-4 w-4" /> {tl("Apri")}</Button>
           <Button tone="accent" surface="solid" density="compact" onClick={present}><Maximize2 className="h-4 w-4" /> {tl("Presenta")}</Button>
         </div>}
-        {link && <button type="button" onClick={() => revokeLink.mutate()} disabled={revokeLink.isPending} className="mx-auto mt-4 flex items-center gap-1.5 text-xs font-bold text-rose-600 hover:text-rose-800 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /> {revokeLink.isPending ? tl("Revoca…") : tl("Revoca link pubblico")}</button>}
+        {link && <button type="button" onClick={() => revokeLink.mutate()} disabled={revokeLink.isPending} className="mx-auto mt-4 flex items-center gap-1.5 text-xs font-semibold text-rose-600 hover:text-rose-800 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /> {revokeLink.isPending ? tl("Revoca…") : tl("Revoca link pubblico")}</button>}
         <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-slate-400"><Link2 className="h-3.5 w-3.5" /> {tl("Link e codice scadono alla chiusura o alla revoca. Una nuova pubblicazione genera un codice diverso.")}</p>
       </div>
     </div>

@@ -34,8 +34,8 @@ export function NavTab({ icon: Icon, label, isActive, onClick, accentClass, badg
       title={label}
       style={activeMaterialStyle}
       className={[
-        'group relative flex min-h-[var(--selection-height)] items-center px-[var(--selection-padding-x)] py-1.5 rounded-[var(--selection-radius)] font-emphasis text-xs font-bold',
-        'border transition-all duration-150 focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]',
+        'group relative flex min-h-[var(--selection-height)] items-center px-[var(--selection-padding-x)] py-1.5 rounded-[var(--selection-radius)] font-emphasis text-xs font-semibold',
+        'border transition duration-150 focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]',
         isActive
           ? `${accentClass ?? ''}`
           : 'border-transparent bg-transparent text-slate-600 shadow-none hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] hover:shadow-[var(--ds-shadow-1)]',
@@ -43,7 +43,7 @@ export function NavTab({ icon: Icon, label, isActive, onClick, accentClass, badg
     >
       <Icon className="h-4 w-4 shrink-0" />
       {badgeCount > 0 && (
-        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black leading-none text-white shadow-[var(--ds-shadow-1)]">
+        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-semibold leading-none text-white shadow-[var(--ds-shadow-1)]">
           {badgeCount > 9 ? '9+' : badgeCount}
         </span>
       )}

@@ -598,7 +598,7 @@ export default function ToyLMPage() {
             <Network className="h-4.5 w-4.5 text-[var(--logo-violet)]" style={{ width: 18, height: 18 }} />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-black leading-tight">ToyGPT</p>
+            <p className="truncate text-sm font-semibold leading-tight">ToyGPT</p>
             <p className="text-[10px] text-[var(--text-muted)]">{tl("Crea un modello linguistico da zero")}</p>
           </div>
           <span className="ml-auto hidden md:block">
@@ -613,7 +613,7 @@ export default function ToyLMPage() {
         </div>
 
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{tl("Modelli")}</span>
+          <span className="text-[10px] font-semibold text-[var(--text-muted)]">{tl("Modelli")}</span>
           <span className="text-[10px] font-semibold text-[var(--text-muted)]" aria-live="polite">
             {isLoadingJobs ? tl("Caricamento…") : jobs.length}
           </span>
@@ -648,11 +648,11 @@ export default function ToyLMPage() {
                         else if (e.key === 'Escape') { renameCancelRef.current = true; (e.target as HTMLInputElement).blur() }
                       }}
                       onBlur={() => commitRename(job.id)}
-                      className="min-w-0 flex-1 rounded-md border border-[var(--logo-violet)] bg-white px-1.5 py-0.5 text-[13px] font-bold text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--logo-violet-22)]"
+                      className="min-w-0 flex-1 rounded-md border border-[var(--logo-violet)] bg-white px-1.5 py-0.5 text-[13px] font-semibold text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--logo-violet-22)]"
                     />
                   ) : (
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-bold leading-tight">{job.name}</p>
+                      <p className="truncate text-[13px] font-semibold leading-tight">{job.name}</p>
                       <p className="truncate text-[10px] text-[var(--text-muted)]">{job.savedEpoch}/{job.hyperparams?.totalEpochs ?? '?'} epoch · {tokenModeLabel(job.tokenMode ?? job.hyperparams?.tokenMode)} · {job.status}</p>
                     </div>
                   )}
@@ -686,7 +686,7 @@ export default function ToyLMPage() {
 
         {/* Top bar */}
         <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-4 py-3 backdrop-blur-md md:px-5 md:py-2.5">
-          <SectionHeading section="/teacher/toy-lm" compact className="truncate text-sm font-black tracking-tight">
+          <SectionHeading section="/teacher/toy-lm" compact className="truncate text-sm font-semibold tracking-tight">
             {showCreate ? tl("Nuovo modello") : selectedJob ? selectedJob.name : 'ToyGPT'}
           </SectionHeading>
           {deviceInfo && <span className="font-mono text-[11px] text-[var(--logo-violet-strong)]">{deviceInfo}</span>}
@@ -706,7 +706,7 @@ export default function ToyLMPage() {
         <main className="flex-1 overflow-y-auto p-3 md:p-5">
           {statusMsg && (
             <div className="mb-4 rounded-xl border border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] px-3.5 py-2 text-xs text-[var(--text-secondary)]">
-              <span className="mr-2 font-bold text-[var(--logo-violet)]">›</span>{statusMsg}
+              <span className="mr-2 font-semibold text-[var(--logo-violet)]">›</span>{statusMsg}
             </div>
           )}
 
@@ -716,7 +716,7 @@ export default function ToyLMPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FlaskConical className="h-4 w-4 text-[var(--logo-violet)]" />
-                  <span className="text-sm font-black">{tl("Nuovo modello")}</span>
+                  <span className="text-sm font-semibold">{tl("Nuovo modello")}</span>
                 </div>
                 <button onClick={() => setShowCreate(false)} className="rounded-md p-1 text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]" title={tl("Annulla")}>
                   <X className="h-4 w-4" />
@@ -739,7 +739,7 @@ export default function ToyLMPage() {
               <ToyLMCorpusPicker value={corpus} onChange={setCorpus} onBusyChange={setIsLoadingCorpus} />
 
               <div className="space-y-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-base)] p-4">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-[var(--text-secondary)]">{tl("2. Scegli quanto allenarlo")}</h3>
+                <h3 className="text-xs font-semibold text-[var(--text-secondary)]">{tl("2. Scegli quanto allenarlo")}</h3>
                 <ParamSlider label="Epoche" value={params.totalEpochs} min={1} max={100} step={1} onChange={v => setParams(p => ({ ...p, totalEpochs: v }))} />
                 <p className="text-xs leading-5 text-[var(--text-secondary)]">{tl("Un’epoca è una lettura completa del testo. Inizia con 20: più passaggi possono aiutare, ma possono anche portare a imparare il brano a memoria.")}</p>
                 <p className="text-[11px] leading-5 text-[var(--text-muted)]">{tl("La rete lavora su parole e punteggiatura. Le altre impostazioni sono già pronte per questo esperimento.")}</p>
@@ -761,7 +761,7 @@ export default function ToyLMPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Zap className="h-4 w-4 text-[var(--logo-violet)]" />
-                    <span className="text-sm font-black">Training</span>
+                    <span className="text-sm font-semibold">Training</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {!isRunning && !isQueued && (
@@ -843,7 +843,7 @@ export default function ToyLMPage() {
                       <ArchRow label="Embedding" val={`${selectedJob.vocabSize} → ${params.embedDim}`} />
                       <ArchRow label={`LSTM ×${params.numLayers}`} val={`→ ${params.hiddenSize}`} />
                       <ArchRow label="Dense" val={`→ ${selectedJob.vocabSize}`} />
-                      <div className="mt-1.5 border-t border-[var(--border-subtle)] pt-1.5 font-bold text-[var(--logo-violet)]">
+                      <div className="mt-1.5 border-t border-[var(--border-subtle)] pt-1.5 font-semibold text-[var(--logo-violet)]">
                         {selectedJob.paramCount.toLocaleString()} {tl("parametri totali")}
                       </div>
                     </div>
@@ -879,7 +879,7 @@ export default function ToyLMPage() {
                       <Network className="h-5 w-5" />
                     </span>
                     <div>
-                      <h2 className="text-base font-black text-[var(--text-primary)]">{tl("Costruisci il tuo piccolo modello linguistico")}</h2>
+                      <h2 className="text-base font-semibold text-[var(--text-primary)]">{tl("Costruisci il tuo piccolo modello linguistico")}</h2>
                       <p className="mt-0.5 text-xs leading-5 text-[var(--text-secondary)]">{tl("Un esperimento di pretraining: una piccola rete neurale, un solo testo, tutto da imparare.")}</p>
                     </div>
                   </div>
@@ -898,9 +898,9 @@ export default function ToyLMPage() {
                     <div key={title} className="contents">
                       {index > 0 && <ArrowRight className="hidden h-4 w-4 text-[var(--logo-violet)] sm:block" aria-hidden="true" />}
                       <div className="flex items-center gap-2.5 rounded-xl border border-white/80 bg-white/65 p-3">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--logo-violet)] text-[10px] font-black text-white">{step}</span>
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--logo-violet)] text-[10px] font-semibold text-white">{step}</span>
                         <div>
-                          <p className="text-xs font-black text-[var(--text-primary)]">{title}</p>
+                          <p className="text-xs font-semibold text-[var(--text-primary)]">{title}</p>
                           <p className="text-[10px] leading-4 text-[var(--text-muted)]">{detail}</p>
                         </div>
                       </div>
@@ -925,7 +925,7 @@ export default function ToyLMPage() {
           <div className="w-full max-w-md rounded-2xl border border-[var(--border-subtle)] bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <p className="text-base font-black text-[var(--text-primary)]">{tl("Condividi modello")}</p>
+                <p className="text-base font-semibold text-[var(--text-primary)]">{tl("Condividi modello")}</p>
                 <p className="mt-1 text-xs text-[var(--text-muted)]">{tl("Pubblica \"")}{selectedJob.name}{tl("\" nella chat di classe.")}</p>
               </div>
               <button onClick={() => setShareOpen(false)} className="rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]" title={tl("Chiudi")}>
@@ -992,7 +992,7 @@ export default function ToyLMPage() {
 function ToyLMIntroduction() {
   return (
     <div className="space-y-2 rounded-2xl border border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] p-4">
-      <p className="text-xs font-black text-[var(--logo-violet-strong)]">{tl("Pretraining da zero, su un solo testo")}</p>
+      <p className="text-xs font-semibold text-[var(--logo-violet-strong)]">{tl("Pretraining da zero, su un solo testo")}</p>
       <p className="text-xs leading-5 text-[var(--text-secondary)]">{tl("Partiamo da una piccola rete neurale LSTM con pesi casuali, senza conoscenze già apprese. Rileggendo un unico testo (il corpus), impara a prevedere la parola successiva: questo è il suo pretraining.")}</p>
       <p className="text-xs leading-5 text-[var(--text-secondary)]"><strong className="text-[var(--text-primary)]">{tl("Un esperimento didattico, non un LLM come ChatGPT.")}</strong> {tl("Il modello imita gli schemi del brano: non viene addestrato a conversare o a seguire istruzioni.")}</p>
       <p className="border-t border-[var(--logo-violet-22)] pt-2 text-[11px] leading-5 text-[var(--text-muted)]"><strong>{tl("Cosa aspettarsi:")}</strong> {tl("frasi anche incoerenti, ripetizioni e passaggi memorizzati. Un solo testo limita il vocabolario e la capacità di generalizzare; una loss più bassa non garantisce contenuti sensati o corretti.")}</p>
@@ -1032,11 +1032,11 @@ function StatusPill({ job, isRunning, isQueued, currentEpoch }: {
 }
 
 function FieldLabel({ children }: { children: ReactNode }) {
-  return <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</label>
+  return <label className="mb-1.5 block text-xs font-semibold text-[var(--text-muted)]">{children}</label>
 }
 
 function SubLabel({ children }: { children: ReactNode }) {
-  return <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
+  return <p className="text-[10px] font-semibold text-[var(--text-muted)]">{children}</p>
 }
 
 function MetricBox({ label, value, color }: { label: string; value: string; color: 'violet'|'rose'|'amber'|'slate' }) {
@@ -1048,8 +1048,8 @@ function MetricBox({ label, value, color }: { label: string; value: string; colo
   }[color]
   return (
     <div className="rounded-2xl border border-[var(--border-subtle)] bg-white p-2.5 text-center">
-      <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">{label}</div>
-      <div className={`mt-0.5 font-mono text-base font-black ${cls}`}>{value}</div>
+      <div className="text-[10px] text-[var(--text-muted)]">{label}</div>
+      <div className={`mt-0.5 font-mono text-base font-semibold ${cls}`}>{value}</div>
     </div>
   )
 }
@@ -1124,7 +1124,7 @@ function ParamSlider({
               className="absolute left-0 top-6 z-40 w-[min(300px,calc(100vw-3rem))] rounded-2xl border border-[var(--logo-violet-22)] bg-[var(--surface-base)] p-3 text-left shadow-[var(--shadow-xl)]"
             >
               <div className="flex items-start justify-between gap-3">
-                <p className="text-xs font-black text-[var(--text-primary)]">{help.title}</p>
+                <p className="text-xs font-semibold text-[var(--text-primary)]">{help.title}</p>
                 <button
                   type="button"
                   onClick={() => setHelpOpen(false)}
@@ -1141,7 +1141,7 @@ function ParamSlider({
             </div>
           )}
         </div>
-        <span className="font-mono text-xs font-bold text-[var(--logo-violet)]">{displayFn ? displayFn(value) : value}</span>
+        <span className="font-mono text-xs font-semibold text-[var(--logo-violet)]">{displayFn ? displayFn(value) : value}</span>
       </div>
       <input type="range" aria-label={label} min={min} max={max} step={step} value={value} disabled={disabled}
         onChange={e => onChange(parseFloat(e.target.value))}

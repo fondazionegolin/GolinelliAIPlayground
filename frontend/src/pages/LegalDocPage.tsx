@@ -23,7 +23,7 @@ export default function LegalDocPage() {
       {error && <p className="mt-16 text-center text-sm text-slate-500">{tl("Documento non disponibile.")}</p>}
       {data && (
         <article
-          className="[&_h2]:mb-3 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:mt-5 [&_h3]:font-semibold [&_li]:mb-1 [&_p]:my-2 [&_p]:leading-relaxed [&_ul]:ml-5 [&_ul]:list-disc text-sm"
+          className="[&_h2]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-5 [&_h3]:font-semibold [&_li]:mb-1 [&_p]:my-2 [&_p]:leading-relaxed [&_ul]:ml-5 [&_ul]:list-disc text-sm"
           dangerouslySetInnerHTML={{ __html: data.html }}
         />
       )}

@@ -91,8 +91,8 @@ export function LegalConsentGate() {
                 <LockKeyhole className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{tl("Accettazione obbligatoria")}</p>
-                <h2 className="text-lg font-bold text-slate-950">{tl("Documenti di licenza e privacy")}</h2>
+                <p className="text-xs font-semibold text-slate-500">{tl("Accettazione obbligatoria")}</p>
+                <h2 className="text-lg font-semibold text-slate-950">{tl("Documenti di licenza e privacy")}</h2>
                 <p className="mt-1 text-sm text-slate-600">
                   {tl("Completa i")} {data.required_documents.length} {tl("passaggi per accedere all'area docente.")}
                 </p>
@@ -105,7 +105,7 @@ export function LegalConsentGate() {
                 return (
                   <div
                     key={doc.key}
-                    className={`flex h-9 min-w-9 items-center justify-center rounded-full border text-xs font-bold ${
+                    className={`flex h-9 min-w-9 items-center justify-center rounded-full border text-xs font-semibold ${
                       done
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                         : current
@@ -157,7 +157,7 @@ export function LegalConsentGate() {
                     <ActiveIcon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-base font-bold text-slate-950">{activeDocument.title}</h3>
+                    <h3 className="text-base font-semibold text-slate-950">{activeDocument.title}</h3>
                     <p className="text-xs text-slate-500">{tl("Passaggio")} {activeIndex + 1} {tl("di")} {data.required_documents.length} {tl("· versione")} {formatVersion(activeDocument.version)}</p>
                   </div>
                 </div>
@@ -191,7 +191,7 @@ export function LegalConsentGate() {
                 type="button"
                 onClick={() => acceptMutation.mutate(activeDocument.key)}
                 disabled={acceptMutation.isPending}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-bold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {acceptMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 {activeDocument.accept_label}

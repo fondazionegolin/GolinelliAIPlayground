@@ -53,7 +53,7 @@ function CreateCard({ art, label, hint, tone, onClick }: CreateCardProps) {
   return (
     <button type="button" onClick={onClick} className={`ui-card ui-card-interactive group flex flex-col items-center gap-2 p-4 text-center ${tone}`}>
       <span className="block h-20 w-28 transition-transform duration-200 group-hover:scale-105">{art}</span>
-      <span className="block text-sm font-black leading-5 text-slate-950">{label}</span>
+      <span className="block text-sm font-semibold leading-5 text-slate-950">{label}</span>
       <span className="block text-[11px] leading-4 text-slate-500">{hint}</span>
     </button>
   )

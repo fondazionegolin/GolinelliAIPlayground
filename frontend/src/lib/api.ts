@@ -1097,8 +1097,14 @@ export const teacherApi = {
     api.patch(`/teacher/conversations/${conversationId}`, data),
   addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string; token_usage_json?: Record<string, unknown>; attachments_json?: Record<string, unknown> }) =>
     api.post(`/teacher/conversations/${conversationId}/messages`, data),
-  saveConversationDocument: (conversationId: string, doc: { type: string; content: string; version: number; title: string }) =>
+  saveConversationDocument: (conversationId: string, doc: { type: string; content: string; version: number; title: string; images?: unknown[] }) =>
     api.put(`/teacher/conversations/${conversationId}/document`, doc),
+  extractDocImagesFromPdf: (file: File, mode: 'images' | 'pages' = 'images') => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post<{ page_count: number; images: { id: string; page: number; width: number; height: number; data_url: string }[] }>(
+      `/teacher/doc-images/from-pdf?mode=${mode}`, formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 })
+  },
   deleteConversationDocument: (conversationId: string) =>
     api.delete(`/teacher/conversations/${conversationId}/document`),
   listDocumentDrafts: (sessionId?: string, lite?: boolean) => api.get('/teacher/documents/drafts', { params: { session_id: sessionId, lite: lite || undefined } }),
@@ -1329,7 +1335,8 @@ export const llmApi = {
     api.post('/llm/presentations/agent', data, { signal }),
   documentAssist: (data: {
     prompt: string
-    mode?: 'plan' | 'write'
+    mode?: 'plan' | 'write' | 'analyze'
+    analysis_text?: string
     document_stats?: Record<string, unknown>
     history?: { role: string; content: string }[]
     writing_context?: Record<string, unknown>
@@ -1378,11 +1385,19 @@ export const llmApi = {
       alternatives: { tool: string; probability: number }[]; action_alternatives: { tool: string; probability: number }[]; routed: boolean
     }>('/llm/decide-tool', { text, allowed, artifacts, recent }, { signal }),
   /** Hand a chat request over to a platform section (checks the student's enabled modules server-side). */
-  handoff: (target: string, prompt: string, options: { conversationId?: string | null; recent?: { role: string; content: string }[]; signal?: AbortSignal } = {}) =>
+  /** Text of the documents attached to a chat request, to hand over as source material. */
+  handoffMaterials: async (files: File[], signal?: AbortSignal): Promise<{ name: string; text: string }[]> => {
+    if (!files.length) return []
+    const form = new FormData()
+    files.slice(0, 5).forEach(file => form.append('files', file))
+    const { data } = await api.post<{ materials: { name: string; text: string }[] }>('/llm/handoff/materials', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000, signal })
+    return data.materials || []
+  },
+  handoff: (target: string, prompt: string, options: { conversationId?: string | null; recent?: { role: string; content: string }[]; materials?: { name: string; text: string }[]; signal?: AbortSignal } = {}) =>
     api.post<import('./platformHandoff').HandoffPlan & {
       user_message?: { id: string; content: string; created_at: string }
       assistant_message?: { id: string; content: string; created_at: string; handoff?: import('./platformHandoff').PlatformHandoff }
-    }>('/llm/handoff', { target, prompt, conversation_id: options.conversationId ?? null, recent: options.recent ?? [] }, { signal: options.signal }),
+    }>('/llm/handoff', { target, prompt, conversation_id: options.conversationId ?? null, recent: options.recent ?? [], materials: options.materials ?? [] }, { signal: options.signal }),
   generateImage: (prompt: string, provider: string = 'gpt-image-2-2026-04-21', signal?: AbortSignal) =>
     api.post('/llm/generate-image', { prompt, provider }, { signal }),
   explain: (messageId: string) =>
@@ -1654,6 +1669,7 @@ export const teacherbotsApi = {
     inquiry_config?: InquiryConfig | null
     enable_reporting?: boolean
     enable_escape_room?: boolean
+    enable_math_editor?: boolean
     report_prompt?: string
     llm_provider?: string
     llm_model?: string
@@ -1674,6 +1690,7 @@ export const teacherbotsApi = {
     inquiry_config?: InquiryConfig | null
     enable_reporting?: boolean
     enable_escape_room?: boolean
+    enable_math_editor?: boolean
     report_prompt?: string
     llm_provider?: string
     llm_model?: string

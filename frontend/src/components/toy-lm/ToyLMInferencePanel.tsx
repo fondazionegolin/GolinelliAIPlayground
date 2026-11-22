@@ -50,7 +50,7 @@ export default function ToyLMInferencePanel({
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <Type className="h-4 w-4 text-[var(--logo-violet)]" />
-        <span className="text-sm font-black">{tl("Genera testo")}</span>
+        <span className="text-sm font-semibold">{tl("Genera testo")}</span>
       </div>
 
       {!canGenerate ? (
@@ -81,7 +81,7 @@ export default function ToyLMInferencePanel({
           )}
           {generatedText && (
             <pre className="max-h-52 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-white p-3 font-mono text-[13px] leading-5 text-[var(--text-primary)]">
-              <span className="font-bold text-[var(--logo-violet)]">{seedText}</span>
+              <span className="font-semibold text-[var(--logo-violet)]">{seedText}</span>
               {generatedText.slice(seedText.length)}
             </pre>
           )}
@@ -101,7 +101,7 @@ function ParamSlider({
     <div>
       <div className="mb-1 flex items-center justify-between">
         <label className="text-xs font-medium text-[var(--text-secondary)]">{label}</label>
-        <span className="font-mono text-xs font-bold text-[var(--logo-violet)]">{displayFn ? displayFn(value) : value}</span>
+        <span className="font-mono text-xs font-semibold text-[var(--logo-violet)]">{displayFn ? displayFn(value) : value}</span>
       </div>
       <input
         type="range"

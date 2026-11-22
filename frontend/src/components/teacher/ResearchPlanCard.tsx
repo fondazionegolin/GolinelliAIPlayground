@@ -40,13 +40,13 @@ export default function ResearchPlanCard({ plan, extending, disabled, onChange, 
       <div className="mb-3 flex items-start gap-2">
         <Search className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-extrabold text-slate-800">{extending ? tl("Cosa aggiungere al documento") : tl("Piano di ricerca")}</div>
+          <div className="text-xs font-semibold text-slate-800">{extending ? tl("Cosa aggiungere al documento") : tl("Piano di ricerca")}</div>
           {!extending && (
             <input
               value={plan.title}
               onChange={(e) => onChange({ ...plan, title: e.target.value })}
               aria-label={tl("Titolo del documento")}
-              className={`${FIELD} mt-1.5 font-bold`}
+              className={`${FIELD} mt-1.5 font-semibold`}
             />
           )}
           <label className="mt-2 block text-[11px] text-slate-600">{tl("Domanda di ricerca")}
@@ -65,7 +65,7 @@ export default function ResearchPlanCard({ plan, extending, disabled, onChange, 
         {plan.subtopics.map((s, index) => (
           <div key={s.id} className="ds-control rounded-[var(--ds-radius-control)] p-2.5">
             <div className="flex items-center gap-2">
-              <input value={s.title} onChange={(e) => update(index, { title: e.target.value })} aria-label={tl("Sottoargomento")} className={`${FIELD} font-bold`} />
+              <input value={s.title} onChange={(e) => update(index, { title: e.target.value })} aria-label={tl("Sottoargomento")} className={`${FIELD} font-semibold`} />
               <button
                 type="button"
                 onClick={() => onChange({ ...plan, subtopics: plan.subtopics.filter((_, i) => i !== index) })}
@@ -91,18 +91,18 @@ export default function ResearchPlanCard({ plan, extending, disabled, onChange, 
           <button
             type="button"
             onClick={() => onChange({ ...plan, subtopics: [...plan.subtopics, { id: `s${Date.now()}`, title: '', queries: [''] }] })}
-            className="ds-control inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-slate-600 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]"
+            className="ds-control inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-slate-600 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]"
           >
             <Plus className="h-3.5 w-3.5" />{tl("Sottoargomento")}
           </button>
         )}
         <span className="flex-1 text-[11px] text-slate-400">{tl("Puoi anche scrivere in chat cosa cambiare.")}</span>
-        <button type="button" onClick={onCancel} className="ds-control h-8 rounded-full px-3 text-xs font-bold text-slate-600 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]">{tl("Annulla")}</button>
+        <button type="button" onClick={onCancel} className="ds-control h-8 rounded-full px-3 text-xs font-semibold text-slate-600 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]">{tl("Annulla")}</button>
         <button
           type="button"
           onClick={onApprove}
           disabled={disabled || !valid}
-          className="ds-selected h-8 rounded-full px-4 text-xs font-bold outline-none focus-visible:shadow-[var(--ds-shadow-focus)] disabled:opacity-50"
+          className="ds-selected h-8 rounded-full px-4 text-xs font-semibold outline-none focus-visible:shadow-[var(--ds-shadow-focus)] disabled:opacity-50"
         >
           {tl("Approva e avvia")}
         </button>

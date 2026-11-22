@@ -104,7 +104,7 @@ export default function SchoolOwnerPanelPage() {
       <header className="flex items-start gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white"><Building2 className="h-5 w-5" /></div>
         <div className="min-w-0">
-          <SectionHeading section="/teacher/school" className="text-xl font-bold text-slate-900" subtitle={<>
+          <SectionHeading section="/teacher/school" className="text-xl font-semibold text-slate-900" subtitle={<>
             {panel.school.mechanographic_code
               ? <>{tl("Codice meccanografico")} <span className="font-mono font-semibold">{panel.school.mechanographic_code}</span>
                   {panel.school.registry_verified && <span className="ml-2 inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />{tl("verificato MIM")}</span>}</>
@@ -115,8 +115,8 @@ export default function SchoolOwnerPanelPage() {
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-base font-bold text-slate-900"><Users className="h-4 w-4" /> {tl("Docenti della sperimentazione")}</h2>
-          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${full ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900"><Users className="h-4 w-4" /> {tl("Docenti della sperimentazione")}</h2>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${full ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
             {panel.used_slots} / {panel.max_teachers}
           </span>
         </div>
@@ -148,7 +148,7 @@ export default function SchoolOwnerPanelPage() {
                       : t.invite_email.status === 'SENT' ? tl("E-mail inviata il {0}{1}", new Date(t.invite_email.sent_at!).toLocaleDateString('it-IT'), t.invite_email.opened_at ? ' · letta' : '') : tl("E-mail non ancora inviata")}
                   </p>}
                 </div>
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${st.cls}`}>{st.label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
                 {(t.state === 'INVITED' || t.state === 'EXPIRED') && (
                   <Button size="sm" variant="outline" onClick={() => resend.mutate(t.id)} disabled={resend.isPending}>
                     <Send className="mr-1.5 h-3.5 w-3.5" />{tl("Reinvia")}
@@ -171,7 +171,7 @@ export default function SchoolOwnerPanelPage() {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="flex items-center gap-2 text-base font-bold text-slate-900"><FileText className="h-4 w-4" /> {tl("Informativa per le famiglie")}</h2>
+        <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900"><FileText className="h-4 w-4" /> {tl("Informativa per le famiglie")}</h2>
         <p className="mt-1 text-sm text-slate-600">
           {tl("Bozza dell'informativa sull'uso della piattaforma con i minori (rischi, privacy, titolare e responsabile). Completa le parti tra parentesi quadre e fai verificare il testo dal tuo DPO prima di distribuirla.")}
         </p>
@@ -184,7 +184,7 @@ export default function SchoolOwnerPanelPage() {
         </div>
         {showNotice && notice && (
           <article
-            className="mt-4 max-h-[60vh] overflow-y-auto rounded-lg border border-slate-200 p-4 text-sm [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:mt-4 [&_h3]:font-semibold [&_li]:mb-1 [&_p]:my-2 [&_ul]:ml-5 [&_ul]:list-disc"
+            className="mt-4 max-h-[60vh] overflow-y-auto rounded-lg border border-slate-200 p-4 text-sm [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-4 [&_h3]:font-semibold [&_li]:mb-1 [&_p]:my-2 [&_ul]:ml-5 [&_ul]:list-disc"
             dangerouslySetInnerHTML={{ __html: notice.html }}
           />
         )}

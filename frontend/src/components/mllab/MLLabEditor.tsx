@@ -110,14 +110,14 @@ const ClassCard = memo(function ClassCard(props: ClassCardProps) {
     <article className="ui-card overflow-hidden p-4">
       <div className="flex flex-wrap items-center gap-3">
         <span className="ds-squircle h-9 w-9 shrink-0" style={{ background: cls.color }} />
-        <input value={cls.name} onChange={(event) => props.onRename(cls.id, event.target.value)} maxLength={40} aria-label={tl("Nome della classe")} className="min-w-[8rem] flex-1 bg-transparent text-base font-bold text-slate-900" />
-        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${quality.tone}`}>{cls.samples.length} · {quality.label}</span>
+        <input value={cls.name} onChange={(event) => props.onRename(cls.id, event.target.value)} maxLength={40} aria-label={tl("Nome della classe")} className="min-w-[8rem] flex-1 bg-transparent text-base font-semibold text-slate-900" />
+        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${quality.tone}`}>{cls.samples.length} · {quality.label}</span>
         {props.canRemove && <button type="button" onClick={() => props.onRemoveClass(cls.id)} aria-label={tl("Elimina classe")} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => props.onToggleCapture(cls.id)} disabled={props.recordDisabled && !isCapturing}
-          className={`flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold text-white transition disabled:opacity-40 ${isCapturing ? 'bg-rose-600 hover:bg-rose-700' : 'bg-[var(--app-accent,#7c3aed)] hover:opacity-90'}`}>
+          className={`flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold text-white transition disabled:opacity-40 ${isCapturing ? 'bg-rose-600 hover:bg-rose-700' : 'bg-[var(--app-accent,#7c3aed)] hover:opacity-90'}`}>
           {isCapturing ? <><Square className="h-4 w-4" /> {tl("Ferma")}</> : <><Camera className="h-4 w-4" /> {tl("Registra con la webcam")}</>}
         </button>
         <input ref={input} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { if (event.target.files?.length) props.onUpload(cls.id, event.target.files); event.target.value = '' }} />
@@ -524,8 +524,8 @@ export default function MLLabEditor({ projectId, newMode, seed, sessionId, onBac
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => { stopCapture(); onBack() }} className="flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10"><ArrowLeft className="h-4 w-4" /> {tl("Progetti")}</button>
         <SectionIllustration section="/teacher/ml-lab" compact />
-        <input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} aria-label={tl("Nome del progetto")} className="h-10 min-w-[12rem] flex-1 rounded-xl bg-transparent px-2 text-xl font-bold text-slate-900 sm:max-w-md" />
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-white/10">{MODE_LABEL[mode]}</span>
+        <input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} aria-label={tl("Nome del progetto")} className="h-10 min-w-[12rem] flex-1 rounded-xl bg-transparent px-2 text-xl font-semibold text-slate-900 sm:max-w-md" />
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-white/10">{MODE_LABEL[mode]}</span>
         <span className="flex items-center gap-1.5 text-xs text-slate-400" role="status">
           {saveState === 'saving' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("Salvataggio…")}</>}
           {saveState === 'saved' && <><Check className="h-3.5 w-3.5 text-emerald-500" /> {tl("Salvato nella libreria")}</>}
@@ -550,7 +550,7 @@ export default function MLLabEditor({ projectId, newMode, seed, sessionId, onBac
               onClear={clearClass} onRemoveSample={removeSample} onUpload={uploadImages}
             />
           ))}
-          <button type="button" onClick={addClass} disabled={classes.length >= MAX_CLASSES} className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 text-sm font-bold text-slate-500 transition hover:border-[var(--app-accent,#7c3aed)] hover:text-[var(--app-accent,#7c3aed)] disabled:opacity-40 dark:border-white/20">
+          <button type="button" onClick={addClass} disabled={classes.length >= MAX_CLASSES} className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 text-sm font-semibold text-slate-500 transition hover:border-[var(--app-accent,#7c3aed)] hover:text-[var(--app-accent,#7c3aed)] disabled:opacity-40 dark:border-white/20">
             <Plus className="h-4 w-4" /> {tl("Aggiungi classe")} {classes.length >= MAX_CLASSES ? `(massimo ${MAX_CLASSES})` : ''}
           </button>
         </section>
@@ -562,10 +562,10 @@ export default function MLLabEditor({ projectId, newMode, seed, sessionId, onBac
               <video ref={videoRef} playsInline muted className="h-full w-full -scale-x-100 object-cover" />
               {isLandmark && <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-cover" />}
               {camera !== 'on' && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-white/80"><Camera className="h-8 w-8" />{camera === 'starting' ? tl("Avvio della webcam…") : tl("Webcam non disponibile: puoi comunque caricare foto")}</div>}
-              {capturing && <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-rose-600 px-3 py-1 text-xs font-bold text-white"><span className="h-2 w-2 animate-pulse rounded-full bg-white" />{tl("Registrazione…")}</span>}
-              {isLandmark && trained && !detected && !capturing && camera === 'on' && <span className="absolute bottom-3 left-3 right-3 rounded-2xl bg-slate-800/80 px-4 py-2 text-center text-sm font-bold text-white backdrop-blur">{tl("Nessuna")} {noun} rilevata</span>}
+              {capturing && <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold text-white"><span className="h-2 w-2 animate-pulse rounded-full bg-white" />{tl("Registrazione…")}</span>}
+              {isLandmark && trained && !detected && !capturing && camera === 'on' && <span className="absolute bottom-3 left-3 right-3 rounded-2xl bg-slate-800/80 px-4 py-2 text-center text-sm font-semibold text-white backdrop-blur">{tl("Nessuna")} {noun} rilevata</span>}
               {liveEntries && camera === 'on' && !capturing && detected && (
-                <span className={`absolute bottom-3 left-3 right-3 rounded-2xl px-4 py-2 text-center text-sm font-black text-white backdrop-blur ${liveEntries.sure ? '' : 'bg-slate-800/80'}`} style={liveEntries.sure ? { background: liveEntries.top.cls.color } : undefined}>
+                <span className={`absolute bottom-3 left-3 right-3 rounded-2xl px-4 py-2 text-center text-sm font-semibold text-white backdrop-blur ${liveEntries.sure ? '' : 'bg-slate-800/80'}`} style={liveEntries.sure ? { background: liveEntries.top.cls.color } : undefined}>
                   {liveEntries.sure ? `${liveEntries.top.cls.name} · ${Math.round(liveEntries.top.prob * 100)}%` : tl("Non sono sicuro")}
                 </span>
               )}
@@ -574,7 +574,7 @@ export default function MLLabEditor({ projectId, newMode, seed, sessionId, onBac
 
           <div className="ui-card space-y-3 p-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-black uppercase tracking-wider text-slate-700">{tl("Cosa vede ora")}</h2>
+              <h2 className="text-sm font-semibold text-slate-700">{tl("Cosa vede ora")}</h2>
               {training && progress && <span className="flex items-center gap-1.5 text-xs text-slate-400"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {progress.phase}{progress.total > 0 ? ` ${progress.done}/${progress.total}` : ''}</span>}
             </div>
             <Button tone="accent" surface="solid" fullWidth onClick={() => void trainModel()} disabled={training || Boolean(capturing) || readyClasses < 2 || camera === 'starting'}>
@@ -598,7 +598,7 @@ export default function MLLabEditor({ projectId, newMode, seed, sessionId, onBac
           {trained && upToDate && !training && <UseModelInP5Card name={name} mode={mode} />}
 
           <div className="ui-card space-y-2 p-4 text-sm">
-            <h2 className="text-sm font-black uppercase tracking-wider text-slate-700">{tl("Qualità del modello")}</h2>
+            <h2 className="text-sm font-semibold text-slate-700">{tl("Qualità del modello")}</h2>
             {accuracy !== null
               ? <p className="text-slate-600"><b className={accuracy >= 0.85 ? 'text-emerald-600' : accuracy >= 0.65 ? 'text-amber-600' : 'text-rose-600'}>~{Math.round(accuracy * 100)}%</b> {tl("di risposte giuste stimate su esempi non usati per addestrare.")}</p>
               : <p className="text-slate-500">{tl("La stima compare quando ogni classe ha almeno 3 esempi.")}</p>}
@@ -615,7 +615,7 @@ export default function MLLabEditor({ projectId, newMode, seed, sessionId, onBac
                     const best = testResult.probs.indexOf(Math.max(...testResult.probs))
                     const cls = classes.find((c) => c.id === testResult.classIds[best])
                     const sure = testResult.probs[best] >= CONFIDENCE_THRESHOLD
-                    return <p className="font-bold text-slate-800">{sure ? `${cls?.name ?? '?'} · ${Math.round(testResult.probs[best] * 100)}%` : tl("Non sono sicuro (forse {0}, {1}%)", cls?.name ?? '?', Math.round(testResult.probs[best] * 100))}</p>
+                    return <p className="font-semibold text-slate-800">{sure ? `${cls?.name ?? '?'} · ${Math.round(testResult.probs[best] * 100)}%` : tl("Non sono sicuro (forse {0}, {1}%)", cls?.name ?? '?', Math.round(testResult.probs[best] * 100))}</p>
                   })()}
                   <button type="button" onClick={() => setTestResult(null)} className="mt-1 text-slate-400 hover:text-slate-600">{tl("Chiudi")}</button>
                 </div>

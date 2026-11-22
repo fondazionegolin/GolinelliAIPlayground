@@ -254,7 +254,7 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
         <div className="w-20 h-20 rounded-xl border border-emerald-200 bg-emerald-100 flex items-center justify-center mb-6 shadow-sm">
           <ClipboardList className="h-10 w-10 text-emerald-800" />
         </div>
-        <h3 className="text-xl font-black text-slate-950 mb-2">{t('tasks.empty_title')}</h3>
+        <h3 className="text-xl font-semibold text-slate-950 mb-2">{t('tasks.empty_title')}</h3>
         <p className="text-slate-600 max-w-sm">
           {t('tasks.empty_body')}
         </p>
@@ -269,8 +269,8 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
           <div className="mx-auto max-w-3xl text-center">
             <div className={headerCollapsed ? 'hidden' : 'grid grid-rows-[1fr]'}>
               <div className="overflow-hidden">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>{tl("Compiti")}</p>
-                <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('tasks.title')}</h2>
+                <p className="text-[11px] font-semibold" style={{ color: accentTheme.text }}>{tl("Compiti")}</p>
+                <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{t('tasks.title')}</h2>
                 <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
                   {readOnly ? tl("Consulta attività, istruzioni e consegne in modalità sola lettura.") : t('tasks.subtitle')}
                 </p>
@@ -302,7 +302,7 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
                   </div>
                   <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-100 px-3 py-1.5 text-emerald-800 shadow-sm">
                     <Award className="h-3.5 w-3.5 text-emerald-700" />
-                    <span className="text-xs font-bold">
+                    <span className="text-xs font-semibold">
                       {tasks.filter(task => task.submission).length}/{tasks.length}
                     </span>
                   </div>
@@ -413,8 +413,8 @@ function TaskSection({ title, subtitle, tasks, viewMode, draftTaskIds, accentCol
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-black text-slate-900">{title}</h3>
-            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black text-slate-600">{tasks.length}</span>
+            <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">{tasks.length}</span>
           </div>
           <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
         </div>
@@ -472,19 +472,19 @@ function TaskCard({ task, hasDraft, onClick }: { task: TaskData; hasDraft: boole
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      className={`relative flex aspect-square min-h-0 cursor-pointer flex-col overflow-hidden rounded-[22px] p-3 text-left transition-all hover:-translate-y-0.5 ${s.card}`}
+      className={`relative flex aspect-square min-h-0 cursor-pointer flex-col overflow-hidden rounded-[22px] p-3 text-left transition hover:-translate-y-0.5 ${s.card}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-sm ${s.iconBg} ${s.icon}`}>
           {typeIcon}
         </div>
-        <span className={`max-w-[68%] truncate rounded-full border px-2 py-1 text-[9px] font-black uppercase ${hasDraft && !isCompleted ? 'border-amber-200 bg-amber-100 text-amber-800' : s.badge}`}>
+        <span className={`max-w-[68%] truncate rounded-full border px-2 py-1 text-[9px] font-semibold ${hasDraft && !isCompleted ? 'border-amber-200 bg-amber-100 text-amber-800': s.badge}`}>
           {isCompleted ? tl("Fatto") : hasDraft ? tl("Bozza") : (TASK_TYPE_LABELS[task.task_type] ?? task.task_type)}
         </span>
       </div>
-      <div className="mt-3 line-clamp-3 text-sm font-black leading-[1.25rem] text-slate-950">{task.title}</div>
+      <div className="mt-3 line-clamp-3 text-sm font-semibold leading-[1.25rem] text-slate-950">{task.title}</div>
       {(hasUnreadFeedback || hasUnreadCorrection) && (
-        <span className="mt-1 inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black text-amber-900">
+        <span className="mt-1 inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-semibold text-amber-900">
           {tl("Nuovo feedback")}
         </span>
       )}
@@ -496,9 +496,9 @@ function TaskCard({ task, hasDraft, onClick }: { task: TaskData; hasDraft: boole
           </div>
         )}
         {isCompleted && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-800"><Check className="h-3 w-3" /> {tl("Consegnato")}</span>
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-800"><Check className="h-3 w-3" /> {tl("Consegnato")}</span>
         )}
-        {!task.due_at && !isCompleted && <span className="text-[10px] font-bold text-slate-500">{tl("Apri")}</span>}
+        {!task.due_at && !isCompleted && <span className="text-[10px] font-semibold text-slate-500">{tl("Apri")}</span>}
         <ChevronRight className="h-4 w-4 text-slate-300" />
       </div>
     </motion.div>
@@ -529,16 +529,16 @@ function TaskRow({ task, hasDraft, onClick }: { task: TaskData; hasDraft: boolea
     <motion.div
       whileTap={{ scale: 0.995 }}
       onClick={onClick}
-      className={`group flex cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 transition-all ${s.card}`}
+      className={`group flex cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 transition ${s.card}`}
     >
       <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg shadow-sm ${s.iconBg} ${s.icon}`}>
         {typeIcon}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-black text-slate-950">{task.title}</div>
-        {(hasUnreadFeedback || hasUnreadCorrection) && <span className="text-[10px] font-black text-amber-700">{tl("Nuovo feedback del docente")}</span>}
+        <div className="truncate text-sm font-semibold text-slate-950">{task.title}</div>
+        {(hasUnreadFeedback || hasUnreadCorrection) && <span className="text-[10px] font-semibold text-amber-700">{tl("Nuovo feedback del docente")}</span>}
       </div>
-      <span className={`hidden shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase sm:inline-block ${hasDraft && !isCompleted ? 'border-amber-200 bg-amber-100 text-amber-800' : s.badge}`}>
+      <span className={`hidden shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold sm:inline-block ${hasDraft && !isCompleted ? 'border-amber-200 bg-amber-100 text-amber-800': s.badge}`}>
         {isCompleted ? tl("Fatto") : hasDraft ? tl("Bozza") : (TASK_TYPE_LABELS[task.task_type] ?? task.task_type)}
       </span>
       {task.due_at && !isCompleted && (
@@ -706,16 +706,16 @@ function TaskViewerOverlay({ task, studentId, onClose, accentTheme, onSuccess, o
           </div>
           <div className="min-w-0 flex-1">
             <div className="mb-0.5 flex flex-wrap items-center gap-2">
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${badge.bg} ${badge.text}`}>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg} ${badge.text}`}>
                 {badge.label}
               </span>
               {hasDraft && !isCompleted && !readOnly && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-white/80 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
                   <Clock className="h-2.5 w-2.5" /> {tl("Bozza salvata")}
                 </span>
               )}
               {readOnly && !isCompleted && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-white/80 px-2 py-0.5 text-[10px] font-bold text-sky-800">
+                <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
                   <BookOpen className="h-2.5 w-2.5" /> {tl("Sola lettura")}
                 </span>
               )}
@@ -725,12 +725,12 @@ function TaskViewerOverlay({ task, studentId, onClose, accentTheme, onSuccess, o
                 </span>
               )}
             </div>
-            <h2 className="line-clamp-1 text-base font-black leading-tight text-slate-950 md:text-lg">{task.title}</h2>
+            <h2 className="line-clamp-1 text-base font-semibold leading-tight text-slate-950 md:text-lg">{task.title}</h2>
           </div>
           {isCompleted && (
             <div className="hidden flex-shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 sm:flex">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-              <span className="text-xs font-bold text-emerald-700">{t('tasks.completed_badge')}</span>
+              <span className="text-xs font-semibold text-emerald-700">{t('tasks.completed_badge')}</span>
             </div>
           )}
           <button
@@ -808,7 +808,7 @@ function TaskViewerOverlay({ task, studentId, onClose, accentTheme, onSuccess, o
                     <button
                       onClick={() => handleFinalSubmit(draft.response || '')}
                       disabled={!draft.response?.trim() || isSubmitting}
-                      className={`h-11 w-full rounded-xl border text-sm font-black transition-all disabled:cursor-not-allowed disabled:opacity-40 ${theme.action}`}
+                      className={`h-11 w-full rounded-xl border text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${theme.action}`}
                     >
                       {isSubmitting ? t('tasks.submitting') : t('tasks.submit_answer')}
                     </button>
@@ -834,12 +834,12 @@ function ReadOnlyTaskContent({ task, content }: { task: TaskData; content: TaskC
       {body && <p className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm leading-7 text-slate-700">{body}</p>}
       {content?.questions?.map((question, index) => (
         <section key={`${question.question}-${index}`} className="rounded-2xl border border-violet-100 bg-violet-50/60 p-5">
-          <p className="text-xs font-black uppercase tracking-wider text-violet-600">{tl("Domanda")} {index + 1}</p>
-          <h3 className="mt-2 font-extrabold leading-6 text-slate-950">{question.question}</h3>
+          <p className="text-xs font-semibold text-violet-600">{tl("Domanda")} {index + 1}</p>
+          <h3 className="mt-2 font-semibold leading-6 text-slate-950">{question.question}</h3>
           <div className="mt-4 space-y-2">
             {(question.options || []).map((option, optionIndex) => (
               <div key={`${option}-${optionIndex}`} className="flex min-h-[48px] items-center gap-3 rounded-xl border border-white bg-white/80 px-4 text-sm font-medium text-slate-600">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-xs font-black text-violet-700">{String.fromCharCode(65 + optionIndex)}</span>
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-xs font-semibold text-violet-700">{String.fromCharCode(65 + optionIndex)}</span>
                 {option}
               </div>
             ))}
@@ -848,7 +848,7 @@ function ReadOnlyTaskContent({ task, content }: { task: TaskData; content: TaskC
       ))}
       {content?.examples && content.examples.length > 0 && (
         <section className="rounded-2xl border border-sky-100 bg-sky-50/70 p-5">
-          <h3 className="font-extrabold text-slate-950">{tl("Esempi")}</h3>
+          <h3 className="font-semibold text-slate-950">{tl("Esempi")}</h3>
           <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
             {content.examples.map((example, index) => <li key={`${example}-${index}`}>• {example}</li>)}
           </ul>
@@ -903,7 +903,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
             transition={{ type: 'spring', stiffness: 200, damping: 25 }}
           />
         </div>
-        <span className="text-xs font-bold text-slate-400 tabular-nums flex-shrink-0">
+        <span className="text-xs font-semibold text-slate-400 tabular-nums flex-shrink-0">
           {currentIndex + 1} / {questions.length}
         </span>
       </div>
@@ -919,7 +919,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
             className="space-y-4"
           >
             <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-4 shadow-sm">
-              <h3 className="text-base font-black text-slate-950 leading-snug">
+              <h3 className="text-base font-semibold text-slate-950 leading-snug">
                 {questions[currentIndex].question}
               </h3>
             </div>
@@ -949,7 +949,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
               }
               return (
                 <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
-                  <div className="text-center text-4xl font-black tabular-nums text-violet-700">{current ?? '–'}</div>
+                  <div className="text-center text-4xl font-semibold tabular-nums text-violet-700">{current ?? '–'}</div>
                   <input
                     type="range"
                     min={min}
@@ -982,7 +982,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
                       setAnswers(next)
                       onDraftChange(next, currentIndex)
                     }}
-                    className="w-full text-left p-3.5 rounded-lg border transition-all flex items-center justify-between gap-3 backdrop-blur-sm"
+                    className="w-full text-left p-3.5 rounded-lg border transition flex items-center justify-between gap-3 backdrop-blur-sm"
                     style={{
                       backgroundColor: isSelected ? '#ede9fe' : '#ffffff',
                       borderColor: isSelected ? '#a78bfa' : '#d4d4d4',
@@ -992,7 +992,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
                       {opt}
                     </span>
                     <div
-                      className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
+                      className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition"
                       style={{
                         backgroundColor: isSelected ? '#ffffff' : 'transparent',
                         borderColor: isSelected ? '#7c3aed' : '#d4d4d4',
@@ -1013,7 +1013,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
         <button
           onClick={handlePrev}
           disabled={currentIndex === 0}
-          className="flex items-center gap-1.5 rounded-lg border border-transparent px-4 py-2 text-sm font-bold text-slate-600 transition-all hover:border-violet-200 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex items-center gap-1.5 rounded-lg border border-transparent px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-30"
         >
           <ChevronLeft className="h-4 w-4" /> {tl("Precedente")}
         </button>
@@ -1022,7 +1022,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
           <button
             disabled={!allAnswered || isSubmitting}
             onClick={() => onSubmit(answers)}
-            className={`flex items-center gap-2 rounded-lg border px-6 py-2 text-sm font-black transition-all disabled:cursor-not-allowed disabled:opacity-40 ${theme.action}`}
+            className={`flex items-center gap-2 rounded-lg border px-6 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${theme.action}`}
           >
             {isSubmitting ? tl("Invio...") : tl("Invia Quiz")} <Send className="h-3.5 w-3.5" />
           </button>
@@ -1030,7 +1030,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
           <button
             onClick={handleNext}
             disabled={!hasQuizAnswer(questions[currentIndex], answers[currentIndex])}
-            className={`flex items-center gap-2 rounded-lg border px-6 py-2 text-sm font-black transition-all disabled:cursor-not-allowed disabled:opacity-40 ${theme.action}`}
+            className={`flex items-center gap-2 rounded-lg border px-6 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${theme.action}`}
           >
             {tl("Avanti")} <ChevronRight className="h-3.5 w-3.5" />
           </button>
@@ -1103,10 +1103,10 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
         <div className="bg-white border border-amber-300 rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <PenTool className="h-4 w-4 text-amber-600" />
-            <span className="text-xs font-bold uppercase tracking-widest text-amber-500">{tl("Esercizio")}</span>
+            <span className="text-xs font-semibold text-amber-500">{tl("Esercizio")}</span>
           </div>
           {content?.title && (
-            <h3 className="text-lg font-bold text-slate-900 mb-2">{content.title}</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">{content.title}</h3>
           )}
           {content?.description && (
             <div className="chat-markdown prose prose-sm max-w-none text-slate-600 mb-4">
@@ -1126,7 +1126,7 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
           </div>
           {examples.length > 0 && (
             <div className="mt-4 rounded-xl bg-white/70 border border-amber-100 p-3">
-              <div className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-2">{tl("Esempi")}</div>
+              <div className="text-xs font-semibold text-amber-600 mb-2">{tl("Esempi")}</div>
               <ul className="space-y-1.5 pl-4 text-sm text-slate-700">
                 {examples.map((example, index) => (
                   <li key={index} className="chat-markdown prose prose-sm max-w-none">
@@ -1163,7 +1163,7 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
       <button
         onClick={() => onSubmit(isInlineCompletion ? completedInlineText() : response)}
         disabled={(isInlineCompletion ? !allBlanksCompleted : !response.trim()) || isSubmitting}
-        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-orange-300 bg-orange-500 text-sm font-black text-white transition-all hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-orange-300 bg-orange-500 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Send className="h-4 w-4" />
         {isSubmitting ? tl("Invio in corso...") : tl("Consegna Risposta")}
@@ -1196,14 +1196,14 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
         <div className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full border border-emerald-200/70 bg-emerald-50 sm:mb-4 sm:h-14 sm:w-14">
           <CheckCircle2 className="h-6 w-6 text-emerald-500 sm:h-7 sm:w-7" />
         </div>
-        <h3 className="text-lg font-bold text-slate-900 sm:text-xl">{tl("Ottimo lavoro!")}</h3>
+        <h3 className="text-lg font-semibold text-slate-900 sm:text-xl">{tl("Ottimo lavoro")}</h3>
         <p className="text-slate-400 text-sm mt-1">{tl("Consegnato il")} {new Date(submission.submitted_at).toLocaleDateString('it-IT')}</p>
       </div>
 
       <div className="space-y-3">
         {/* Answer Box */}
         <div className="rounded-xl border border-slate-200/60 bg-white/60 p-4 backdrop-blur-sm sm:p-5">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{tl("La tua consegna")}</p>
+          <p className="text-[10px] font-semibold text-slate-400 mb-3">{tl("La tua consegna")}</p>
           <p className="break-words text-sm leading-relaxed text-slate-700">
             {submission.content}
           </p>
@@ -1213,10 +1213,10 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
           <div className="overflow-hidden rounded-xl border border-amber-200 bg-amber-50/40">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-100/70 px-4 py-3 sm:px-5">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-900">{tl("Correzioni del docente")}</p>
+                <p className="text-[10px] font-semibold text-amber-900">{tl("Correzioni del docente")}</p>
                 <p className="mt-0.5 text-xs text-amber-800">{tl("Le parti evidenziate in giallo sono state modificate.")}</p>
               </div>
-              <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+              <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
                 correction.status === 'read'
                   ? 'bg-emerald-100 text-emerald-800'
                   : 'bg-white text-amber-900'
@@ -1235,7 +1235,7 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
                     type="button"
                     onClick={() => acknowledgeCorrection.mutate()}
                     disabled={acknowledgeCorrection.isPending}
-                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-amber-300 bg-amber-100 px-4 text-sm font-black text-amber-950 transition-colors hover:bg-amber-200 disabled:opacity-50"
+                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-amber-300 bg-amber-100 px-4 text-sm font-semibold text-amber-950 transition-colors hover:bg-amber-200 disabled:opacity-50"
                   >
                     <Check className="h-4 w-4" />
                     {acknowledgeCorrection.isPending ? tl("Invio…") : tl("Ho letto")}
@@ -1256,12 +1256,12 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
             }}
           >
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: accentTheme.accent }}>
+              <span className="text-[10px] font-semibold" style={{ color: accentTheme.accent }}>
                 {tl("Feedback del Docente")}
               </span>
               {submission.score && (
                 <div
-                  className="px-3 py-1 rounded-full text-xs font-bold border bg-white/80"
+                  className="px-3 py-1 rounded-full text-xs font-semibold border bg-white/80"
                   style={{ color: accentTheme.accent, borderColor: `${accentTheme.accent}30` }}
                 >
                   {tl("Voto:")} {submission.score}
@@ -1275,10 +1275,10 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
             )}
             {submission.answer_feedback && Object.keys(submission.answer_feedback).length > 0 && (
               <div className="mt-4 space-y-2 border-t border-slate-200 pt-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{tl("Commenti sulle risposte")}</p>
+                <p className="text-[10px] font-semibold text-slate-500">{tl("Commenti sulle risposte")}</p>
                 {Object.entries(submission.answer_feedback).sort(([a], [b]) => Number(a) - Number(b)).map(([questionIndex, comment]) => (
                   <div key={questionIndex} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-700">
-                    <span className="mr-2 font-bold">{tl("Domanda")} {Number(questionIndex) + 1}</span>{comment}
+                    <span className="mr-2 font-semibold">{tl("Domanda")} {Number(questionIndex) + 1}</span>{comment}
                   </div>
                 ))}
               </div>

@@ -438,6 +438,16 @@ async def process_recording(recording_id: uuid.UUID, ctx=None) -> dict:
                               {"audio_minutes": round(minutes, 2), "type": "call_recording:transcription"})
 
             recording.transcript, recording.participants = merge_timeline(segments)
+            if recording.transcript:
+                if ctx is not None:
+                    await ctx.progress(0.82, "Pulizia del testo", force=True)
+                try:
+                    from app.services import call_cleanup
+                    lines = [dict(line) for line in recording.transcript]
+                    if await call_cleanup.clean_lines(db, lines, teacher):
+                        recording.transcript = lines
+                except Exception:  # the literal transcript is still good: never fail the job for cosmetics
+                    logger.exception("transcript cleanup failed for recording %s", recording.id)
             await db.commit()
             pipeline_notes: list[str] = []
             when = recording.started_at.astimezone().strftime("%d/%m/%Y %H:%M") if recording.started_at else ""

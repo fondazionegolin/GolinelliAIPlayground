@@ -52,7 +52,7 @@ function GridEntry({ item, onOpen }: EntryProps) {
           : <Icon className="h-9 w-9" style={{ color: tone }} strokeWidth={1.5} />}
       </div>
       <div className="min-w-0 px-2.5 py-2">
-        <p className="truncate text-[11px] font-bold text-foreground">{item.name}</p>
+        <p className="truncate text-[11px] font-semibold text-foreground">{item.name}</p>
         <p className="truncate text-[10px] text-muted-foreground">{item.kind === 'folder' ? `${item.child_count ?? 0} elementi` : formatBytes(item.size_bytes)}</p>
       </div>
     </button>
@@ -142,8 +142,8 @@ export function SessionFilesExplorer({ sessionId, isTeacher = false }: { session
       onDrop={(event) => void onDrop(event)}
     >
       <DropOverlay active={dragOver} label={tl("Rilascia per caricare")} hint={tl("Nella cartella «{0}»", path.at(-1)?.name ?? 'File di sessione')} />
-      <div className="flex items-center gap-1 px-4 py-3 text-[11px] font-bold text-muted-foreground">
-        <button type="button" onClick={() => setPath([])} className="rounded px-1 uppercase tracking-widest hover:text-foreground">{tl("File di sessione")}</button>
+      <div className="flex items-center gap-1 px-4 py-3 text-[11px] font-semibold text-muted-foreground">
+        <button type="button" onClick={() => setPath([])} className="rounded px-1 hover:text-foreground">{tl("File di sessione")}</button>
         {path.map((entry, index) => (
           <span key={entry.id} className="flex min-w-0 items-center gap-1">
             <ChevronRight className="h-3 w-3 shrink-0" />

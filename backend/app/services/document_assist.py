@@ -246,13 +246,14 @@ PLAN_SYSTEM_PROMPT = """Sei Document Builder, co-autore e assistente di un edito
 NON modificare nulla ora: interpreta la richiesta nel contesto del documento e restituisci un piano.
 
 Rispondi SOLO con un oggetto JSON valido, senza Markdown:
-{"understanding":"1-3 frasi in italiano, concrete: cosa farai (con valori/lunghezza/posizione) e cosa NON toccherai","approach":"format|write|rewrite|ask","question":"solo se approach=ask","operations":[...],"write":{...}}
+{"understanding":"1-3 frasi in italiano, concrete: cosa farai (con valori/lunghezza/posizione) e cosa NON toccherai","approach":"format|write|rewrite|analyze|ask","question":"solo se approach=ask","operations":[...],"write":{...}}
 
 SCEGLI L'APPROCCIO
 - format: cambia solo l'aspetto (spaziatura, interlinea, rientri, font, colore, titoli, righe vuote), mai le parole.
 - write: PRODUCE TESTO NUOVO o ne aggiunge molto. Usalo per: espandere/ampliare/sviluppare/approfondire/arricchire/allungare/dettagliare/"scrivi di più"; continuare/proseguire/completare/finire/"vai avanti"/"scrivi il resto"; scrivere una bozza, una sezione, un'introduzione, una conclusione, un paragrafo, esempi, un riassunto breve da inserire; sintetizzare/riassumere.
   Se il documento ha un titolo e magari un incipit ma poco altro, e la richiesta è generica ("scrivi", "completa", "sviluppa"), tratta l'incipit come STIMOLO: il compito è sviluppare il documento (task draft), non chiudere la frase.
 - rewrite: cambia le parole di un testo già scritto SENZA aggiungere molto contenuto: correggere, riformulare, tradurre, semplificare, cambiare tono/registro, accorciare leggermente.
+- analyze: l'utente chiede un'ANALISI, una revisione, un parere o un controllo ("analizza", "rivedi", "valuta", "cosa posso migliorare", "controlla la formattazione", "è chiaro?", "dammi un feedback"). Non modifichi nulla: produci una diagnosi su formattazione, struttura, contenuto e lingua, con correzioni proposte.
 - ask: solo se due letture darebbero risultati molto diversi. UNA domanda breve con le alternative.
 
 CAMPO "write" (solo se approach=write):
@@ -262,14 +263,14 @@ CAMPO "write" (solo se approach=write):
 - draft: sviluppa il documento/sezione da titolo e incipit (end_of_document o at_cursor). Documento lungo ⇒ structure sections con sottotitoli.
 - insert: inserisce una parte nuova richiesta (introduzione → at_cursor o inizio; conclusione → end_of_document).
 - summarize: riassume la selezione (replace_selection) o il documento (after_selection/end_of_document).
-Lunghezze di riferimento se non indicate: una frase 25, un paragrafo 110, "più testo" 200–300, una sezione 300–400, una pagina 450, bozza completa 600–900 (max 2000).
+Lunghezze di riferimento se non indicate: una frase 25, un paragrafo 110, "più testo" 200–300, una sezione 300–400, una pagina 450, bozza completa 900–1500. Se l'utente chiede un documento lungo, completo, approfondito o un numero di pagine, calcola ~450 parole per pagina (max 8000): «10 pagine» ≈ 4500, «documento lungo/esaustivo» ≈ 3000–4000; usa structure sections.
 Usa stat.cursor_at_end, stat.has_selection, stat.selection_words, stat.words, stat.outline, stat.last_block per decidere. Rispetta lingua, registro e livello del testo esistente.
 
 VOCABOLARIO DI FORMATTAZIONE (per approach=format, sono cose diverse):
-- "spaziatura/spazio tra i paragrafi" = space_after_px (tipico 8-14). NON è l'interlinea.
+- "spaziatura/spazio tra i paragrafi" = space_after_px (predefinito del foglio: un rigo = 28; valori tipici 14-28). NON è l'interlinea.
 - "interlinea", "righe più larghe/strette" = line_height (1.0-2.0).
 - "rientro", "indentazione", "capoverso" = text_indent_px (24-36).
-- righe vuote usate come distanza → normalize_spacing. capitoli/titoli da riconoscere → detect_structure. rientri a mano → smart_indent.
+- righe vuote usate come distanza → normalize_spacing (gap_px 28 = un rigo). capitoli/titoli da riconoscere → detect_structure. rientri a mano → smart_indent.
 - carattere, dimensione, colore, grassetto, corsivo → text_style. allineamento → paragraph_format.text_align.
 OPERAZIONI (solo per format; campi opzionali tranne op). target: paragraphs|headings|h1|h2|h3|all (default all).
 {"op":"paragraph_format","target":"paragraphs","space_before_px":0,"space_after_px":12,"line_height":1.5,"text_indent_px":28,"text_align":"left|center|right|justify"}
@@ -336,6 +337,11 @@ def sanitize_operations(raw: Any) -> list[dict]:
     return result[:8]
 
 
+# Long documents are written section by section in parallel, so the ceiling is the outline, not one model call.
+MAX_WRITE_WORDS = 8000
+MAX_SECTIONS = 16
+SECTION_CONCURRENCY = 8
+
 _WRITE_TASKS = {"expand", "continue", "draft", "insert", "summarize"}
 _PLACEMENTS = {"replace_selection", "after_selection", "at_cursor", "end_of_document"}
 _STRUCTURES = {"paragraphs", "sections", "list", "auto"}
@@ -350,7 +356,7 @@ def sanitize_write_spec(raw: Any, *, has_selection: bool) -> dict:
     )
     if placement in {"replace_selection", "after_selection"} and not has_selection:
         placement = "at_cursor"
-    words = _num(value.get("target_words"), 20, 2500)
+    words = _num(value.get("target_words"), 20, MAX_WRITE_WORDS)
     return {
         "task": task,
         "placement": placement,
@@ -374,8 +380,10 @@ Regole di scrittura
 - Mantieni la struttura del documento: se il testo esistente è fatto di paragrafi, non introdurre elenchi puntati a caso; usa sottotitoli solo se il documento ne ha o se la parte è lunga."""
 
 _OUTLINE_PROMPT = """Pianifica le sezioni di un testo da scrivere. Rispondi SOLO con JSON valido:
-{"sections":[{"heading":"titolo sezione","points":["punto chiave 1","punto chiave 2"],"words":N}]}
-Da 3 a 7 sezioni, coerenti con titolo e testo esistente, senza ripetere ciò che c'è già; la somma di "words" ≈ lunghezza obiettivo."""
+{"sections":[{"heading":"titolo sezione","points":["punto chiave 1","punto chiave 2"],"subsections":["sottotitolo facoltativo"],"words":N}]}
+Numero di sezioni proporzionato alla lunghezza: circa una ogni 400-600 parole (minimo 3, massimo 16). Coerenti con titolo e testo esistente,
+senza ripetere ciò che c'è già, senza sovrapposizioni tra sezioni (ogni punto appartiene a UNA sola sezione); la somma di "words" ≈ lunghezza obiettivo.
+Per sezioni oltre 700 parole indica 2-4 "subsections"."""
 
 
 def plain_words(html: str) -> int:
@@ -490,26 +498,50 @@ async def write_text(
         html = await call(f"{header}\n\nBOZZA PRECEDENTE DA MODIFICARE:\n{previous_draft[:20000]}\n\nApplica l'istruzione alla bozza e restituisci la versione completa aggiornata.", target)
     elif target >= 700 and spec["task"] in {"draft", "insert", "expand"}:
         result.steps.append("Pianifico le sezioni prima di scrivere")
-        outline_raw = await call(f"{header}\n\nPianifica ora le sezioni.", 400, system=_OUTLINE_PROMPT, temperature=0.3)
+        outline_raw = await call(f"{header}\n\nPianifica ora le sezioni.", 1200, system=_OUTLINE_PROMPT, temperature=0.3)
         try:
             sections = json.loads(outline_raw[outline_raw.index("{"): outline_raw.rindex("}") + 1]).get("sections") or []
         except (ValueError, json.JSONDecodeError):
             sections = []
-        sections = [item for item in sections if isinstance(item, dict) and str(item.get("heading") or "").strip()][:7]
+        sections = [item for item in sections if isinstance(item, dict) and str(item.get("heading") or "").strip()][:MAX_SECTIONS]
         if len(sections) < 2:
             html = await call(header, target)
         else:
-            written: list[str] = []
-            outline_text = "\n".join(f"{n}. {str(item['heading'])[:100]} — " + "; ".join(str(point)[:100] for point in (item.get("points") or [])[:5]) for n, item in enumerate(sections, 1))
-            for n, item in enumerate(sections, 1):
-                words = int(_num(item.get("words"), 60, 600) or max(80, target // len(sections)))
-                result.steps.append(f"Scrivo la sezione {n}/{len(sections)}: {str(item['heading'])[:60]}")
-                tail = re.sub(r"<[^>]+>", " ", " ".join(written))[-1800:]
-                written.append(await call(
-                    f"{header}\n\nSCALETTA COMPLETA:\n{outline_text}\n\nSEZIONI GIÀ SCRITTE (ultime righe): {tail or '(nessuna)'}\n\n"
-                    f"Scrivi SOLO la sezione {n}: «{item['heading']}», con titolo <h2> e ~{words} parole, senza ripetere le altre sezioni.",
-                    words,
-                ))
+            outline_text = "\n".join(
+                f"{n}. {str(item['heading'])[:100]} — " + "; ".join(str(point)[:100] for point in (item.get("points") or [])[:6])
+                for n, item in enumerate(sections, 1)
+            )
+            # Sections are written in parallel (bounded): a long document stays within the request time,
+            # and every writer sees the whole outline so they do not overlap.
+            gate = asyncio.Semaphore(SECTION_CONCURRENCY)
+            result.steps.append(f"Scrivo {len(sections)} sezioni in parallelo seguendo la scaletta")
+
+            async def write_section(n: int, item: dict) -> str:
+                words = int(_num(item.get("words"), 80, 1500) or max(120, target // len(sections)))
+                subs = [str(sub)[:100] for sub in (item.get("subsections") or []) if str(sub).strip()][:4]
+                sub_text = (" Articola la sezione con questi sottotitoli <h3>: " + "; ".join(f"«{sub}»" for sub in subs) + ".") if subs else ""
+                position = "È la PRIMA sezione: apri il discorso." if n == 1 else ("È l'ULTIMA sezione: chiudi il discorso con una conclusione." if n == len(sections) else "È una sezione intermedia: non introdurre né concludere il documento.")
+                prompt = (
+                    f"{header}\n\nSCALETTA COMPLETA:\n{outline_text}\n\n"
+                    f"Scrivi SOLO la sezione {n}: «{item['heading']}», con titolo <h2> e ~{words} parole. {position}{sub_text} "
+                    "Tratta solo i punti di questa sezione: gli altri sono scritti da altri autori in parallelo."
+                )
+                async with gate:
+                    try:
+                        return await call(prompt, words)
+                    except Exception:
+                        # One retry with a looser budget; a section that still fails must not sink the whole document.
+                        logger.warning("Document section %s failed, retrying", n, exc_info=True)
+                        try:
+                            return await call(prompt, int(words * 1.5))
+                        except Exception:
+                            logger.exception("Document section %s failed twice", n)
+                            result.steps.append(f"La sezione {n} («{str(item['heading'])[:60]}») non è stata scritta: puoi chiederla di nuovo")
+                            return ""
+
+            written = [part for part in await asyncio.gather(*(write_section(n, item) for n, item in enumerate(sections, 1))) if part]
+            if not written:
+                raise ValueError("Non sono riuscito a scrivere le sezioni: riprova")
             html = "".join(written)
     else:
         result.steps.append("Scrivo la bozza usando titolo, struttura e testo circostante")
@@ -517,7 +549,7 @@ async def write_text(
 
     words = plain_words(html)
     # Length check: an "expand"/"draft"/"continue" that came back far too short is extended once.
-    if not previous_draft.strip() and spec["task"] in {"expand", "continue", "draft", "insert"} and words < target * 0.6 and target >= 80:
+    if not previous_draft.strip() and spec["task"] in {"expand", "continue", "draft", "insert"} and words < target * 0.6 and 80 <= target <= 2500:
         result.steps.append(f"Il testo ({words} parole) è più corto dell'obiettivo ({target}): lo sviluppo ulteriormente")
         html = await call(
             f"{header}\n\nBOZZA ATTUALE ({words} parole, TROPPO BREVE):\n{html}\n\n"
@@ -528,3 +560,66 @@ async def write_text(
     result.html = html
     result.words = words
     return result
+
+
+# --- Analysis ------------------------------------------------------------------------------------
+# A review of the document (formatting, structure, content, language) that edits nothing: the user
+# gets a diagnosis with concrete fixes, optional formatting operations and follow-up prompts.
+
+ANALYZE_SYSTEM_PROMPT = """Sei Document Builder, revisore esperto di testi didattici e professionali. Analizza il documento dell'utente
+in modo articolato e concreto, senza modificarlo. Ricevi: titolo, statistiche di formattazione (stat), struttura dei titoli e il testo.
+
+Rispondi SOLO con JSON valido, nella lingua dell'utente:
+{"summary":"3-5 frasi: che documento è, a chi si rivolge, giudizio complessivo",
+ "scores":{"struttura":1-5,"formattazione":1-5,"chiarezza":1-5,"contenuto":1-5,"lingua":1-5},
+ "strengths":["2-4 punti di forza specifici"],
+ "formatting":[{"issue":"problema di formattazione o impaginazione, con dove si trova","fix":"come correggerlo, con valori"}],
+ "structure":[{"issue":"...","fix":"..."}],
+ "content":[{"issue":"lacune, passaggi poco chiari, ripetizioni, affermazioni da verificare, coerenza con titolo e pubblico","fix":"..."}],
+ "language":[{"issue":"errori, registro, frasi troppo lunghe, termini ripetuti (cita il passaggio)","fix":"versione corretta o suggerimento"}],
+ "priorities":["le 3 azioni più utili, in ordine"],
+ "suggestions":["2-4 richieste brevi, all'imperativo, che l'utente può inviarti per applicare le correzioni (es. «Uniforma la spaziatura tra i paragrafi»)"],
+ "operations":[...]}
+
+Regole
+- Sii specifico: cita titoli o brevi frammenti (max 12 parole) del testo; niente consigli generici validi per qualsiasi documento.
+- Formattazione: gerarchia dei titoli (salti di livello, titoli troppo lunghi o non paralleli), paragrafi troppo lunghi o troppo brevi,
+  spaziatura incoerente o righe vuote usate come spazio, elenchi scritti a mano invece che come elenchi, rientri irregolari, font e dimensioni miste,
+  enfasi eccessiva (grassetti, maiuscole), tabelle e immagini senza didascalia.
+- Contenuto: completezza rispetto al titolo, logica e progressione, esempi, definizioni mancanti, accuratezza (segnala ciò che va verificato, non inventare fonti).
+- Max 6 voci per ciascuna lista; lista vuota se non c'è nulla da segnalare.
+- "operations": SOLO correzioni di formattazione sicure e meccaniche, con lo stesso formato delle operazioni di formattazione
+  (paragraph_format, text_style, normalize_spacing, detect_structure, smart_indent); lista vuota se non servono."""
+
+
+def sanitize_analysis(raw: Any) -> dict:
+    """Keep only well-formed analysis fields (the client renders them as-is)."""
+    data = raw if isinstance(raw, dict) else {}
+
+    def items(key: str) -> list[dict]:
+        out = []
+        for item in data.get(key) or []:
+            if isinstance(item, dict) and str(item.get("issue") or "").strip():
+                out.append({"issue": str(item["issue"]).strip()[:400], "fix": str(item.get("fix") or "").strip()[:500]})
+        return out[:6]
+
+    def strings(key: str, limit: int, size: int = 300) -> list[str]:
+        return [str(item).strip()[:size] for item in (data.get(key) or []) if isinstance(item, str) and item.strip()][:limit]
+
+    scores = {}
+    for key, value in (data.get("scores") or {}).items() if isinstance(data.get("scores"), dict) else []:
+        number = _num(value, 1, 5)
+        if number is not None and isinstance(key, str):
+            scores[key[:30]] = int(round(number))
+    return {
+        "summary": str(data.get("summary") or "").strip()[:1500],
+        "scores": scores,
+        "strengths": strings("strengths", 4),
+        "formatting": items("formatting"),
+        "structure": items("structure"),
+        "content": items("content"),
+        "language": items("language"),
+        "priorities": strings("priorities", 4),
+        "suggestions": strings("suggestions", 4, 160),
+        "operations": sanitize_operations(data.get("operations")),
+    }

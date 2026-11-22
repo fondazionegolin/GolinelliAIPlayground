@@ -309,7 +309,7 @@ export function CalendarEventDialog({ open, onOpenChange, event, draft, canCreat
                   return (
                     <button key={idx} type="button" aria-pressed={on}
                       onClick={() => setWeekdays((prev) => on ? (prev.length > 1 ? prev.filter((d) => d !== idx) : prev) : [...prev, idx])}
-                      className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${on ? 'ds-selected' : 'bg-[var(--ds-field-bg)] text-[var(--ds-field-ink)] hover:bg-[var(--ds-field-hover)]'}`}>
+                      className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition-colors ${on ? 'ds-selected' : 'bg-[var(--ds-field-bg)] text-[var(--ds-field-ink)] hover:bg-[var(--ds-field-hover)]'}`}>
                       {label}
                     </button>
                   )

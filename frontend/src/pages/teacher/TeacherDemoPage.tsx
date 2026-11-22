@@ -299,7 +299,7 @@ function ProfileDetailView({
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="font-bold text-slate-800">{profile.name}</h2>
+            <h2 className="font-semibold text-slate-800">{profile.name}</h2>
             {hasCustom && sessionId !== 'all' && (
               <span className="text-[10px] bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">
                 {tl("Personalizzato")}
@@ -314,13 +314,13 @@ function ProfileDetailView({
       <div className="flex gap-1 p-1 bg-slate-100 rounded-lg mb-4 flex-shrink-0 w-fit">
         <button
           onClick={() => setActiveTab('prompt')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'prompt' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'prompt' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
         >
           <FileText className="h-3.5 w-3.5" /> System Prompt
         </button>
         <button
           onClick={() => setActiveTab('chat')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'chat' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'chat' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
         >
           <MessageCircle className="h-3.5 w-3.5" /> {tl("Prova Chat")}
         </button>
@@ -549,7 +549,7 @@ export default function TeacherDemoPage() {
   return (
     <div className="max-w-3xl mx-auto p-6 md:p-8">
       <div className="mb-6">
-        <SectionHeading section="/teacher/teacherbots" className="text-2xl font-bold text-slate-800 mb-1" subtitle={<>
+        <SectionHeading section="/teacher/teacherbots" className="text-2xl font-semibold text-slate-800 mb-1" subtitle={<>
           {tl("Entra nell'interfaccia studente in modalità anteprima, oppure personalizza i chatbot per sessione.")}
         </>} subtitleClassName="text-slate-500 text-sm">Studentbot</SectionHeading>
       </div>
@@ -560,7 +560,7 @@ export default function TeacherDemoPage() {
           <MonitorPlay className="h-6 w-6 text-white" />
         </div>
         <div className="flex-1">
-          <h2 className="text-base font-bold text-slate-800">{tl("Visualizza come studente")}</h2>
+          <h2 className="text-base font-semibold text-slate-800">{tl("Visualizza come studente")}</h2>
           <p className="text-sm text-slate-500 mt-0.5">
             {tl("Entra nell'interfaccia studente con le stesse funzionalità che vedono i tuoi studenti. Seleziona prima una sessione.")}
           </p>
@@ -577,7 +577,7 @@ export default function TeacherDemoPage() {
 
       {/* Session selector */}
       <div className="mb-8">
-        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{tl("Sessione")}</label>
+        <label className="block text-xs font-semibold text-slate-500 mb-1.5">{tl("Sessione")}</label>
         <div className="relative inline-block">
           <select
             value={selectedSessionId}
@@ -609,7 +609,7 @@ export default function TeacherDemoPage() {
       {profilesData && profilesData.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{tl("Assistenti base")}</h2>
+            <h2 className="text-xs font-semibold text-slate-500">{tl("Assistenti base")}</h2>
             {selectedSessionId !== 'all' && customizedKeys.size > 0 && (
               <span className="text-xs text-indigo-600 font-medium">
                 {customizedKeys.size} personalizzat{customizedKeys.size === 1 ? 'o' : 'i'}
@@ -624,7 +624,7 @@ export default function TeacherDemoPage() {
                 <button
                   key={p.key}
                   onClick={() => setSelected({ type: 'profile', profile: p })}
-                  className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl shadow-sm hover:shadow-md transition-all relative ${s.card}`}
+                  className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl shadow-sm hover:shadow-md transition relative ${s.card}`}
                 >
                   {isCustomized && (
                     <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-indigo-500" title={tl("Prompt personalizzato")} />
@@ -645,7 +645,7 @@ export default function TeacherDemoPage() {
 
       {/* Teacherbots */}
       <div>
-        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+        <h2 className="text-xs font-semibold text-slate-500 mb-3">
           {selectedSessionId === 'all' ? tl("I tuoi chatbot") : tl("Chatbot della sessione")}
         </h2>
         {loadingBots ? (
@@ -665,7 +665,7 @@ export default function TeacherDemoPage() {
               const s = TEACHERBOT_STYLES[bot.color] ?? TEACHERBOT_STYLES.indigo
               return (
                 <button key={bot.id} onClick={() => setSelected({ type: 'teacherbot', id: bot.id })}
-                  className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl shadow-sm hover:shadow-md transition-all ${s.card}`}>
+                  className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl shadow-sm hover:shadow-md transition ${s.card}`}>
                   <div className={`w-12 h-12 rounded-xl ${s.iconBg} flex items-center justify-center mb-3`}>
                     <Wand2 className={`h-6 w-6 ${s.icon}`} />
                   </div>

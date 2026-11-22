@@ -69,8 +69,8 @@ export default function LandingPage() {
               <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
                 <img src="/logo_new.png" alt={tl("Golinelli AI")} className="h-10 w-auto" />
                 <span className="text-2xl tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
-                  <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
-                  <span className="font-black text-[var(--logo-pink)]">.ai</span>
+                  <span className="font-semibold text-[var(--logo-ink)]">Golinelli</span>
+                  <span className="font-semibold text-[var(--logo-pink)]">.ai</span>
                 </span>
               </div>
               <div className="mx-1 hidden h-7 w-px bg-slate-200 md:block" />
@@ -297,7 +297,7 @@ function ModuleCard({ moduleKey, illustration }: { moduleKey: string; illustrati
       <img src={`/illustrations/nav/${illustration}.webp`} alt="" width={80} height={80}
         loading="lazy" decoding="async" className="h-20 w-20 shrink-0 object-contain" />
       <div>
-        <h3 className="text-base font-bold text-[var(--logo-ink)]">
+        <h3 className="text-base font-semibold text-[var(--logo-ink)]">
           {t(`landing.mod_${moduleKey}_title`, { defaultValue: copy.title })}
         </h3>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
@@ -382,11 +382,11 @@ function HomeSection({
       {/* ---------- Hero ---------- */}
       <section className="relative grid gap-8 py-4 md:grid-cols-[1fr_1.1fr] md:items-center md:gap-10 md:py-10">
         <div className="relative text-left">
-          <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+          <span className="text-xs font-semibold text-slate-500">
             {td('hero_eyebrow', tl("Piattaforma didattica per la scuola"))}
           </span>
 
-          <h1 className="mt-4 text-4xl font-black leading-[1.05] tracking-tight text-[var(--logo-ink)] md:text-5xl lg:text-6xl">
+          <h1 className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--logo-ink)] md:text-5xl lg:text-6xl">
             {td('hero_title', tl("L’intelligenza artificiale"))}<br />
             <span className="text-[var(--logo-violet-strong)]">{td('hero_title_accent', tl("entra in classe."))}</span>
           </h1>
@@ -479,8 +479,8 @@ function HomeSection({
       <section id="landing-contacts" className="scroll-mt-28">
         <div className="flex flex-col gap-6 border-t border-slate-200 py-10 text-left md:flex-row md:items-center md:justify-between">
           <div className="max-w-xl">
-            <span className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--logo-pink)]">{td('contacts_eyebrow', tl("Contatti"))}</span>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-[var(--logo-ink)] md:text-3xl">
+            <span className="text-xs font-semibold text-[var(--logo-pink)]">{td('contacts_eyebrow', tl("Contatti"))}</span>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--logo-ink)] md:text-3xl">
               {td('contacts_title', tl("Vuoi portare Golinelli.ai nella tua scuola?"))}
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 md:text-base">
@@ -509,8 +509,8 @@ function HomeSection({
 function SectionHeading({ eyebrow, title, body }: { eyebrow: string; title: string; body: string }) {
   return (
     <div className="max-w-2xl text-left">
-      <span className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--logo-pink)]">{eyebrow}</span>
-      <h2 className="mt-2 text-3xl font-black leading-tight tracking-tight text-[var(--logo-ink)] md:text-4xl">{title}</h2>
+      <span className="text-xs font-semibold text-[var(--logo-pink)]">{eyebrow}</span>
+      <h2 className="mt-2 text-3xl font-semibold leading-tight tracking-tight text-[var(--logo-ink)] md:text-4xl">{title}</h2>
       <p className="mt-3 text-base leading-relaxed text-slate-600">{body}</p>
     </div>
   )
@@ -536,10 +536,10 @@ function TutorialTrack({
           <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: a.soft, color: a.ink }}>
             <Icon size={20} />
           </span>
-          <h3 className="text-xl font-extrabold text-[var(--logo-ink)]">{title}</h3>
+          <h3 className="text-xl font-semibold text-[var(--logo-ink)]">{title}</h3>
         </div>
         <span
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide"
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
           style={{ background: a.soft, color: a.ink }}
         >
           {badge}
@@ -551,13 +551,13 @@ function TutorialTrack({
         {steps.map((s, i) => (
           <li key={s.title} className="flex gap-4">
             <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
               style={{ background: a.soft, color: a.ink }}
             >
               {i + 1}
             </span>
             <div>
-              <p className="font-bold text-[var(--logo-ink)]">{s.title}</p>
+              <p className="font-semibold text-[var(--logo-ink)]">{s.title}</p>
               <p className="mt-0.5 text-sm leading-relaxed text-slate-600">{s.body}</p>
             </div>
           </li>
@@ -601,14 +601,14 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
             <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
               <Check className="w-6 h-6 text-green-600" />
             </div>
-            <h3 className="text-base font-bold text-slate-800 mb-1">{tl("Email inviata")}</h3>
+            <h3 className="text-base font-semibold text-slate-800 mb-1">{tl("Email inviata")}</h3>
             <p className="text-sm text-slate-500 mb-4">{tl("Se la mail è registrata riceverai un link per reimpostare la password entro qualche minuto.")}</p>
             <Button tone="neutral" surface="solid" className="w-full">{tl("Chiudi")}</Button>
           </div>
         ) : (
           <>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-slate-800">{tl("Recupera password")}</h3>
+              <h3 className="text-base font-semibold text-slate-800">{tl("Recupera password")}</h3>
               <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <X className="h-4 w-4" />
               </button>
@@ -652,7 +652,7 @@ function TeachersSection() {
         <div className="bg-blue-50 px-5 py-5 text-left text-slate-900 md:p-6 md:text-center">
           <div className="relative z-10">
             <img src="/illustrations/nav/support.webp" alt="" width={96} height={96} className="mb-3 h-24 w-24 object-contain md:mx-auto" />
-            <h2 className="text-2xl font-bold">{t('landing.nav_teacher_area')}</h2>
+            <h2 className="text-2xl font-semibold">{t('landing.nav_teacher_area')}</h2>
             <p className="text-sm text-slate-600">{t('login.subtitle')}</p>
           </div>
         </div>
@@ -687,7 +687,7 @@ function TeachersSection() {
           </form>
 
           <div className="mt-8 rounded-2xl bg-[var(--ds-surface-tint)] p-4 text-left shadow-[var(--ds-shadow-inset)]">
-            <p className="flex items-center gap-2 text-sm font-bold text-[var(--logo-violet-strong)]">
+            <p className="flex items-center gap-2 text-sm font-semibold text-[var(--logo-violet-strong)]">
               <KeyRound size={16} /> {t('landing.invite_only_title', { defaultValue: 'Registrazione solo su invito' })}
             </p>
             <p className="mt-1 text-sm leading-relaxed text-slate-600">
@@ -720,7 +720,7 @@ function StudentsSection() {
       <div className="overflow-hidden rounded-xl bg-[var(--ds-surface-raised)] shadow-[var(--ds-shadow-3)]">
         <div className="bg-blue-50 px-5 py-5 text-left text-slate-900 md:p-6 md:text-center">
           <img src="/illustrations/nav/classes.webp" alt="" width={96} height={96} className="mb-3 h-24 w-24 object-contain md:mx-auto" />
-          <h2 className="text-2xl font-bold">{t('landing.nav_student_area')}</h2>
+          <h2 className="text-2xl font-semibold">{t('landing.nav_student_area')}</h2>
           <p className="text-sm text-slate-600">{t('student_join.subtitle')}</p>
         </div>
 

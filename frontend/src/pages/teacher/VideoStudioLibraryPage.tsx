@@ -1,6 +1,8 @@
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { takeHandoff } from '@/lib/platformHandoff'
 import { Loader2, Plus, Sparkles, Trash2 } from '@/components/icons'
 import { Button, IconButton } from '@/design'
 import { adminApi } from '@/lib/api'
@@ -23,6 +25,20 @@ export default function VideoStudioLibraryPage() {
     onSuccess: (p) => navigate(`/teacher/video-studio/${p.id}`),
     onError: (err: any) => toast({ variant: 'destructive', title: tl("Creazione non riuscita"), description: err?.response?.data?.detail }),
   })
+  // Agentic hand-off from the support chat: the project is created with the script/brief already in place, ready to generate.
+  const handedOff = useRef(false)
+  useEffect(() => {
+    if (handedOff.current) return
+    const handoff = takeHandoff(['video_studio'])
+    if (!handoff) return
+    handedOff.current = true
+    const source = (handoff.source || handoff.brief).trim()
+    api.create({ title: handoff.title || 'Nuovo video', source_text: source, brief: handoff.source ? handoff.brief : null })
+      .then(({ data }) => navigate(`/teacher/video-studio/${(data as Project).id}`))
+      .catch((err: any) => toast({ variant: 'destructive', title: tl("Creazione non riuscita"), description: err?.response?.data?.detail }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const remove = useMutation({
     mutationFn: async (id: string) => api.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['vs', 'list'] }),
@@ -38,7 +54,7 @@ export default function VideoStudioLibraryPage() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
               <div>
-                                <SectionHeading section="/teacher/video-studio" className="text-2xl font-black tracking-tight text-[var(--text-primary)]" subtitle={<>
+                                <SectionHeading section="/teacher/video-studio" className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]" subtitle={<>
               {tl("Parti da un testo o da un documento, scrivi la regia: il sistema prepara la sceneggiatura, uno storyboard coerente e un montaggio animato di shot da")} {config.data?.shot_seconds ?? 5} secondi.
             </>} subtitleClassName="mt-3 max-w-2xl text-sm text-[var(--text-secondary)]">{tl("Video didattici")}</SectionHeading>
               </div>
@@ -61,7 +77,7 @@ export default function VideoStudioLibraryPage() {
         ) : projects.length === 0 ? (
           <button onClick={() => create.mutate()} className="ui-card flex w-full flex-col items-center gap-3 px-6 py-20 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ds-surface-muted)] text-[var(--app-accent)]"><Sparkles className="h-6 w-6" /></span>
-            <span className="text-lg font-black text-[var(--text-primary)]">{tl("Crea il tuo primo video")}</span>
+            <span className="text-lg font-semibold text-[var(--text-primary)]">{tl("Crea il tuo primo video")}</span>
             <span className="max-w-md text-sm text-[var(--text-secondary)]">{tl("Incolla una lezione di biologia, chimica o fisica e trasformala in un mini-documentario.")}</span>
           </button>
         ) : (
@@ -73,12 +89,12 @@ export default function VideoStudioLibraryPage() {
                     {p.thumbnail
                       ? <AuthMedia projectId={p.id} name={p.thumbnail} kind="img" version={p.updated_at || ''} className="h-full w-full object-cover" />
                       : <div className="h-full w-full opacity-80" style={{ background: STYLE_SWATCH[p.style_key] || STYLE_SWATCH.flat_2d }} />}
-                    <span className="absolute left-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-bold text-white">
+                    <span className="absolute left-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-semibold text-white">
                       {isBusy(p) ? <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />{STATUS_LABEL[p.status]}</span> : STATUS_LABEL[p.status] || p.status}
                     </span>
                   </div>
                   <div className="px-4 pb-3 pt-3">
-                    <h2 className="truncate text-sm font-black text-[var(--text-primary)]">{p.title}</h2>
+                    <h2 className="truncate text-sm font-semibold text-[var(--text-primary)]">{p.title}</h2>
                     <p className="mt-1 text-[11px] text-[var(--text-secondary)]">{p.shot_count || 0} clip · {p.aspect} · {p.cost_credits.toLocaleString('it-IT', { maximumFractionDigits: 1 })} crediti</p>
                   </div>
                 </button>

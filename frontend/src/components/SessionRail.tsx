@@ -59,7 +59,7 @@ function PreviewShell({ title, subtitle, children, hint }: { title: string; subt
   return (
     <div>
       <div className="px-4 pb-2 pt-3">
-        <p className="text-sm font-bold text-slate-800">{title}</p>
+        <p className="text-sm font-semibold text-slate-800">{title}</p>
         {subtitle && <p className="text-[11px] text-slate-400">{subtitle}</p>}
       </div>
       <div className="max-h-[min(50vh,22rem)] space-y-1.5 overflow-y-auto px-4 pb-3">{children}</div>
@@ -73,7 +73,7 @@ const Empty = ({ children }: { children: ReactNode }) => <p className="py-3 text
 export function LiveSessionPreview({ name, className, joinCode, online, enrolled }: { name: string; className: string; joinCode?: string; online: number; enrolled: number }) {
   return (
     <PreviewShell title={name} subtitle={className} hint={tl("Clic per aprire la sessione live")}>
-      {joinCode && <p className="text-xs text-slate-600">{tl("Codice")}: <span className="font-mono font-bold tracking-widest">{joinCode}</span></p>}
+      {joinCode && <p className="text-xs text-slate-600">{tl("Codice")}: <span className="font-mono font-semibold tracking-widest">{joinCode}</span></p>}
       <p className="text-xs text-slate-600">{online} online · {enrolled} {tl("iscritti")}</p>
     </PreviewShell>
   )

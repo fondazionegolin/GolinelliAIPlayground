@@ -92,7 +92,7 @@ export function ColorPicker({ value, onChange, title, documentColors = [], allow
       >
         {glyph ? (
           <span className="flex flex-col items-center leading-none">
-            <span className="text-[13px] font-bold text-slate-700">{glyph}</span>
+            <span className="text-[13px] font-semibold text-slate-700">{glyph}</span>
             <span className="mt-0.5 h-1 w-5 rounded-sm border border-slate-200" style={{ background: isTransparent ? 'transparent' : current }} />
           </span>
         ) : (
@@ -218,7 +218,7 @@ function ColorPopover({ anchor, value, documentColors, allowTransparent, onClose
           onKeyDown={(event) => { if (event.key === 'Enter') { const hex = normalizeHex(hexDraft.startsWith('#') ? hexDraft : `#${hexDraft}`); if (hex) pick(hex) } }}
           onBlur={() => { const hex = normalizeHex(hexDraft.startsWith('#') ? hexDraft : `#${hexDraft}`); if (hex && hex !== value) pick(hex) }}
           aria-label={tl("Codice HEX")}
-          className="h-7 min-w-0 flex-1 rounded-md border border-slate-200 px-2 font-mono text-xs uppercase focus:border-blue-400 focus:outline-none"
+          className="h-7 min-w-0 flex-1 rounded-md border border-slate-200 px-2 font-mono text-xs focus:border-blue-400 focus:outline-none"
         />
         {allowTransparent && (
           <button type="button" title={tl("Nessun colore")} onMouseDown={(e) => e.preventDefault()} onClick={() => { onCommit('transparent'); onClose() }}
@@ -227,17 +227,17 @@ function ColorPopover({ anchor, value, documentColors, allowTransparent, onClose
       </div>
       {documentColors.length > 0 && (
         <>
-          <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Nel documento")}</p>
+          <p className="mt-3 text-[10px] font-semibold text-slate-400">{tl("Nel documento")}</p>
           <div className="mt-1 flex flex-wrap gap-1">{documentColors.slice(0, 16).map((c, i) => swatch(c, `d${i}`))}</div>
         </>
       )}
       {recent.length > 0 && (
         <>
-          <p className="mt-2.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Recenti")}</p>
+          <p className="mt-2.5 text-[10px] font-semibold text-slate-400">{tl("Recenti")}</p>
           <div className="mt-1 flex flex-wrap gap-1">{recent.map((c, i) => swatch(c, `r${i}`))}</div>
         </>
       )}
-      <p className="mt-2.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Palette</p>
+      <p className="mt-2.5 text-[10px] font-semibold text-slate-400">Palette</p>
       <div className="mt-1 space-y-1">
         {PALETTE.map((row, r) => <div key={r} className="flex gap-1">{row.map((c, i) => swatch(c, `p${r}-${i}`))}</div>)}
       </div>

@@ -39,7 +39,7 @@ export function WorkspaceExplorerHeader({
     <div className="shrink-0 bg-[var(--ds-surface)] px-4 py-3 shadow-[var(--ds-shadow-1)] lg:px-5 lg:py-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 max-w-[14rem] max-lg:max-w-none max-lg:flex-1">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{eyebrow}</p>
+          <p className="text-[10px] font-semibold text-slate-400">{eyebrow}</p>
           {section ? <SectionHeading section={section} compact className="mt-1 truncate text-[17px] font-semibold tracking-tight text-slate-950" subtitle={description} subtitleClassName="mt-1 hidden text-xs leading-5 text-slate-500 lg:block">{title}</SectionHeading>
             : <h1 className="mt-1 truncate text-[17px] font-semibold tracking-tight text-slate-950">{title}</h1>}
           {!section && <p className="mt-1 hidden text-xs leading-5 text-slate-500 lg:block">{description}</p>}
@@ -80,14 +80,14 @@ export function WorkspaceExplorerItem({
   const itemTone: PastelTone = tone || (selected ? 'violet' : 'slate')
 
   return (
-    <div className={`group relative flex w-full overflow-hidden rounded-[18px] text-left transition-all ${PASTEL_SURFACES[itemTone]} ${selected ? 'shadow-[var(--ds-shadow-focus)]' : ''}`}>
+    <div className={`group relative flex w-full overflow-hidden rounded-[18px] text-left transition ${PASTEL_SURFACES[itemTone]} ${selected ? 'shadow-[var(--ds-shadow-focus)]' : ''}`}>
       <button type="button" onClick={onClick} className="min-w-0 flex-1 p-3 text-left">
         <div className="flex items-start gap-3">
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${PASTEL_ICON_BACKGROUNDS[itemTone]} ${PASTEL_ICON_TEXT[itemTone]}`}>
             {icon}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-bold text-slate-800">{title}</span>
+            <span className="block truncate text-sm font-semibold text-slate-800">{title}</span>
             {subtitle && <span className="mt-0.5 block truncate text-[11px] text-slate-500">{subtitle}</span>}
             {badges && <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">{badges}</span>}
           </span>
@@ -99,5 +99,5 @@ export function WorkspaceExplorerItem({
 }
 
 export function WorkspaceExplorerBadge({ children }: { children: ReactNode }) {
-  return <span className="rounded-full bg-white/70 px-2 py-0.5 font-bold text-slate-500 shadow-[var(--ds-shadow-1)]">{children}</span>
+  return <span className="rounded-full bg-white/70 px-2 py-0.5 font-semibold text-slate-500 shadow-[var(--ds-shadow-1)]">{children}</span>
 }

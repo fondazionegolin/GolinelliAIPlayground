@@ -109,8 +109,8 @@ export default function SolidModelArDialog({ modelId, name, objects, onClose }: 
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-600">{tl("Visualizza in realtà aumentata")}</p>
-            <h2 className="mt-1 truncate text-xl font-black text-slate-950">{name}</h2>
+            <p className="text-[10px] font-semibold text-violet-600">{tl("Visualizza in realtà aumentata")}</p>
+            <h2 className="mt-1 truncate text-xl font-semibold text-slate-950">{name}</h2>
             <p className="mt-1 text-xs leading-5 text-slate-500">
               {mobile
                 ? tl("Apri il modello in realtà aumentata: lo posizioni sul pavimento o sul tavolo, a grandezza reale.")
@@ -129,11 +129,11 @@ export default function SolidModelArDialog({ modelId, name, objects, onClose }: 
             ) : !isPublic ? (
               <div className="text-center">
                 <Globe className="mx-auto h-8 w-8 text-violet-500" />
-                <p className="mt-2 text-sm font-black text-slate-900">{tl("Serve il link pubblico")}</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">{tl("Serve il link pubblico")}</p>
                 <p className="mx-auto mt-1 max-w-sm text-[11px] leading-4 text-slate-500">
                   {tl("Chi inquadra il QR vede il modello in sola lettura. Puoi disattivarlo quando vuoi da «Condividi».")}
                 </p>
-                <button type="button" disabled={busy} onClick={enablePublic} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-black text-white hover:bg-violet-700 disabled:opacity-50">
+                <button type="button" disabled={busy} onClick={enablePublic} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />} {tl("Crea il QR per l'AR")}
                 </button>
               </div>
@@ -151,7 +151,7 @@ export default function SolidModelArDialog({ modelId, name, objects, onClose }: 
                   <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-700">{arUrl}</span>
                   <button type="button" title={tl("Copia link")} onClick={copy} className="rounded p-1 text-slate-500 hover:bg-white">{copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}</button>
                 </div>
-                <button type="button" disabled={!qr} onClick={downloadQr} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> {tl("Scarica QR (da stampare o proiettare)")}</button>
+                <button type="button" disabled={!qr} onClick={downloadQr} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> {tl("Scarica QR (da stampare o proiettare)")}</button>
               </div>
             )}
           </section>
@@ -162,7 +162,7 @@ export default function SolidModelArDialog({ modelId, name, objects, onClose }: 
         )}
 
         {mobile && hasSolids && (
-          <button type="button" onClick={() => setLocal(true)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-black text-white hover:bg-violet-700">
+          <button type="button" onClick={() => setLocal(true)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white hover:bg-violet-700">
             <Smartphone className="h-4 w-4" /> {tl("Apri in realtà aumentata")}
           </button>
         )}

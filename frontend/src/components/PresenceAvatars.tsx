@@ -12,14 +12,14 @@ export default function PresenceAvatars({ people, max = 4, className = '' }: { p
           <span
             key={person.id}
             title={`${person.name}${person.role === 'teacher' ? ` · ${tl("Docente")}` : ''} — ${tl("online ora")}`}
-            className="relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[10px] font-bold text-white shadow-sm"
+            className="relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[10px] font-semibold text-white shadow-sm"
             style={{ backgroundColor: color, boxShadow: person.role === 'teacher' ? `0 0 0 2px ${color}55` : undefined }}
           >
             {person.avatarUrl ? <img src={person.avatarUrl} alt="" className="h-full w-full object-cover" /> : person.name.slice(0, 2).toUpperCase()}
           </span>
         )
       })}
-      {people.length > max && <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-[10px] font-bold text-slate-600" title={people.slice(max).map((person) => person.name).join(', ')}>+{people.length - max}</span>}
+      {people.length > max && <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-[10px] font-semibold text-slate-600" title={people.slice(max).map((person) => person.name).join(', ')}>+{people.length - max}</span>}
     </div>
   )
 }

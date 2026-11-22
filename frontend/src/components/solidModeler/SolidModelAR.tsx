@@ -161,11 +161,11 @@ export default function SolidModelAR({ name, objects, glbUrl, shareUrl, onBack }
         </div>
       )}
 
-      <button type="button" onClick={onBack} className="absolute left-3 top-3 inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/90 px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-white">
+      <button type="button" onClick={onBack} className="absolute left-3 top-3 inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/90 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-white">
         <ArrowLeft className="h-4 w-4" /> {tl("Vista 3D")}
       </button>
       {size && (
-        <span className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-xl bg-white/90 px-3 py-2 text-[11px] font-bold text-slate-600 shadow-sm">
+        <span className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-xl bg-white/90 px-3 py-2 text-[11px] font-semibold text-slate-600 shadow-sm">
           <Box className="h-3.5 w-3.5" /> {size}
         </span>
       )}
@@ -173,7 +173,7 @@ export default function SolidModelAR({ name, objects, glbUrl, shareUrl, onBack }
       <div className="absolute inset-x-3 bottom-3 mx-auto max-w-md rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg">
         {(status === 'ready' || status === 'failed' || status === 'session') && (
           <>
-            <button type="button" onClick={startAr} className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-violet-700 active:bg-violet-800">
+            <button type="button" onClick={startAr} className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 active:bg-violet-800">
               <Smartphone className="h-5 w-5" /> {tl("Vedi nello spazio")}
             </button>
             <p className="mt-2 text-center text-[11px] leading-4 text-slate-500">
@@ -190,7 +190,7 @@ export default function SolidModelAR({ name, objects, glbUrl, shareUrl, onBack }
           <div className="flex items-center gap-3">
             {qr && <img src={qr} alt={tl("QR code per aprire la realtà aumentata sul telefono")} className="h-24 w-24 shrink-0 rounded-lg border border-slate-200" />}
             <p className="min-w-0 text-[11px] leading-4 text-slate-600">
-              <span className="block text-xs font-black text-slate-900">{tl("Realtà aumentata non disponibile qui")}</span>
+              <span className="block text-xs font-semibold text-slate-900">{tl("Realtà aumentata non disponibile qui")}</span>
               {shareUrl
                 ? tl("Inquadra il QR code con uno smartphone (Android con ARCore o iPhone/iPad) per posizionare il modello nello spazio. Intanto puoi ruotarlo con il dito o il mouse.")
                 : tl("Questo dispositivo non supporta la realtà aumentata. Apri il modello da uno smartphone (Android con ARCore o iPhone/iPad).")}
@@ -204,14 +204,14 @@ export default function SolidModelAR({ name, objects, glbUrl, shareUrl, onBack }
         {stageText && (
           <div data-ar-ui className="flex items-start gap-2">
             <div className="min-w-0 flex-1 rounded-2xl bg-slate-950/70 px-3.5 py-2.5 shadow-lg backdrop-blur">
-              <p className="flex items-center gap-2 text-sm font-black">
+              <p className="flex items-center gap-2 text-sm font-semibold">
                 {xrStage === 'scanning' || xrStage === 'starting'
                   ? <Smartphone className="animate-pulse h-4 w-4 shrink-0 text-violet-300" />
                   : xrStage === 'vertical'
                     ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400" />
                     : <Check className="h-4 w-4 shrink-0 text-emerald-400" />}
                 {stageText.title}
-                {xrPlanes > 0 && xrStage !== 'placed' && <span className="ml-auto shrink-0 rounded-full bg-violet-500/30 px-2 py-0.5 text-[10px] font-bold text-violet-100">{xrPlanes === 1 ? tl("1 piano") : `${xrPlanes} piani`}</span>}
+                {xrPlanes > 0 && xrStage !== 'placed' && <span className="ml-auto shrink-0 rounded-full bg-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-100">{xrPlanes === 1 ? tl("1 piano") : `${xrPlanes} piani`}</span>}
               </p>
               <p className="mt-0.5 text-[12px] leading-4 text-white/80">{stageText.hint}</p>
             </div>
@@ -222,20 +222,20 @@ export default function SolidModelAR({ name, objects, glbUrl, shareUrl, onBack }
         )}
         <div data-ar-ui className="mx-auto flex w-full max-w-sm flex-col items-center gap-2">
           {xrScale !== 1 && (
-            <span className="rounded-full bg-slate-950/70 px-3 py-1 text-[11px] font-bold backdrop-blur">{tl("Scala ×")}{scaleText}</span>
+            <span className="rounded-full bg-slate-950/70 px-3 py-1 text-[11px] font-semibold backdrop-blur">{tl("Scala ×")}{scaleText}</span>
           )}
           {xrStage === 'aiming' && (
-            <button type="button" onClick={() => session.current?.place()} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-3.5 text-base font-black shadow-xl active:bg-violet-800">
+            <button type="button" onClick={() => session.current?.place()} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-3.5 text-base font-semibold shadow-xl active:bg-violet-800">
               <Check className="h-5 w-5" /> {tl("Posiziona qui")}
             </button>
           )}
           {xrStage === 'placed' && (
             <div className="flex w-full gap-2">
-              <button type="button" onClick={() => session.current?.move()} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-white px-3 py-3 text-sm font-black text-slate-900 shadow-xl">
+              <button type="button" onClick={() => session.current?.move()} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-white px-3 py-3 text-sm font-semibold text-slate-900 shadow-xl">
                 <Move className="h-4 w-4" /> {tl("Sposta")}
               </button>
               {xrScale !== 1 && (
-                <button type="button" onClick={() => session.current?.resetScale()} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-slate-950/70 px-3 py-3 text-sm font-black shadow-xl backdrop-blur">
+                <button type="button" onClick={() => session.current?.resetScale()} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-slate-950/70 px-3 py-3 text-sm font-semibold shadow-xl backdrop-blur">
                   <RefreshCw className="h-4 w-4" /> {tl("Misura reale")}
                 </button>
               )}

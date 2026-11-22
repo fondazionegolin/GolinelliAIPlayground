@@ -104,7 +104,7 @@ async def list_models(_: Admin, db: Db) -> dict:
         "provider_keys": provider_keys(),
         "pricing_urls": model_catalog.PRICING_URLS,
         "scopes": [{"id": s.id, "label": s.label, "group": s.group, "hint": s.hint, "providers": list(s.providers),
-                    "default": dict(zip(("provider", "model_id"), model_selection.default_pair(s.id)))} for s in SCOPES.values()],
+                    "default": dict(zip(("provider", "model_id"), model_selection.default_pair(s.id)))} for s in SCOPES.values() if s.id not in model_selection.ADMIN_HIDDEN_SCOPES],
     }
 
 
@@ -119,7 +119,7 @@ def _priced(model: AIModel) -> bool:
 
 async def _set_scope(db: AsyncSession, ids: list[UUID], scope_id: str, enabled: bool) -> dict:
     scope = SCOPES.get(scope_id)
-    if not scope:
+    if not scope or scope_id in model_selection.ADMIN_HIDDEN_SCOPES:
         raise HTTPException(status_code=404, detail="Sezione sconosciuta")
     rows = list((await db.execute(select(AIModel).where(AIModel.id.in_(ids)))).scalars().all())
     changed, skipped = 0, []

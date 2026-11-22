@@ -234,7 +234,7 @@ export function Timeline({ projectId, segments, total, time, zoom, selectedId, d
             <button key={`j-${seg.shot.id}`} type="button" disabled={disabled} title="Transizione"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => onJunction(i, (e.currentTarget as HTMLElement).getBoundingClientRect())}
-              className={`absolute z-[20] flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shadow-sm ${set ? 'bg-[var(--logo-pink)] text-white' : 'ds-control text-[var(--text-secondary)]'}`}
+              className={`absolute z-[20] flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold shadow-sm ${set ? 'bg-[var(--logo-pink)] text-white' : 'ds-control text-[var(--text-secondary)]'}`}
               style={{ left: LABEL_W + seg.start * zoom - 10, top: videoTop + TRACK_H / 2 - 10 }}>{set ? '◆' : '+'}</button>
           )
         })}

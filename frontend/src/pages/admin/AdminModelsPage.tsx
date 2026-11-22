@@ -10,7 +10,7 @@ import { tl } from '@/i18n/tl'
 import { creditsToUsd, priceInCredits, usdToCredits } from '@/lib/credits'
 import { AdminBadge, AdminEmpty, AdminNotice, AdminPageHeader, AdminSection, AdminStat, AdminStatGrid, AdminTabs } from '@/components/admin/AdminUI'
 
-type Provider = 'openai' | 'anthropic' | 'deepseek' | 'openrouter' | 'gemini' | 'ollama'
+type Provider = 'openai' | 'anthropic' | 'deepseek' | 'openrouter' | 'gemini' | 'ollama' | 'elevenlabs' | 'runware'
 type Kind = 'text' | 'image' | 'realtime' | 'transcribe' | 'video'
 interface AiModel {
   id: string; kind: Kind; offered: boolean; scopes: ModelScope[]; price_note: string | null; provider: Provider; model_id: string; display_name: string; status: 'active' | 'available' | 'deprecated'
@@ -42,8 +42,12 @@ const PROVIDERS: Record<Provider, { label: string; color: string }> = {
   gemini: { label: 'Gemini', color: '#4285f4' },
   ollama: { label: 'Ollama', color: '#334155' },
   openrouter: { label: 'OpenRouter', color: '#6366f1' },
+  elevenlabs: { label: 'ElevenLabs', color: '#111827' },
+  runware: { label: 'Runware', color: '#0ea5e9' },
 }
 const PROVIDER_ORDER = Object.keys(PROVIDERS) as Provider[]
+/** Never crash on a provider the backend knows but this page does not yet (white page otherwise). */
+const providerMeta = (provider: string) => PROVIDERS[provider as Provider] ?? { label: provider, color: '#94a3b8' }
 const KINDS = [
   { id: 'text', label: tl("Testo e chat") },
   { id: 'image', label: tl("Immagini") },
@@ -299,7 +303,7 @@ export default function AdminModelsPage() {
                     const vendors = provider === 'openrouter' ? tree.vendors(group.id) : []
                     return (
                       <Fragment key={key}>
-                        <FolderRow label={PROVIDERS[provider].label} count={count} depth={1} dot={PROVIDERS[provider].color}
+                        <FolderRow label={providerMeta(provider).label} count={count} depth={1} dot={providerMeta(provider).color}
                           expandable={vendors.length > 0} expanded={open.has(key)} onToggle={() => toggleFolder(key)}
                           active={!searching && folder === key} onClick={() => pick(key, vendors.length > 0)} />
                         {open.has(key) && vendors.map((vendor) => (
@@ -405,7 +409,7 @@ export default function AdminModelsPage() {
                                   {m.is_new && <button onClick={() => act.mutate({ id: m.id, kind: 'ack' })} title={tl("Segna come visto")} className="admin-badge admin-badge-accent">{tl("Nuovo")}</button>}
                                   {m.seen_in_api === false && m.status === 'active' && <span title={tl("Il provider non lo restituisce più: potrebbe essere stato ritirato")} className="admin-badge admin-badge-warning">{tl("Non in API")}</span>}
                                 </p>
-                                <p className="mt-0.5 truncate font-mono text-xs text-slate-500">{wide && `${PROVIDERS[m.provider].label} · `}{m.model_id}</p>
+                                <p className="mt-0.5 truncate font-mono text-xs text-slate-500">{wide && `${providerMeta(m.provider).label} · `}{m.model_id}</p>
                               </td>
                               {isEditing ? (
                                 <>
@@ -455,7 +459,7 @@ export default function AdminModelsPage() {
                 </div>
               )}
             <p className="border-t border-[var(--admin-line)] px-4 py-3 text-[11px] leading-5 text-slate-500">
-              {tl("Prezzi DeepSeek: tariffa di picco (nelle ore fuori picco costa la metà), così i budget non vengono sottostimati. La colonna «Qualità» è un punteggio 0–100 da fonti esterne (es. Artificial Analysis Intelligence Index): è indicativo e modificabile, passa il mouse per vedere la fonte. Il controllo legge i listini ufficiali (")}{data && PROVIDER_ORDER.map((p, i) => <Fragment key={p}>{i > 0 && ', '}<a href={data.pricing_urls[p]} target="_blank" rel="noreferrer" className="underline">{PROVIDERS[p].label}</a></Fragment>)}).
+              {tl("Prezzi DeepSeek: tariffa di picco (nelle ore fuori picco costa la metà), così i budget non vengono sottostimati. La colonna «Qualità» è un punteggio 0–100 da fonti esterne (es. Artificial Analysis Intelligence Index): è indicativo e modificabile, passa il mouse per vedere la fonte. Il controllo legge i listini ufficiali (")}{data && PROVIDER_ORDER.map((p, i) => <Fragment key={p}>{i > 0 && ', '}<a href={data.pricing_urls[p]} target="_blank" rel="noreferrer" className="underline">{providerMeta(p).label}</a></Fragment>)}).
             </p>
           </section>
         </div>
@@ -474,7 +478,7 @@ export default function AdminModelsPage() {
                   <ul className="divide-y divide-[var(--admin-line)] rounded-md border border-[var(--admin-line)]">
                     {enabled.map((m) => (
                       <li key={m.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PROVIDERS[m.provider].color }} title={PROVIDERS[m.provider].label} />
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: providerMeta(m.provider).color }} title={providerMeta(m.provider).label} />
                         <span className="min-w-0 flex-1 truncate font-medium text-slate-800" title={m.model_id}>{m.display_name}</span>
                         <span className="tabular-nums text-slate-500">{cr(m.input_usd)}/{cr(m.output_usd)}</span>
                         <button type="button" onClick={() => enable.mutate({ ids: [m.id], scope: s.id, enabled: false })} disabled={enable.isPending} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Togli {0}", m.display_name)}><X className="h-3.5 w-3.5" /></button>

@@ -44,7 +44,7 @@ function OutputBlock({ output }: { output: CellOutput }) {
   if (output.output_type === 'error') {
     return (
       <div className="text-red-400 whitespace-pre-wrap leading-relaxed">
-        <span className="font-bold text-red-300">{output.ename}</span>
+        <span className="font-semibold text-red-300">{output.ename}</span>
         {output.evalue ? <span className="text-red-400">: {output.evalue}</span> : null}
         {output.traceback && output.traceback.length > 0 && (
           <div className="mt-1 text-red-500/80 text-[11px]">

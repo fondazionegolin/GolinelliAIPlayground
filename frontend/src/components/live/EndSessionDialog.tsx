@@ -18,7 +18,7 @@ export default function EndSessionDialog({ title, kind = 'slides', lobby = false
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" onMouseDown={() => { if (!pending) onCancel() }}>
       <div role="alertdialog" aria-modal="true" aria-labelledby="end-live-title" className="ds-popover w-full max-w-md rounded-[var(--ds-radius-panel)] p-6" onMouseDown={event => event.stopPropagation()}>
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100 text-red-600"><Square className="h-5 w-5" /></div>
-        <h2 id="end-live-title" className="mt-4 text-lg font-bold text-slate-900">{lobby ? tl("Chiudere la lobby?") : tl("Chiudere la sessione per tutti?")}</h2>
+        <h2 id="end-live-title" className="mt-4 text-lg font-semibold text-slate-900">{lobby ? tl("Chiudere la lobby?") : tl("Chiudere la sessione per tutti?")}</h2>
         <p className="mt-1 text-sm font-semibold text-slate-700">{title}</p>
         <p className="mt-2 text-sm leading-6 text-slate-500">
           {lobby
@@ -28,8 +28,8 @@ export default function EndSessionDialog({ title, kind = 'slides', lobby = false
               : tl("La sessione terminerà subito per tutti gli studenti collegati, anche per chi non ha ancora risposto. Il link pubblico sarà disattivato e non potrai riaprirla.")}
         </p>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button type="button" onClick={onCancel} disabled={pending} className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-60">{tl("Continua la sessione")}</button>
-          <button type="button" onClick={onConfirm} disabled={pending} className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60">
+          <button type="button" onClick={onCancel} disabled={pending} className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60">{tl("Continua la sessione")}</button>
+          <button type="button" onClick={onConfirm} disabled={pending} className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}{lobby ? tl("Chiudi lobby") : tl("Chiudi per tutti")}
           </button>
         </div>

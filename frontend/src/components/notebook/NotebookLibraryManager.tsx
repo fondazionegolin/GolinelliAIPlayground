@@ -48,14 +48,14 @@ function LibraryCard({
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className={`rounded-xl border transition-all ${selected ? 'border-indigo-300 bg-indigo-50/60' : 'border-slate-200 bg-white'}`}>
+    <div className={`rounded-xl border transition ${selected ? 'border-indigo-300 bg-indigo-50/60' : 'border-slate-200 bg-white'}`}>
       <div className="p-3">
         <div className="flex items-start gap-3">
           <span className="text-2xl flex-shrink-0 leading-none mt-0.5">{library.icon}</span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-slate-800">{library.name}</span>
+                <span className="text-sm font-semibold text-slate-800">{library.name}</span>
                 {library.requiresCamera && (
                   <span className="flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                     <Camera className="h-2.5 w-2.5" />
@@ -132,9 +132,9 @@ export default function NotebookLibraryManager({
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
           <div className="flex items-center gap-2">
             <PackagePlus className="h-4 w-4 text-indigo-600" />
-            <span className="text-sm font-bold text-slate-800">{tl("Librerie")}</span>
+            <span className="text-sm font-semibold text-slate-800">{tl("Librerie")}</span>
             {activeCount > 0 && (
-              <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white">
+              <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
                 {activeCount} attiv{activeCount === 1 ? 'a' : 'e'}
               </span>
             )}
@@ -162,7 +162,7 @@ export default function NotebookLibraryManager({
             if (!libs || libs.length === 0) return null
             return (
               <div key={cat}>
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                <p className="mb-2 text-[10px] font-semibold text-slate-400">
                   {LIBRARY_CATEGORIES[cat]}
                 </p>
                 <div className="space-y-2">

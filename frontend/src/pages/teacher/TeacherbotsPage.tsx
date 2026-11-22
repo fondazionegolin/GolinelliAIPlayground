@@ -221,8 +221,8 @@ export default function TeacherbotsPage() {
     const shown = classes.slice(0, 3)
     return <div className="mt-2 flex flex-wrap items-center gap-1" aria-label={tl("Classi con cui è condiviso")}>
       {shown.map(cls => <button type="button" key={cls.id} onClick={open} title={cls.owner_name ? `${cls.name} · ${cls.owner_name}` : cls.name}
-        className="inline-flex max-w-[11rem] items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 hover:bg-emerald-200"><Users className="h-3 w-3 shrink-0" /><span className="truncate">{cls.name}</span></button>)}
-      {classes.length > shown.length && <button type="button" onClick={open} title={classes.slice(3).map(c => c.name).join(', ')} className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 hover:bg-emerald-200">+{classes.length - shown.length}</button>}
+        className="inline-flex max-w-[11rem] items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 hover:bg-emerald-200"><Users className="h-3 w-3 shrink-0" /><span className="truncate">{cls.name}</span></button>)}
+      {classes.length > shown.length && <button type="button" onClick={open} title={classes.slice(3).map(c => c.name).join(', ')} className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 hover:bg-emerald-200">+{classes.length - shown.length}</button>}
     </div>
   }
 
@@ -240,11 +240,11 @@ export default function TeacherbotsPage() {
             <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${getIconColor(bot.color)}`}>
               {renderBotIcon(bot.icon)}
             </span>
-            <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${status.badge}`}>
+            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${status.badge}`}>
               {status.label}
             </span>
           </div>
-          <p className="mt-4 line-clamp-1 text-base font-extrabold leading-tight text-slate-950">{bot.name}</p>
+          <p className="mt-4 line-clamp-1 text-base font-semibold leading-tight text-slate-950">{bot.name}</p>
           <p className="mt-1.5 hidden line-clamp-1 text-xs leading-5 text-slate-600 md:block md:line-clamp-2">
             {bot.synopsis || tl("Nessuna descrizione")}
           </p>
@@ -280,8 +280,8 @@ export default function TeacherbotsPage() {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-extrabold leading-tight text-slate-950">{bot.name}</p>
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${status.badge}`}>
+            <p className="truncate text-sm font-semibold leading-tight text-slate-950">{bot.name}</p>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${status.badge}`}>
               {status.label}
             </span>
           </div>
@@ -303,8 +303,8 @@ export default function TeacherbotsPage() {
       <section className="mb-7">
         <div className="mb-3 inline-flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 shadow-[var(--ds-shadow-1)]">
           {icon}
-          <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-700">{title}</h3>
-          <span className="text-xs font-bold text-slate-400">{bots.length}</span>
+          <h3 className="text-xs font-semibold text-slate-700">{title}</h3>
+          <span className="text-xs font-semibold text-slate-400">{bots.length}</span>
         </div>
         {display === 'grid' ? (
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -323,17 +323,17 @@ export default function TeacherbotsPage() {
     <div className="h-full flex flex-col overflow-hidden bg-transparent">
       <div className="flex-1 overflow-y-auto">
         {starters.length > 0 && <section className="mx-4 mt-4 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-elevated)] p-4">
-          <h2 className="font-bold text-[var(--text-primary)]">{tl("Teacherbot già disponibili")}</h2>
+          <h2 className="font-semibold text-[var(--text-primary)]">{tl("Teacherbot già disponibili")}</h2>
           <p className="mb-3 mt-1 text-sm text-[var(--text-muted)]">{tl("Gli assistenti scelti dall'amministratore per tutti i docenti.")}</p>
           <div className="flex flex-wrap gap-2">{starters.map((bot) => <button type="button" key={bot.id} onClick={() => setTestTarget(bot.id)} className="rounded-xl border border-[var(--app-accent-border)] bg-[var(--app-accent-soft)] px-4 py-3 text-left text-[var(--text-primary)]"><b>{bot.name}</b><span className="block text-xs">{bot.synopsis}</span></button>)}</div>
         </section>}
 
         <section className="ds-frame-header">
           <div className="mx-auto max-w-3xl px-4 py-8 text-center md:px-6">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+            <p className="text-[11px] font-semibold text-slate-400">
               {t('navbar.nav_teacherbots', 'Teacherbot')}
             </p>
-            <SectionHeading section="/teacher/teacherbots" as="h2" className="mt-2 justify-center text-2xl font-black tracking-tight text-slate-950 md:text-3xl" subtitle={<>
+            <SectionHeading section="/teacher/teacherbots" as="h2" className="mt-2 justify-center text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl" subtitle={<>
               {tl("Un teacherbot è un assistente AI personalizzato: gli dai un nome, una personalità e istruzioni (system prompt), e opzionalmente una base di conoscenza. Condividilo con un'intera classe, con singoli studenti, oppure genera un link pubblico utilizzabile anche fuori dalla piattaforma.")}
             </>} subtitleClassName="mx-auto mt-3 hidden max-w-2xl text-sm leading-6 text-slate-600 md:block">
               {tl("Crea, condividi, osserva")}
@@ -347,7 +347,7 @@ export default function TeacherbotsPage() {
 
         <div className="mx-auto max-w-6xl px-4 pb-16 pt-6 md:px-6">
           <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
               <Bot className="h-4 w-4 text-slate-500" />
               <span>{search ? `${visibleCount} risultati` : `${totalCount} teacherbot`}</span>
             </div>
@@ -382,7 +382,7 @@ export default function TeacherbotsPage() {
               <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-indigo-50 ring-1 ring-indigo-100">
                 <Sparkles className="h-8 w-8 text-indigo-500" />
               </div>
-              <h3 className="text-lg font-bold text-slate-800 mb-1">{tl("Nessun teacherbot")}</h3>
+              <h3 className="text-lg font-semibold text-slate-800 mb-1">{tl("Nessun teacherbot")}</h3>
               <p className="text-sm text-slate-500 mb-6 max-w-md">
                 {tl("Crea il tuo primo assistente AI personalizzato per interagire con gli studenti.")}
               </p>

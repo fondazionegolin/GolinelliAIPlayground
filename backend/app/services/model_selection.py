@@ -38,6 +38,9 @@ SCOPES: dict[str, Scope] = {s.id: s for s in [
     Scope("agentic", "Agentic β", "Agentic", "chat.default", hint="Nodi AI dei flussi di lavoro"),
 ]}
 
+# Vibe Lab picks its models from the admin roles (architect/writer/critic); the per-user menu is gone.
+ADMIN_HIDDEN_SCOPES = frozenset({"vibelab", "vibelab_students"})
+
 _cache: dict[str, list[tuple[str, str, str]]] = {}
 
 

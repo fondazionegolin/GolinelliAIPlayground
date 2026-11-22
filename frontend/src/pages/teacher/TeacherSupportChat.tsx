@@ -81,6 +81,7 @@ import { PASTEL_SURFACES } from '@/design/themes/pastelSurfaces'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { SidebarCollapseButton, SidebarRail } from '@/components/SidebarRail'
 import { tl } from '@/i18n/tl'
+import { imagesPromptHint } from '@/lib/docMarkdown'
 
 // Constants
 
@@ -1440,7 +1441,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
       if (alreadyUsingFallback || nonRetryableStatuses.has(error?.status)) throw error
 
       opts?.onFallback?.()
-      opts?.onStatus?.(tl("⚡ Modello temporaneamente non raggiungibile, passaggio a Claude Haiku…"))
+      opts?.onStatus?.(tl("Modello temporaneamente non raggiungibile, passaggio a Claude Haiku…"))
       toast({
         title: tl("Modello temporaneamente non raggiungibile"),
         description: tl("La richiesta viene completata automaticamente con Claude Haiku 4.5."),
@@ -1470,6 +1471,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     const contextSection = [
       chatHistory.length > 1 ? `\nContesto della chat:\n${historyContext}` : '',
       filesContext ? `\nMateriale allegato:\n${filesContext}` : '',
+      imagesPromptHint(currentDoc?.images),
     ].filter(Boolean).join('\n')
 
     if (mode === 'report') {
@@ -1941,7 +1943,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
   /** Step 1: ask the chatbot for the research topics (or a clarifying question) and show them for approval. */
   const proposeResearch = async (convId: string, userMessage: Message, request: string, signal: AbortSignal) => {
     const existing = researchDocFor(convId)
-    setStreamingStatus(tl("🧭 Preparo il piano di ricerca…"))
+    setStreamingStatus(tl("Preparo il piano di ricerca…"))
     const { data } = await api.post('/llm/teacher/deep-research/plan', {
       content: request,
       history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
@@ -2049,6 +2051,22 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     teacherApi.saveConversationDocument(currentConversationId, edited).catch((e) => console.warn('Failed to save research document:', e))
   }
 
+  /** Edits made inside the canvas (inserted/removed images): keep the cache, local copy and server in sync. */
+  const canvasSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleCanvasDocChange = (next: GeneratedDoc) => {
+    if (!currentConversationId) return
+    const changed = next.content !== activeDoc?.content
+    const saved = changed ? { ...next, version: next.version + 1 } : next
+    setActiveDoc(saved)
+    docCacheRef.current[currentConversationId] = saved
+    try { localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current)) } catch { /* images may exceed the quota: the server copy is authoritative */ }
+    const convId = currentConversationId
+    if (canvasSaveTimerRef.current) clearTimeout(canvasSaveTimerRef.current)
+    canvasSaveTimerRef.current = setTimeout(() => {
+      teacherApi.saveConversationDocument(convId, saved).catch((e) => console.warn('Failed to save document images:', e))
+    }, 700)
+  }
+
   const openResponseArtifact = (content: string, convId: string, request: string): boolean => {
     if (requestsCodeOnly(request)) return false
     const html = extractHtmlPage(content)
@@ -2063,6 +2081,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
       type, content: documentContent,
       title: previous?.type === type ? previous.title : request.slice(0, 60) || tl('Pagina interattiva'),
       version: previous?.type === type ? previous.version + (previous.content === documentContent ? 0 : 1) : 1,
+      images: previous?.type === type ? previous.images : undefined,
     }
     docCacheRef.current[convId] = doc
     setActiveDoc(doc)
@@ -2232,8 +2251,10 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     try {
       const convId = await ensureConversation(prompt, request.controller.signal)
       if (!convId) throw new Error(tl('Non riesco ad aprire la conversazione. Riprova.'))
+      // Attached documents travel as source material, and the last turns in full: that is where the real instructions are.
+      const materials = await llmApi.handoffMaterials(attachedFiles.map(f => f.file), request.controller.signal).catch(() => [])
       const { data } = await llmApi.handoff(target, prompt, {
-        conversationId: convId, recent: messages.slice(-4).map(m => ({ role: m.role, content: m.content })), signal: request.controller.signal,
+        conversationId: convId, recent: messages.slice(-6).map(m => ({ role: m.role, content: m.content })), materials, signal: request.controller.signal,
       })
       request.controller.signal.throwIfAborted()
       const now = new Date()
@@ -2467,7 +2488,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
       || (agentMode === 'default' && presentationRequested)
     if (attachedNotebooks.length > 0 && usesClientSideGeneration) {
       try {
-        setStreamingStatus(tl("📚 Ricerca nei notebook RAG allegati…"))
+        setStreamingStatus(tl("Ricerca nei notebook RAG allegati…"))
         const results = await Promise.all(attachedNotebooks.map((nb) =>
           teacherRagApi.search(userInput || messageContent, undefined, 12, nb.id).then((r) => (r.data || []) as Array<{ document_title: string; page?: number; text: string; score?: number }>)))
         const fragments = results.flat().sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 14)
@@ -2729,7 +2750,7 @@ REGOLE IMPORTANTI:
 
         const res = await teacherApi.analyzeTask(analysisSessionId, analysisTaskId, userInput || undefined, signal)
         const data = res.data
-        const submissionSummary = tl("📋 *{0} su {1} studenti hanno consegnato «{2}» (sessione: {3})*\n\n", data.submission_count, data.total_students, data.task_title, sessionTitle)
+        const submissionSummary = tl("*{0} su {1} studenti hanno consegnato «{2}» (sessione: {3})*\n\n", data.submission_count, data.total_students, data.task_title, sessionTitle)
         const fullContent = data.formatted_analysis
           || submissionSummary + (data.overview?.summary || tl("Nessuna analisi disponibile."))
 
@@ -2795,6 +2816,7 @@ REGOLE IMPORTANTI:
             content: htmlContent,
             version: isEdit ? (baseDoc?.version ?? 0) + 1 : 1,
             title: isEdit && baseDoc ? baseDoc.title : messageContent.substring(0, 60),
+            images: isEdit ? baseDoc?.images : undefined,
           }
           setActiveDoc(newDoc)
           setShowCanvas(true)
@@ -2869,10 +2891,10 @@ REGOLE IMPORTANTI:
         // Add live progress message
         const progressId = `progress-${Date.now()}`
         const progressSteps = isEdit
-          ? [tl("✏️ Analizzando il documento corrente..."), tl("🔄 Applicando le modifiche richieste..."), tl("🎨 Rigenerando il contenuto..."), tl("Quasi pronto...")]
+          ? [tl("Analizzando il documento corrente..."), tl("Applicando le modifiche richieste..."), tl("Rigenerando il contenuto..."), tl("Quasi pronto...")]
           : agentMode === 'brochure'
-            ? [tl("🎨 Progettando il layout e la palette colori..."), tl("✍️ Generando le sezioni di contenuto..."), tl("🖼️ Ottimizzando il design HTML..."), tl("Finalizzando la brochure...")]
-            : [tl("📚 Strutturando capitoli, box e layout HTML..."), tl("✍️ Generando contenuto accademico con formule..."), tl("🔍 Revisione critica del documento..."), tl("✨ Migliorando e finalizzando la dispensa...")]
+            ? [tl("Progettando il layout e la palette colori..."), tl("Generando le sezioni di contenuto..."), tl("Ottimizzando il design HTML..."), tl("Finalizzando la brochure...")]
+            : [tl("Strutturando capitoli, box e layout HTML..."), tl("Generando contenuto accademico con formule..."), tl("Revisione critica del documento..."), tl("Migliorando e finalizzando la dispensa...")]
         setMessages(prev => [...prev, { id: progressId, role: 'assistant' as const, content: progressSteps[0], timestamp: new Date() }])
 
         // Advance progress steps during generation
@@ -2907,6 +2929,7 @@ REGOLE IMPORTANTI:
             content: parsedDocPayload ? JSON.stringify(parsedDocPayload, null, 2) : docContent,
             version: isEdit ? (baseDoc?.version ?? 0) + 1 : 1,
             title: parsedDocPayload?.title || (isEdit && baseDoc ? baseDoc.title : agentMode === 'dispensa' && pendingDispensaPlan ? pendingDispensaPlan.title : messageContent.substring(0, 60)),
+            images: isEdit ? baseDoc?.images : undefined,
           }
           setActiveDoc(newDoc)
           setShowCanvas(true)
@@ -2948,7 +2971,7 @@ REGOLE IMPORTANTI:
 
         if (shouldBuildReportArtifact) {
           setIsGeneratingDoc(true)
-          setStreamingStatus(tl("🧩 Generazione dashboard interattiva..."))
+          setStreamingStatus(tl("Generazione dashboard interattiva..."))
           try {
             const reportPayloadRaw = await generateDocument(
               'report',
@@ -3062,7 +3085,7 @@ REGOLE IMPORTANTI:
             },
             onCalendarEvent: (evt) => {
               toast({
-                title: tl("📅 Evento creato"),
+                title: tl("Evento creato"),
                 description: `"${evt.title}" il ${evt.event_date}${evt.event_time ? ` alle ${evt.event_time.slice(0,5)}` : ''}`,
               })
             },
@@ -3223,13 +3246,13 @@ REGOLE IMPORTANTI:
       ].join('\n')
     }
     if (mode === 'brochure') {
-      return tl("Sei in modalità **Brochure** 🎨. Descrivi il contenuto della brochure: argomento, punti chiave, pubblico target. Puoi allegare documenti o incollare link per arricchire il contenuto. Il documento sarà generato come file HTML graficamente ricco.")
+      return tl("Sei in modalità **Brochure**. Descrivi il contenuto della brochure: argomento, punti chiave, pubblico target. Puoi allegare documenti o incollare link per arricchire il contenuto. Il documento sarà generato come file HTML graficamente ricco.")
     }
     if (mode === 'deep_research') {
-      return 'Sei in modalità **Deep Research** 🔬. Dimmi cosa vuoi approfondire: ti proporrò gli argomenti da cercare e tu li approvi o li modifichi. Poi più sub-agent cercheranno e leggeranno le fonti, in più giri, confrontando pertinenza, copertura e fonti originali, e produrranno un documento Markdown che potrai modificare o ampliare chiedendomi di aggiungere altri argomenti. Vedrai l\'attività di ogni sub-agent nel pannello a destra.'
+      return'Sei in modalità **Deep Research**. Dimmi cosa vuoi approfondire: ti proporrò gli argomenti da cercare e tu li approvi o li modifichi. Poi più sub-agent cercheranno e leggeranno le fonti, in più giri, confrontando pertinenza, copertura e fonti originali, e produrranno un documento Markdown che potrai modificare o ampliare chiedendomi di aggiungere altri argomenti. Vedrai l\'attività di ogni sub-agent nel pannello a destra.'
     }
     if (mode === 'dispensa') {
-      return tl("Sei in modalità **Dispensa** 📄. Descrivi il contenuto della dispensa universitaria: argomento, capitoli principali, livello di dettaglio. Il documento sarà generato come HTML ricco con formule MathJax, box definizioni/teoremi/esempi, tabelle e colori. Dopo la generazione viene eseguita automaticamente una revisione critica per migliorare la qualità.")
+      return tl("Sei in modalità **Dispensa**. Descrivi il contenuto della dispensa universitaria: argomento, capitoli principali, livello di dettaglio. Il documento sarà generato come HTML ricco con formule MathJax, box definizioni/teoremi/esempi, tabelle e colori. Dopo la generazione viene eseguita automaticamente una revisione critica per migliorare la qualità.")
     }
     return null
   }
@@ -3329,7 +3352,7 @@ REGOLE IMPORTANTI:
       }
 
       toast({
-        title: publishMode === 'published' ? tl("Compito pubblicato!") : tl("Compito salvato in bozza"),
+        title: publishMode === 'published' ? tl("Compito pubblicato") : tl("Compito salvato in bozza"),
         description: publishMode === 'published' ? tl("Notifica automatica inviata agli studenti") : tl("Puoi pubblicarlo in seguito dal pannello sessione"),
         className: "bg-green-500 text-white"
       })
@@ -3370,7 +3393,7 @@ REGOLE IMPORTANTI:
                   <button
                     key={conv.id}
                     onClick={() => { openConversation(conv); setMobileHistoryOpen(false) }}
-                    className={`w-full text-left p-3 rounded-xl text-xs transition-all ${currentConversationId === conv.id ? 'font-medium border shadow-sm' : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'}`}
+                    className={`w-full text-left p-3 rounded-xl text-xs transition ${currentConversationId === conv.id ? 'font-medium border shadow-sm' : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'}`}
                     style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
                   >
                     <div className="truncate">{conv.title}</div>
@@ -3392,7 +3415,7 @@ REGOLE IMPORTANTI:
                 {/* Unified card: sidebar + chat together */}
                 <div className={`teacher-support-frame flex-1 flex h-full overflow-hidden ${sidebarMode ? '' : isMobile ? '' : 'ds-page-frame'}`}>
                  {/* Sidebar — desktop only */}
-                 <aside className={`teacher-support-history ${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-16' : 'w-64'} flex shrink-0 flex-col overflow-hidden transition-all duration-300`}>
+                 <aside className={`teacher-support-history ${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-16' : 'w-64'} flex shrink-0 flex-col overflow-hidden transition duration-300`}>
                   {isSidebarCollapsed ? (
                     <SidebarRail
                       bare
@@ -3415,20 +3438,20 @@ REGOLE IMPORTANTI:
                           <MessageCircle className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-black leading-tight text-[var(--text-primary)]">{tl("Chatbot docente")}</p>
+                          <p className="truncate text-sm font-semibold leading-tight text-[var(--text-primary)]">{tl("Chatbot docente")}</p>
                           <p className="truncate text-[10px] text-[var(--text-muted)]">{tl("Conversazioni e strumenti didattici")}</p>
                         </div>
                         <SidebarCollapseButton onClick={() => setIsSidebarCollapsed(true)} label={tl("Comprimi conversazioni")} />
                       </div>
 
                       <div className="shrink-0 px-3 pt-3">
-                        <button type="button" onClick={handleNewChat} className="flex min-h-[var(--selection-height)] w-full items-center justify-center gap-2 rounded-[var(--selection-radius)] border-0 bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] transition-colors hover:bg-[var(--ds-control-hover)]">
+                        <button type="button" onClick={handleNewChat} className="flex min-h-[var(--selection-height)] w-full items-center justify-center gap-2 rounded-[var(--selection-radius)] border-0 bg-[image:var(--selection-active-bg)] px-3 text-xs font-semibold text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] transition-colors hover:bg-[var(--ds-control-hover)]">
                           <Plus className="h-3.5 w-3.5" /> {tl("Nuova chat")}
                         </button>
                       </div>
 
                       <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-3">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{tl("Conversazioni")}</span>
+                        <span className="text-[10px] font-semibold text-[var(--text-muted)]">{tl("Conversazioni")}</span>
                         <span className="flex items-center gap-1.5">
                           <span className="text-[10px] font-semibold text-[var(--text-muted)]" aria-live="polite">{conversations.length}</span>
                           {conversations.length > 0 && (
@@ -3455,7 +3478,7 @@ REGOLE IMPORTANTI:
                             }`}
                           >
                             <button type="button" onClick={() => openConversation(conv)} className="min-w-0 flex-1 px-2.5 py-2 text-left">
-                              <span className="flex min-w-0 items-center gap-1 text-[13px] font-bold leading-tight text-[var(--text-primary)]">
+                              <span className="flex min-w-0 items-center gap-1 text-[13px] font-semibold leading-tight text-[var(--text-primary)]">
                                 <span className="truncate">{conv.title}</span>
                                 {convsWithDocs.has(conv.id) && <Layout className="h-3 w-3 shrink-0 text-fuchsia-400" />}
                               </span>
@@ -3463,7 +3486,7 @@ REGOLE IMPORTANTI:
                             </button>
                             <button
                               type="button"
-                              className="mr-1 rounded-md p-1 text-[var(--text-muted)] opacity-0 transition-all hover:bg-red-50 hover:text-red-500 focus:opacity-100 group-hover:opacity-100"
+                              className="mr-1 rounded-md p-1 text-[var(--text-muted)] opacity-0 transition hover:bg-red-50 hover:text-red-500 focus:opacity-100 group-hover:opacity-100"
                               onClick={async () => {
                                 if (confirm(tl("Eliminare questa conversazione?"))) {
                                   try {
@@ -3528,7 +3551,7 @@ REGOLE IMPORTANTI:
                               <Settings className="h-4 w-4" />
                             </div>
                             <div>
-                              <h2 className="text-sm font-bold text-slate-800">{tl("Personalizza il tuo Assistente")}</h2>
+                              <h2 className="text-sm font-semibold text-slate-800">{tl("Personalizza il tuo Assistente")}</h2>
                               <p className="text-xs text-slate-500">{tl("Modifica il comportamento del chatbot di supporto docente")}</p>
                             </div>
                           </div>
@@ -3541,7 +3564,7 @@ REGOLE IMPORTANTI:
                             {tl("Questo è il")} <strong>system prompt</strong> {tl("del tuo assistente AI. Determina il suo comportamento, tono e capacità. Puoi personalizzarlo liberamente — le modifiche si applicano alle nuove conversazioni.")}
                           </p>
                           <div>
-                            <p className="mb-2 text-xs font-bold text-slate-700">{tl("Formato delle risposte")}</p>
+                            <p className="mb-2 text-xs font-semibold text-slate-700">{tl("Formato delle risposte")}</p>
                             <div className="grid grid-cols-3 gap-2">
                               {RESPONSE_LENGTH_OPTIONS.map((option) => {
                                 const selected = responseLength === option.id
@@ -3553,7 +3576,7 @@ REGOLE IMPORTANTI:
                                     className={`rounded-[var(--ds-radius-control)] px-3 py-2.5 text-left outline-none focus-visible:shadow-[var(--ds-shadow-focus)] ${selected ? 'ds-selected' : 'ds-control text-slate-700'}`}
                                     aria-pressed={selected}
                                   >
-                                    <span className="block text-xs font-extrabold">{option.label}</span>
+                                    <span className="block text-xs font-semibold">{option.label}</span>
                                     <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">{option.description}</span>
                                   </button>
                                 )
@@ -3611,7 +3634,7 @@ REGOLE IMPORTANTI:
 
                         <div className="flex items-center gap-1.5">
                           <SectionIllustration section="/teacher" compact />
-                          <span className="text-sm font-bold text-slate-800">{tl("Assistente")}</span>
+                          <span className="text-sm font-semibold text-slate-800">{tl("Assistente")}</span>
                         </div>
 
                         <div className="flex items-center gap-1">
@@ -3639,7 +3662,7 @@ REGOLE IMPORTANTI:
                       <>
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="min-w-0">
-                        <SectionHeading section="/teacher" compact className="truncate text-sm font-bold text-slate-800" subtitle={<>
+                        <SectionHeading section="/teacher" compact className="truncate text-sm font-semibold text-slate-800" subtitle={<>
                           {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page')
                             ? 'Claude Sonnet 4.6'
                             : agentMode === 'ocr'
@@ -3688,14 +3711,14 @@ REGOLE IMPORTANTI:
                           <>
                             <div className="ui-segment flex items-center rounded-full p-1">
                               {([
-                                { id: 'dall-e', label: '🎨 DALL-E 3' },
-                                { id: 'gpt-image-2-2026-04-21', label: '✨ GPT Image 2' },
+                                { id:'dall-e', label:'DALL-E 3' },
+                                { id:'gpt-image-2-2026-04-21', label:'GPT Image 2' },
                               ] as { id: 'dall-e' | 'gpt-image-2-2026-04-21'; label: string }[]).map((m) => (
                                 <button
                                   key={m.id}
                                   onClick={() => setImageProvider(m.id)}
-                                  className={`px-3 py-1 text-[10px] rounded-full transition-all flex items-center gap-1 ${imageProvider === m.id
-                                    ? 'bg-white shadow-sm font-bold'
+                                  className={`px-3 py-1 text-[10px] rounded-full transition flex items-center gap-1 ${imageProvider === m.id
+                                    ? 'bg-white shadow-sm font-semibold'
                                     : 'text-slate-500 hover:text-slate-700'
                                     }`}
                                   style={imageProvider === m.id ? { color: accentTheme.text } : undefined}
@@ -3859,7 +3882,7 @@ REGOLE IMPORTANTI:
                             </div>
                           )}
                           <div className={`${isMobile ? 'max-w-[90%]' : 'max-w-[75%]'} space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-                            <div className={`teacher-support-message ${isMobile ? 'px-4' : 'px-5'} py-3 text-sm leading-relaxed backdrop-blur-md transition-all ${msg.role === 'user'
+                            <div className={`teacher-support-message ${isMobile ? 'px-4' : 'px-5'} py-3 text-sm leading-relaxed backdrop-blur-md transition ${msg.role === 'user'
                               ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'teacher-chat-bubble'} font-medium rounded-2xl rounded-tr-sm`
                               : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'teacher-chat-bubble teacher-chat-bubble-assistant text-slate-800'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
                               }`}
@@ -3884,7 +3907,7 @@ REGOLE IMPORTANTI:
                                   <MessageAttachments attachments={msg.attachments} className="mb-2" />
                                   <MessageLinkPreviews content={msg.content} />
                                   <ReactMarkdown
-                                    className="chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 [&_strong]:font-bold"
+                                    className="chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 [&_strong]:font-semibold"
                                     components={markdownCodeComponents()}
                                   >
                                     {convertEmoticons(messageTextWithoutPreviewLinks(msg.content))}
@@ -4259,7 +4282,7 @@ REGOLE IMPORTANTI:
                             </Button>
                             {showActionMenu && (
                               <div className="absolute bottom-full left-0 z-50 mb-2 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-                                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Strumenti")}</div>
+                                <div className="px-2 py-1 text-[10px] font-semibold text-slate-400">{tl("Strumenti")}</div>
                                 <div className="flex items-center gap-1 rounded-lg px-2 py-1.5">
                                   <VoiceRecorder onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)} />
                                   <span className="text-xs font-medium text-slate-600">{tl("Dettatura vocale")}</span>
@@ -4373,7 +4396,7 @@ REGOLE IMPORTANTI:
                               onClick={() => setShowModeMenu(v => !v)}
                               title={tl("Modalità attiva: cambia")}
                             >
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                                 selectedModeMeta.id === 'default'
                                   ? 'bg-slate-900 text-white'
                                   : selectedModeMeta.id === 'report'
@@ -4567,7 +4590,7 @@ REGOLE IMPORTANTI:
                         {isBusy ? (
                           <Button
                             onClick={stopActiveGeneration}
-                            className="h-9 w-9 flex-shrink-0 rounded-full bg-red-50 text-red-600 shadow-sm ring-1 ring-red-200 transition-all hover:bg-red-100 hover:text-red-700"
+                            className="h-9 w-9 flex-shrink-0 rounded-full bg-red-50 text-red-600 shadow-sm ring-1 ring-red-200 transition hover:bg-red-100 hover:text-red-700"
                             size="icon"
                             title={tl("Interrompi generazione")}
                           >
@@ -4577,7 +4600,7 @@ REGOLE IMPORTANTI:
                           <Button
                             onClick={() => { void handleSend() }}
                             disabled={((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))}
-                            className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
+                            className={`h-9 w-9 rounded-full transition flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
                               ? 'bg-slate-100 text-slate-300'
                               : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
                               }`}
@@ -4607,6 +4630,7 @@ REGOLE IMPORTANTI:
                       doc={activeDoc}
                       onClose={() => setShowCanvas(false)}
                       authorName={teacherDisplayName}
+                      onDocChange={handleCanvasDocChange}
                       sessions={(classesData || []).map((s: any) => ({ id: s.id, title: s.title, class_name: s.class_name }))}
                     />
                   </div>
@@ -4623,7 +4647,7 @@ REGOLE IMPORTANTI:
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4 backdrop-blur-sm">
             <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-slate-800">{tl("Pubblica come Compito")}</h3>
+                <h3 className="text-lg font-semibold text-slate-800">{tl("Pubblica come Compito")}</h3>
                 <Button variant="ghost" size="icon" onClick={() => setPublishModal({ ...publishModal, isOpen: false })}>
                   <X className="h-5 w-5" />
                 </Button>
@@ -4658,7 +4682,7 @@ REGOLE IMPORTANTI:
                   <button
                     key={session.id}
                     onClick={() => handlePublish(session.id)}
-                    className="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-red-400 hover:bg-red-50 transition-all flex items-center justify-between group"
+                    className="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-red-400 hover:bg-red-50 transition flex items-center justify-between group"
                   >
                     <div>
                       <div className="font-semibold text-sm group-hover:text-red-700">{session.title}</div>
@@ -5012,7 +5036,7 @@ function SessionSelector({ sessions, onSelect }: { sessions: any[], onSelect: (i
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{tl("Seleziona Sessione")}</span>
+        <span className="text-xs font-semibold text-slate-700">{tl("Seleziona Sessione")}</span>
         <span className="text-[10px] text-slate-400">{sessions.length} {tl("sessioni attive")}</span>
       </div>
       <div className="p-2 grid grid-cols-1 gap-1 max-h-60 overflow-y-auto">
@@ -5020,7 +5044,7 @@ function SessionSelector({ sessions, onSelect }: { sessions: any[], onSelect: (i
           <button
             key={s.id}
             onClick={() => onSelect(s.id)}
-            className="text-left px-3 py-2.5 rounded-lg hover:bg-red-50 hover:text-red-700 border border-transparent hover:border-red-200 transition-all group flex items-center justify-between"
+            className="text-left px-3 py-2.5 rounded-lg hover:bg-red-50 hover:text-red-700 border border-transparent hover:border-red-200 transition group flex items-center justify-between"
           >
             <div>
               <div className="text-sm font-semibold">{s.title}</div>
@@ -5044,7 +5068,7 @@ function StudentSelector({ students, onSelect }: { students: any[], onSelect: (s
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{tl("Seleziona Studenti")}</span>
+        <span className="text-xs font-semibold text-slate-700">{tl("Seleziona Studenti")}</span>
         <span className="text-[10px] text-slate-400">{students.length} {tl("studenti")}</span>
       </div>
       <div className="p-2 grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
@@ -5052,7 +5076,7 @@ function StudentSelector({ students, onSelect }: { students: any[], onSelect: (s
           <div
             key={s.id}
             onClick={() => toggle(s.id)}
-            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${
+            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition ${
               selected.includes(s.id) ? 'bg-red-50 border-red-200 text-red-700' : 'bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100'
             }`}
           >
@@ -5084,7 +5108,7 @@ function ActionMenu({ actions, onSelect }: { actions: any[], onSelect: (value: s
         <button
           key={idx}
           onClick={() => onSelect(action.value)}
-          className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-xl hover:bg-red-50 hover:border-red-200 hover:text-red-700 text-sm font-medium transition-all shadow-sm group"
+          className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-xl hover:bg-red-50 hover:border-red-200 hover:text-red-700 text-sm font-medium transition shadow-sm group"
         >
           <span className="truncate">{action.label}</span>
         </button>
@@ -5109,7 +5133,7 @@ function ReportConfigurator({
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{tl("Configurazione Report")}</span>
+        <span className="text-xs font-semibold text-slate-700">{tl("Configurazione Report")}</span>
         <span className="text-[10px] text-slate-400">{tl("Sessione + tipologia")}</span>
       </div>
       <div className="p-4 space-y-4">
@@ -5120,7 +5144,7 @@ function ReportConfigurator({
               <button
                 key={s.id}
                 onClick={() => setSelectedSessionId(s.id)}
-                className={`rounded-lg border px-3 py-2 text-left transition-all ${selectedSessionId === s.id ? 'bg-red-50 border-red-200 text-red-700' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
+                className={`rounded-lg border px-3 py-2 text-left transition ${selectedSessionId === s.id ? 'bg-red-50 border-red-200 text-red-700' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
               >
                 <div className="text-sm font-semibold">{s.title}</div>
                 <div className="text-[10px] text-slate-400">{s.class_name} • {s.status}</div>
@@ -5135,7 +5159,7 @@ function ReportConfigurator({
               <button
                 key={option.id}
                 onClick={() => setSelectedReportType(option.id)}
-                className={`rounded-lg border px-3 py-2 text-left transition-all ${selectedReportType === option.id ? 'bg-blue-50 border-blue-200 text-blue-700' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
+                className={`rounded-lg border px-3 py-2 text-left transition ${selectedReportType === option.id ? 'bg-blue-50 border-blue-200 text-blue-700' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
               >
                 <div className="text-sm font-semibold">{option.label}</div>
                 <div className="text-[11px] text-slate-500">{option.description}</div>
@@ -5345,7 +5369,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
         <div className="mt-3">
           <div className="bg-cyan-50 border border-cyan-200 rounded-t-lg px-4 py-2 flex items-center justify-between">
             <span className="text-sm font-medium text-cyan-700 flex items-center gap-2">
-              {tl("📝 Quiz:")} {quiz.title}
+              {tl("Quiz:")} {quiz.title}
             </span>
             <div className="flex gap-2">
               <Button
@@ -5392,7 +5416,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               <Layout className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="m-0 truncate text-sm font-bold text-indigo-950">{presentationDocument.title}</p>
+              <p className="m-0 truncate text-sm font-semibold text-indigo-950">{presentationDocument.title}</p>
               <p className="m-0 text-xs text-indigo-600">{tl("Presentazione editabile ·")} {presentationDocument.slide_count} slide</p>
             </div>
           </div>
@@ -5474,8 +5498,8 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
           <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-emerald-50 px-5 py-4">
               <div className="min-w-0">
-                <p className="m-0 text-xs font-bold uppercase tracking-wide text-emerald-600">{tl("Lezione completa")}</p>
-                <h2 className="m-0 truncate text-lg font-black text-emerald-950">{lessonData.title}</h2>
+                <p className="m-0 text-xs font-semibold text-emerald-600">{tl("Lezione completa")}</p>
+                <h2 className="m-0 truncate text-lg font-semibold text-emerald-950">{lessonData.title}</h2>
               </div>
               <button type="button" onClick={() => setFullLessonOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-slate-800" aria-label={tl("Chiudi lezione")}>
                 <X className="h-5 w-5" />
@@ -5585,8 +5609,8 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
 
   return (
     <div className="bg-gradient-to-br from-cyan-50 to-sky-50 rounded-xl p-4 border border-cyan-200 shadow-sm">
-      <h3 className="font-bold text-lg text-cyan-800 mb-4 flex items-center gap-2">
-        📝 {quiz.title}
+      <h3 className="font-semibold text-lg text-cyan-800 mb-4 flex items-center gap-2">
+        {quiz.title}
       </h3>
 
       <div className="space-y-4">
@@ -5599,7 +5623,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
           return (
             <div key={qIndex} className="bg-white rounded-lg p-4 shadow-sm border border-cyan-100">
               <p className="font-medium text-slate-800 mb-3">
-                <span className="text-cyan-600 font-bold">{qIndex + 1}.</span> {q.question}
+                <span className="text-cyan-600 font-semibold">{qIndex + 1}.</span> {q.question}
               </p>
 
               {isOpen && (
@@ -5614,7 +5638,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                   />
                   {submitted && q.sampleAnswer && (
                     <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
-                      <span className="font-bold uppercase tracking-tighter">{tl("Risposta di riferimento")}: </span>{q.sampleAnswer}
+                      <span className="font-semibold tracking-tighter">{tl("Risposta di riferimento")}: </span>{q.sampleAnswer}
                     </div>
                   )}
                 </div>
@@ -5626,7 +5650,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                 const current = answers[qIndex]
                 return (
                   <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
-                    <div className="text-center text-2xl font-black text-cyan-700">{current ?? '–'}</div>
+                    <div className="text-center text-2xl font-semibold text-cyan-700">{current ?? '–'}</div>
                     <input
                       type="range"
                       min={min}
@@ -5651,7 +5675,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                   const isSelected = answers[qIndex] === optIndex
                   const isCorrectOption = q.correctIndex === optIndex
 
-                  let buttonClass = "w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm "
+                  let buttonClass = "w-full text-left px-4 py-2.5 rounded-lg border transition text-sm "
 
                   if (submitted) {
                     if (isCorrectOption) {
@@ -5674,10 +5698,10 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                       disabled={submitted}
                       className={buttonClass}
                     >
-                      <span className="font-bold mr-3 text-xs opacity-60">{String.fromCharCode(65 + optIndex)})
+                      <span className="font-semibold mr-3 text-xs opacity-60">{String.fromCharCode(65 + optIndex)})
                       </span>                      {option}
-                      {submitted && isCorrectOption && <span className="ml-auto text-green-600 font-bold">✓</span>}
-                      {submitted && isSelected && !isCorrectOption && <span className="ml-auto">❌</span>}
+                      {submitted && isCorrectOption && <span className="ml-auto text-green-600 font-semibold">✓</span>}
+                      {submitted && isSelected && !isCorrectOption && <span className="ml-auto font-semibold text-red-600">✗</span>}
                     </button>
                   )
                 })}
@@ -5686,7 +5710,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
               {showExplanations && hasAnswered && (
                 <div className={`mt-3 p-3 rounded-lg text-xs ${isCorrect ? 'bg-green-50 text-green-800 border border-green-100' : 'bg-cyan-50 text-cyan-800 border border-cyan-100'}`}>
                   <div className="flex items-center gap-1.5 mb-1">
-                    {isCorrect ? <div className="font-bold uppercase tracking-tighter">{tl("Corretto")}</div> : isOpen ? <div className="font-bold uppercase tracking-tighter">{tl("Spunto di correzione")}</div> : <div className="font-bold uppercase tracking-tighter">{tl("Spiegazione")}</div>}
+                    {isCorrect ? <div className="font-semibold tracking-tighter">{tl("Corretto")}</div> : isOpen ? <div className="font-semibold tracking-tighter">{tl("Spunto di correzione")}</div> : <div className="font-semibold tracking-tighter">{tl("Spiegazione")}</div>}
                   </div>
                   {q.explanation}
                 </div>
@@ -5700,7 +5724,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
         <Button
           onClick={handleSubmit}
           disabled={!allAnswered}
-          className={`mt-6 w-full py-6 rounded-xl font-bold text-base transition-all ${allAnswered
+          className={`mt-6 w-full py-6 rounded-xl font-semibold text-base transition ${allAnswered
             ? 'bg-cyan-600 text-white hover:bg-cyan-700 shadow-lg shadow-cyan-200'
             : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
@@ -5709,15 +5733,15 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
         </Button>
       ) : (
         <div className="mt-6 p-6 bg-white rounded-2xl shadow-inner border-2 border-cyan-100 text-center animate-in zoom-in duration-300">
-          <div className="text-4xl font-black text-cyan-600 mb-1">
+          <div className="text-4xl font-semibold text-cyan-600 mb-1">
             {score} / {gradedCount}
           </div>
           {gradedCount < quiz.questions.length && (
             <p className="mb-2 text-xs text-slate-500">{tl("Le domande aperte non sono incluse nel punteggio: vanno corrette dal docente.")}</p>
           )}
-          <div className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">{tl("Punteggio Finale")}</div>
+          <div className="text-sm font-semibold text-slate-500 mb-4">{tl("Punteggio Finale")}</div>
           <p className="text-slate-600 italic">
-            {score === gradedCount ? tl("🥇 Risultato Perfetto! Ottimo lavoro.") : score >= gradedCount / 2 ? tl("👏 Buon lavoro! Hai una buona base.") : tl("📚 Ti consiglio di ripassare l'argomento.")}
+            {score === gradedCount ? tl("Risultato Perfetto. Ottimo lavoro.") : score >= gradedCount / 2 ? tl("Buon lavoro. Hai una buona base.") : tl("Ti consiglio di ripassare l'argomento.")}
           </p>
         </div>
       )}

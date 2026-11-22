@@ -119,7 +119,7 @@ export function FloatingClassChat({
         >
           <MessageSquare className="h-5 w-5" />
           {unreadCount > 0 && (
-            <span className="absolute -right-2 -top-2 flex min-h-6 min-w-6 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-black text-white ring-2 ring-white">
+            <span className="absolute -right-2 -top-2 flex min-h-6 min-w-6 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-semibold text-white ring-2 ring-white">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}

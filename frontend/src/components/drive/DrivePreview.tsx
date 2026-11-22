@@ -140,14 +140,14 @@ export function DrivePreview({
         </button>
         <Icon className="h-5 w-5 shrink-0" style={{ color: meta.tone }} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold">{item.name}</p>
+          <p className="truncate text-sm font-semibold">{item.name}</p>
           <p className="truncate text-[11px] text-white/60">
             {meta.label} · {formatBytes(item.size_bytes)} {tl("· modificato")} {formatDate(item.updated_at)}
             {item.created_by_student ? tl(" · di {0}", item.created_by_student) : ''}
           </p>
         </div>
         {editorPath && (
-          <button type="button" onClick={() => navigate(editorPath)} className="flex h-9 items-center gap-2 rounded-full bg-white/10 px-3 text-xs font-bold hover:bg-white/20">
+          <button type="button" onClick={() => navigate(editorPath)} className="flex h-9 items-center gap-2 rounded-full bg-white/10 px-3 text-xs font-semibold hover:bg-white/20">
             <ExternalLink className="h-4 w-4" /> {tl("Apri nell'editor")}
           </button>
         )}
@@ -199,18 +199,18 @@ export function DrivePreview({
               </span>
             )}
             <div>
-              <p className="text-sm font-bold text-slate-800">{item.name}</p>
+              <p className="text-sm font-semibold text-slate-800">{item.name}</p>
               <p className="mt-1 text-xs text-slate-500">
                 {item.source_type === 'solid_model' ? tl("Progetto del 3D Lab: aprilo nel modellatore o esportalo.") : tl("Anteprima non disponibile per questo formato.")}
               </p>
             </div>
             <div className="flex flex-wrap justify-center gap-2">
               {editorPath && (
-                <button type="button" onClick={() => navigate(editorPath)} className="flex h-9 items-center gap-2 rounded-full bg-[var(--app-accent)] px-4 text-xs font-bold text-white">
+                <button type="button" onClick={() => navigate(editorPath)} className="flex h-9 items-center gap-2 rounded-full bg-[var(--app-accent)] px-4 text-xs font-semibold text-white">
                   <ExternalLink className="h-4 w-4" /> {tl("Apri")}
                 </button>
               )}
-              <button type="button" onClick={() => void download()} className="flex h-9 items-center gap-2 rounded-full bg-slate-100 px-4 text-xs font-bold text-slate-700 hover:bg-slate-200">
+              <button type="button" onClick={() => void download()} className="flex h-9 items-center gap-2 rounded-full bg-slate-100 px-4 text-xs font-semibold text-slate-700 hover:bg-slate-200">
                 <Download className="h-4 w-4" /> {tl("Scarica")}
               </button>
             </div>

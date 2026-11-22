@@ -49,7 +49,7 @@ export default function TasklistWidget({ config, onConfigChange, readOnly = fals
   return (
     <div className="h-full flex flex-col p-3 gap-2 overflow-hidden">
       {config.title && (
-        <div className="text-sm font-semibold text-white/60 uppercase tracking-wider px-1">
+        <div className="text-sm font-semibold text-white/60 px-1">
           {config.title}
         </div>
       )}

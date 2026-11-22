@@ -89,7 +89,7 @@ export function TeachingProtocolPanel({ messageId, state, onUpdate, onPublishQui
     <div className="flex items-start gap-3">
       <Brain className="mt-0.5 h-5 w-5 shrink-0 text-[var(--logo-violet-strong)]" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold">{state.plan.title}</p>
+        <p className="text-sm font-semibold">{state.plan.title}</p>
         <p className={`mt-1 ${hint}`}>{state.phase === 'plan'
           ? tl('Ecco cosa preparo per te. Conferma e gli agenti generano i materiali.')
           : tl('{0} di {1} materiali approvati. Te li propongo uno alla volta.', approved, total)}</p>
@@ -104,7 +104,7 @@ export function TeachingProtocolPanel({ messageId, state, onUpdate, onPublishQui
     {state.phase === 'plan' && !editingPlan && <>
       <ol className="space-y-2">
         {state.plan.tasks.map((task, index) => <li key={task.id} className={`${softBlock} flex items-start gap-3 p-3`}>
-          <span className="mt-0.5 text-xs font-bold text-[var(--text-muted)]">{index + 1}</span>
+          <span className="mt-0.5 text-xs font-semibold text-[var(--text-muted)]">{index + 1}</span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">{task.title}</p>
             {task.rationale && <p className={`mt-0.5 ${hint}`}>{task.rationale}</p>}
@@ -183,7 +183,7 @@ function TaskBlock({ task, result, onStage, disabled, onFocus, onRetry, onConfir
 
   const heading = <div className="flex flex-wrap items-center gap-2">
     <Badge tone="neutral" surface="soft" density="compact">{tl(PROTOCOL_KINDS[task.kind])}</Badge>
-    <p className="min-w-0 flex-1 truncate text-sm font-bold">{title}</p>
+    <p className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</p>
     <Badge tone={statusTone[result.status]} surface="soft" density="compact">{tl(statusLabel[result.status])}</Badge>
   </div>
 
@@ -263,14 +263,14 @@ function Preview({ task, data }: { task: ProtocolTask; data: ProtocolData }) {
     </>}
     {(task.kind === 'document' || task.kind === 'dispensa') && <p className={`${clamp} line-clamp-[12]`}>{data.text}</p>}
     {task.kind === 'sheet' && data.rows && <div className="overflow-x-auto"><table className="w-full text-left text-xs"><tbody>
-      {data.rows.slice(0, 8).map((row, i) => <tr key={i} className={i === 0 ? 'font-bold' : ''}>{row.map((cell, j) => <td key={j} className="px-2 py-1">{String(cell)}</td>)}</tr>)}
+      {data.rows.slice(0, 8).map((row, i) => <tr key={i} className={i === 0 ? 'font-semibold' : ''}>{row.map((cell, j) => <td key={j} className="px-2 py-1">{String(cell)}</td>)}</tr>)}
     </tbody></table>{data.rows.length > 8 && <p className={hint}>{tl('… e altre {0} righe', data.rows.length - 8)}</p>}</div>}
     {task.kind === 'presentation' && <ol className="list-decimal space-y-1 pl-5 text-sm">{data.slides?.map((slide, i) => <li key={i}><span className="font-semibold">{slide.title}</span></li>)}</ol>}
     {task.kind === 'quiz' && <>
       {data.description && <p className="text-sm">{data.description}</p>}
       <ol className="list-decimal space-y-2 pl-5 text-sm">{data.questions?.map((q, i) => <li key={i}>
         <span className="font-semibold">{q.question}</span>
-        {(!q.type || q.type === 'mcq') && <ul className="mt-1 space-y-0.5 text-xs">{q.options.map((option, j) => <li key={j} className={j === q.correctIndex ? 'font-bold text-[var(--logo-blue-strong)]' : 'text-[var(--text-secondary)]'}>{j === q.correctIndex ? '✓ ' : ''}{option}</li>)}</ul>}
+        {(!q.type || q.type === 'mcq') && <ul className="mt-1 space-y-0.5 text-xs">{q.options.map((option, j) => <li key={j} className={j === q.correctIndex ? 'font-semibold text-[var(--logo-blue-strong)]' : 'text-[var(--text-secondary)]'}>{j === q.correctIndex ? '✓ ' : ''}{option}</li>)}</ul>}
         {q.type === 'open' && <p className={hint}>{tl('Risposta aperta')}</p>}
         {q.type === 'scale' && <p className={hint}>{tl('Scala di valutazione')} {q.min ?? 1}–{q.max ?? 5}</p>}
       </li>)}</ol>

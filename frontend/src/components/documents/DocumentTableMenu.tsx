@@ -13,14 +13,14 @@ const GRID = 8
  * Table tool for the document toolbar: a size picker to insert a table and, while the caret is in a
  * table, the structural commands (rows, columns, merge/split, header row, cell colour, delete).
  */
-export function DocumentTableMenu({ editor }: { editor: Editor }) {
+export function DocumentTableMenu({ editor, inline = false, onDone }: { editor: Editor; inline?: boolean; onDone?: () => void }) {
   const [open, setOpen] = useState(false)
   const [hover, setHover] = useState<{ rows: number; cols: number }>({ rows: 0, cols: 0 })
   const ref = useRef<HTMLDivElement>(null)
   const inTable = editor.isActive('table')
 
   useEffect(() => {
-    if (!open) return
+    if (!open || inline) return
     const close = (event: MouseEvent) => {
       if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false)
     }
@@ -54,6 +54,18 @@ export function DocumentTableMenu({ editor }: { editor: Editor }) {
 
   return (
     <div ref={ref} className="relative">
+      {inline ? (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => setOpen(value => !value)}
+          aria-expanded={open}
+          className={`flex min-h-9 w-full items-center gap-2.5 rounded-[var(--control-radius)] px-3 py-1.5 text-left text-sm transition-colors ${open || inTable ? 'ds-selected font-semibold' : 'text-[var(--text-primary)] hover:bg-[var(--ds-control-hover)]'}`}
+        >
+          <Table2 className="h-4 w-4 shrink-0 opacity-80" />
+          <span className="flex-1">{inTable ? tl("Tabella: modifica") : tl("Tabella")}</span>
+        </button>
+      ) : (
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
@@ -64,9 +76,10 @@ export function DocumentTableMenu({ editor }: { editor: Editor }) {
       >
         <Table2 className="h-4 w-4" />
       </button>
+      )}
       {open && (
-        <div className="ds-popover absolute left-0 top-full z-50 mt-2 w-[248px] rounded-2xl p-3">
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        <div className={inline ? 'mx-1.5 mb-1 mt-1 rounded-[var(--control-radius)] bg-[var(--ds-well)] p-3' : 'ds-popover absolute left-0 top-full z-50 mt-2 w-[248px] rounded-2xl p-3'}>
+          <p className="mb-2 text-[10px] font-semibold text-slate-400">
             {hover.rows ? tl("Inserisci {0} × {1}", hover.rows, hover.cols) : tl("Inserisci tabella")}
           </p>
           <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${GRID}, minmax(0, 1fr))` }} onMouseLeave={() => setHover({ rows: 0, cols: 0 })}>
@@ -83,6 +96,7 @@ export function DocumentTableMenu({ editor }: { editor: Editor }) {
                   onClick={() => {
                     editor.chain().focus().insertTable({ rows: row, cols: col, withHeaderRow: true }).run()
                     setOpen(false)
+                    onDone?.()
                   }}
                   className={`aspect-square rounded-[3px] border transition-colors ${active ? 'border-[var(--logo-violet)] bg-[var(--logo-violet-22)]' : 'border-slate-200 bg-slate-50'}`}
                 />

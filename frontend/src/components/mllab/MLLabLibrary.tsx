@@ -30,7 +30,7 @@ function ModeChooser({ onPick, onClose }: { onPick: (mode: Mode) => void; onClos
       <div className="w-full max-w-4xl rounded-[2rem] bg-white p-8 shadow-2xl dark:bg-slate-900 sm:p-10" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={tl("Che cosa vuoi riconoscere?")}>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{tl("Che cosa vuoi riconoscere?")}</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{tl("Che cosa vuoi riconoscere?")}</h2>
             <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{tl("Scegli cosa deve “vedere” il tuo modello. Il resto è uguale: classi, esempi, prova dal vivo.")}</p>
           </div>
           <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
@@ -49,7 +49,7 @@ function ModeChooser({ onPick, onClose }: { onPick: (mode: Mode) => void; onClos
                 <span className="ds-squircle flex h-20 w-20 items-center justify-center text-white shadow-lg transition duration-200 group-hover:scale-110" style={{ background: meta.color, boxShadow: `0 10px 24px -8px ${meta.color}` }}>
                   <meta.icon className="h-10 w-10" strokeWidth={1.6} />
                 </span>
-                <span className="text-lg font-bold text-slate-900 dark:text-white">{MODE_LABEL[mode]}</span>
+                <span className="text-lg font-semibold text-slate-900 dark:text-white">{MODE_LABEL[mode]}</span>
                 <span className="text-sm leading-snug text-slate-600 dark:text-slate-300">{meta.blurb}</span>
                 <span className="mt-auto pt-1 text-xs font-medium" style={{ color: meta.color }}>{meta.examples}</span>
               </button>
@@ -69,7 +69,7 @@ function Collage({ project }: { project: MLLabProjectSummary }) {
       {tiles.map((cls) => (
         <div key={cls.id} className="relative overflow-hidden rounded-xl" style={{ background: cls.color }}>
           {cls.thumbs[0] && <img src={cls.thumbs[0]} alt="" className="h-full w-full object-cover" />}
-          <span className="absolute bottom-1 left-1 max-w-[90%] truncate rounded-full bg-black/55 px-1.5 py-px text-[9px] font-bold text-white">{cls.name}</span>
+          <span className="absolute bottom-1 left-1 max-w-[90%] truncate rounded-full bg-black/55 px-1.5 py-px text-[9px] font-semibold text-white">{cls.name}</span>
         </div>
       ))}
     </div>
@@ -163,7 +163,7 @@ export default function MLLabLibrary({ onOpen, onNew, onImported }: { onOpen: (i
           <span className="ds-squircle relative z-10 flex h-24 w-24 items-center justify-center text-white shadow-xl" style={{ background: '#7b69c9' }}><Brain className="h-11 w-11" strokeWidth={1.6} /></span>
           <span className="ds-squircle -ml-3 flex h-16 w-16 rotate-6 items-center justify-center text-white shadow-lg" style={{ background: '#e85c8d' }}><Sparkles className="h-7 w-7" strokeWidth={1.7} /></span>
         </div>
-        <SectionHeading section="/teacher/ml-lab" className="text-3xl font-bold tracking-tight text-slate-900" subtitle={<>{tl("Crea il tuo primo classificatore: oggetti, posizioni del corpo o gesti delle mani. Mostragli alcuni esempi e vedrai l'intelligenza artificiale imparare in tempo reale. I progetti che crei restano salvati qui.")}</>} subtitleClassName="mt-3 max-w-xl text-base text-slate-500">{tl("Insegna al computer a riconoscere immagini, pose e gesti")}</SectionHeading>
+        <SectionHeading section="/teacher/ml-lab" className="text-3xl font-semibold tracking-tight text-slate-900" subtitle={<>{tl("Crea il tuo primo classificatore: oggetti, posizioni del corpo o gesti delle mani. Mostragli alcuni esempi e vedrai l'intelligenza artificiale imparare in tempo reale. I progetti che crei restano salvati qui.")}</>} subtitleClassName="mt-3 max-w-xl text-base text-slate-500">{tl("Insegna al computer a riconoscere immagini, pose e gesti")}</SectionHeading>
         <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
           <Button tone="accent" surface="solid" size="lg" className="h-12 rounded-2xl px-7 text-base" onClick={startNew}><Plus className="h-5 w-5" /> {tl("Crea il primo progetto")}</Button>
           <Button tone="neutral" surface="outline" size="lg" className="h-12 rounded-2xl px-6" onClick={() => fileInput.current?.click()}><Upload className="h-4 w-4" /> {tl("Importa un progetto")}</Button>
@@ -173,9 +173,9 @@ export default function MLLabLibrary({ onOpen, onNew, onImported }: { onOpen: (i
             <li key={step.title} className="ui-card flex flex-col gap-3 p-5">
               <div className="flex items-center gap-3">
                 <span className="ds-squircle flex h-11 w-11 shrink-0 items-center justify-center text-white" style={{ background: step.color }}><step.icon className="h-5 w-5" strokeWidth={1.8} /></span>
-                <span className="text-xs font-black uppercase tracking-widest text-slate-400">{tl("Passo")} {index + 1}</span>
+                <span className="text-xs font-semibold text-slate-400">{tl("Passo")} {index + 1}</span>
               </div>
-              <h2 className="text-base font-bold text-slate-900">{step.title}</h2>
+              <h2 className="text-base font-semibold text-slate-900">{step.title}</h2>
               <p className="text-sm leading-relaxed text-slate-500">{step.text}</p>
             </li>
           ))}
@@ -189,7 +189,7 @@ export default function MLLabLibrary({ onOpen, onNew, onImported }: { onOpen: (i
       {importInput}
       <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <SectionHeading section="/teacher/ml-lab" className="text-2xl font-bold text-slate-900" subtitle={<>{tl("I tuoi progetti: aprine uno per continuare ad addestrarlo o per provarlo dal vivo, oppure creane uno nuovo.")}</>} subtitleClassName="mt-1 max-w-2xl text-sm text-slate-500">{tl("Lab ML · Immagini, pose e gesti")}</SectionHeading>
+          <SectionHeading section="/teacher/ml-lab" className="text-2xl font-semibold text-slate-900" subtitle={<>{tl("I tuoi progetti: aprine uno per continuare ad addestrarlo o per provarlo dal vivo, oppure creane uno nuovo.")}</>} subtitleClassName="mt-1 max-w-2xl text-sm text-slate-500">{tl("Lab ML · Immagini, pose e gesti")}</SectionHeading>
         </div>
         <div className="flex items-center gap-2">
           <Button tone="neutral" surface="outline" onClick={() => fileInput.current?.click()}><Upload className="h-4 w-4" /> {tl("Importa")}</Button>
@@ -200,21 +200,21 @@ export default function MLLabLibrary({ onOpen, onNew, onImported }: { onOpen: (i
       <div className="ds-well grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <button type="button" onClick={startNew} className="group flex min-h-[15rem] flex-col items-center justify-center gap-3 rounded-3xl ds-well-tile text-slate-500 transition hover:border-[var(--app-accent,#7c3aed)] hover:text-[var(--app-accent,#7c3aed)] dark:border-white/20">
           <span className="ds-squircle flex h-14 w-14 items-center justify-center bg-slate-100 transition group-hover:bg-[var(--app-accent,#7c3aed)] group-hover:text-white dark:bg-white/10"><Plus className="h-6 w-6" /></span>
-          <span className="text-sm font-bold">{tl("Nuovo progetto")}</span>
+          <span className="text-sm font-semibold">{tl("Nuovo progetto")}</span>
         </button>
         {projects.map((project) => (
           <article key={project.id} onClick={() => onOpen(project.id)} className="ui-card group flex cursor-pointer flex-col gap-3 p-4 transition hover:-translate-y-0.5 hover:shadow-lg">
             <Collage project={project} />
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <h3 className="truncate text-base font-bold text-slate-900" title={project.name}>{project.name}</h3>
-                <p className="mt-0.5 text-xs text-slate-500"><span className="font-bold" style={{ color: MODE_META[modeOfEngine(project.engine)].color }}>{MODE_LABEL[modeOfEngine(project.engine)]}</span> · {project.class_count} {tl("classi ·")} {project.sample_count} {tl("esempi")}</p>
+                <h3 className="truncate text-base font-semibold text-slate-900" title={project.name}>{project.name}</h3>
+                <p className="mt-0.5 text-xs text-slate-500"><span className="font-semibold" style={{ color: MODE_META[modeOfEngine(project.engine)].color }}>{MODE_LABEL[modeOfEngine(project.engine)]}</span> · {project.class_count} {tl("classi ·")} {project.sample_count} {tl("esempi")}</p>
               </div>
               <ProjectMenu project={project} onChanged={refresh} />
             </div>
             <div className="mt-auto flex items-center justify-between gap-2 text-[11px]">
               {project.accuracy !== null
-                ? <span className={`rounded-full px-2.5 py-1 font-bold ${project.accuracy >= 0.85 ? 'bg-emerald-100 text-emerald-700' : project.accuracy >= 0.65 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`} title={tl("Stima su foto non usate per l'addestramento")}>{tl("Affidabilità ~")}{Math.round(project.accuracy * 100)}%</span>
+                ? <span className={`rounded-full px-2.5 py-1 font-semibold ${project.accuracy >= 0.85 ? 'bg-emerald-100 text-emerald-700' : project.accuracy >= 0.65 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`} title={tl("Stima su foto non usate per l'addestramento")}>{tl("Affidabilità ~")}{Math.round(project.accuracy * 100)}%</span>
                 : <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-500 dark:bg-white/10">{tl("Servono più esempi")}</span>}
               <span className="text-slate-400">{tl("Aggiornato")} {relative(project.updated_at)}</span>
             </div>

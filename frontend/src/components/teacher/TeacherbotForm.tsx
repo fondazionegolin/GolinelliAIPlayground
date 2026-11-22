@@ -55,6 +55,7 @@ interface FormData {
   enable_inquiry: boolean
   inquiry_config: InquiryConfig | null
   enable_escape_room: boolean
+  enable_math_editor: boolean
   enable_reporting: boolean
   report_prompt: string
   llm_provider: string
@@ -193,7 +194,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
+          <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
             <Database className="h-4 w-4 text-indigo-600" />
             {tl("Allegati")}
           </h3>
@@ -251,7 +252,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
           </div>
           <div className="mt-3 h-1.5 bg-indigo-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-indigo-600 rounded-full transition-all duration-500"
+              className="h-full bg-indigo-600 rounded-full transition duration-500"
               style={{ width: `${Math.min(100, (embedStep / EMBED_STEPS.length) * 100)}%` }}
             />
           </div>
@@ -267,15 +268,15 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
           </div>
           <div className="grid grid-cols-3 gap-3 text-center">
             <div className="bg-white rounded-xl p-3 border border-emerald-100">
-              <p className="text-2xl font-bold text-indigo-600">{embedResult.chunk_count}</p>
+              <p className="text-2xl font-semibold text-indigo-600">{embedResult.chunk_count}</p>
               <p className="text-[11px] text-slate-500 mt-0.5">{tl("blocchi semantici")}</p>
             </div>
             <div className="bg-white rounded-xl p-3 border border-emerald-100">
-              <p className="text-2xl font-bold text-indigo-600">{embedResult.chunk_count}</p>
+              <p className="text-2xl font-semibold text-indigo-600">{embedResult.chunk_count}</p>
               <p className="text-[11px] text-slate-500 mt-0.5">{tl("vettori embedding")}</p>
             </div>
             <div className="bg-white rounded-xl p-3 border border-emerald-100">
-              <p className="text-2xl font-bold text-indigo-600">1536</p>
+              <p className="text-2xl font-semibold text-indigo-600">1536</p>
               <p className="text-[11px] text-slate-500 mt-0.5">dimensioni/vettore</p>
             </div>
           </div>
@@ -364,25 +365,25 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
         {explainerOpen && (
           <div className="px-4 py-3 bg-white space-y-3 text-xs text-slate-600">
             <div className="flex gap-3 items-start">
-              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">1</div>
+              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-semibold flex items-center justify-center shrink-0 text-[11px]">1</div>
               <div>
                 <strong>{tl("Chunking semantico:")}</strong> {tl("il documento viene diviso in blocchi di ~1000 caratteri rispettando le frasi complete. Ogni blocco è un'unità di conoscenza autonoma.")}
               </div>
             </div>
             <div className="flex gap-3 items-start">
-              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">2</div>
+              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-semibold flex items-center justify-center shrink-0 text-[11px]">2</div>
               <div>
                 <strong>{tl("Embedding vettoriale:")}</strong> {tl("ogni blocco viene trasformato in un vettore di 1536 numeri tramite il modello")} <code className="bg-slate-100 px-1 rounded">text-embedding-3-small</code>{tl(". Il vettore codifica il")} <em>significato</em> {tl("del testo, non solo le parole.")}
               </div>
             </div>
             <div className="flex gap-3 items-start">
-              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">3</div>
+              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-semibold flex items-center justify-center shrink-0 text-[11px]">3</div>
               <div>
                 <strong>{tl("Ricerca per coseno:")}</strong> {tl("quando uno studente fa una domanda, anche essa viene trasformata in vettore e vengono trovati i blocchi più simili usando la")} <em>{tl("distanza del coseno")}</em> {tl("tra vettori (pgvector).")}
               </div>
             </div>
             <div className="flex gap-3 items-start">
-              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">4</div>
+              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-semibold flex items-center justify-center shrink-0 text-[11px]">4</div>
               <div>
                 <strong>{tl("Generazione aumentata:")}</strong> {tl("i top-5 blocchi vengono passati all'LLM come contesto. Il modello risponde")} <em>solo</em> {tl("basandosi su queste fonti, riducendo drasticamente le allucinazioni.")}
               </div>
@@ -396,7 +397,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
 
 function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
-    <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
+    <label className="mb-1.5 block text-xs font-semibold text-slate-500">
       {children}
       {required && <span className="ml-1 text-red-500">*</span>}
     </label>
@@ -504,7 +505,7 @@ function TeacherbotLivePreview({ teacherbotId, formData, variant = 'teacherbot' 
           <TeacherbotPreviewIcon iconValue={formData.icon} className="h-4 w-4" />
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold text-slate-950">{formData.name.trim() || (variant === 'studentbot' ? 'Studentbot' : 'Teacherbot')}</div>
+          <div className="truncate text-sm font-semibold text-slate-950">{formData.name.trim() || (variant === 'studentbot' ? 'Studentbot' : 'Teacherbot')}</div>
           <div className="text-[11px] text-slate-500">{tl("Anteprima chat")}</div>
         </div>
       </div>
@@ -621,6 +622,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
     enable_inquiry: false,
     inquiry_config: null,
     enable_escape_room: false,
+    enable_math_editor: false,
     enable_reporting: false,
     report_prompt: '',
     llm_provider: '',
@@ -691,6 +693,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
         enable_inquiry: teacherbot.enable_inquiry || false,
         inquiry_config: teacherbot.inquiry_config ? normalizeInquiryConfig(teacherbot.inquiry_config) : null,
         enable_escape_room: teacherbot.enable_escape_room || false,
+        enable_math_editor: teacherbot.enable_math_editor || false,
         enable_reporting: teacherbot.enable_reporting || false,
         report_prompt: teacherbot.report_prompt || '',
         llm_provider: teacherbot.llm_provider || '',
@@ -748,6 +751,10 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
         setPendingKbFiles([])
       }
       toast({ title: isEditing ? t('teacherbot.updated') : t('teacherbot.created') })
+      // The edit form reads [variant, id]: without this, reopening a saved bot showed the stale cached values (and re-saving them reverted the change).
+      if (savedId) queryClient.setQueryData([variant, savedId], res?.data)
+      queryClient.invalidateQueries({ queryKey: [variant, savedId] })
+      queryClient.invalidateQueries({ queryKey: ['teacherbot-preview'] })
       queryClient.invalidateQueries({ queryKey: ['teacherbots'] })
       queryClient.invalidateQueries({ queryKey: ['studentbots'] })
       queryClient.invalidateQueries({ queryKey: ['student-teacherbots'] })
@@ -781,6 +788,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
     // Persist only a coherent combination of flags (older bots may carry leftovers from another mode).
     const payload: FormData = { ...formData }
     if (!isStudentbot && mode === 'escape_room') { payload.enable_live_voice = false; payload.is_proactive = false }
+    if (mode !== 'chat') payload.enable_math_editor = false
     if (!isStudentbot && mode === 'inquiry') {
       payload.enable_live_voice = true
       payload.is_proactive = false
@@ -850,7 +858,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
           {t('common.back')}
         </Button>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-xl font-bold tracking-tight text-slate-950">
+          <h2 className="truncate text-xl font-semibold tracking-tight text-slate-950">
             {isStudentbot
               ? (isEditing ? tl("Modifica Studentbot") : tl("Nuovo Studentbot"))
               : (isEditing ? t('teacherbot.edit_teacherbot') : t('teacherbot.new_teacherbot'))}
@@ -913,7 +921,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                 onClick={() => setActiveTab(tab.key)}
                 className={[
                   'ui-control-label group flex min-h-[2.75rem] items-center justify-center gap-2 whitespace-nowrap px-4 text-sm font-semibold rounded-[var(--selection-radius)]',
-                  'border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)]',
+                  'border transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)]',
                   isTabActive
                     ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
                     : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]',
@@ -933,7 +941,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
             <div className="space-y-4">
               {activeTab === 'info' && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                <h3 className="mb-4 text-base font-bold text-slate-950">{t('teacherbot.basic_info')}</h3>
+                <h3 className="mb-4 text-base font-semibold text-slate-950">{t('teacherbot.basic_info')}</h3>
 
                 <div>
                   <FieldLabel required>{tl("Nome")}</FieldLabel>
@@ -974,7 +982,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
 
               {activeTab === 'style' && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                <h3 className="mb-4 text-base font-bold text-slate-950">{tl("Stile")}</h3>
+                <h3 className="mb-4 text-base font-semibold text-slate-950">{tl("Stile")}</h3>
 
                 <div>
                   <FieldLabel>{t('teacherbot.color_label')}</FieldLabel>
@@ -1015,7 +1023,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
 
               {activeTab === 'options' && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                <h3 className="text-base font-bold text-slate-950">{t('teacherbot.options_section')}</h3>
+                <h3 className="text-base font-semibold text-slate-950">{t('teacherbot.options_section')}</h3>
                 <p className="mb-3 mt-1 text-sm leading-5 text-slate-500">{t('teacherbot.options_hint')}</p>
 
                 {!isStudentbot && (
@@ -1034,7 +1042,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                           aria-pressed={active}
                           className={`rounded-xl border p-3 text-left transition ${active ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'}`}
                         >
-                          <span className="flex items-center gap-2 text-sm font-bold"><Icon className="h-4 w-4" />{title}</span>
+                          <span className="flex items-center gap-2 text-sm font-semibold"><Icon className="h-4 w-4" />{title}</span>
                           <span className={`mt-1 block text-xs leading-4 ${active ? 'text-slate-300' : 'text-slate-500'}`}>{desc}</span>
                         </button>
                       )
@@ -1074,7 +1082,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
 
                 {mode === 'escape_room' && (
                   <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-900">
-                    <p className="font-bold">{tl("Come configurarla nel system prompt")}</p>
+                    <p className="font-semibold">{tl("Come configurarla nel system prompt")}</p>
                     <p className="mt-1">{tl("Indica il contesto didattico, il livello degli studenti e una frase come “Numero di indizi: 5” (default 5, massimo 10). Il sistema creerà fatti plausibili con un solo dato falsificato per tappa.")}</p>
                     <p className="mt-2 text-emerald-800/80">{tl("Messaggio iniziale e voce live non sono disponibili: l'escape room sostituisce la chat libera.")}</p>
                   </div>
@@ -1082,10 +1090,17 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
 
                 {mode === 'inquiry' && (
                   <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs leading-5 text-indigo-900">
-                    <p className="font-bold">{tl("Interrogatorio investigativo")}</p>
+                    <p className="font-semibold">{tl("Interrogatorio investigativo")}</p>
                     <p className="mt-1">{tl("Personaggi, indizi, verità e domanda finale si configurano nella scheda")} <b>{tl("Caso investigativo")}</b>{tl(". La voce live è attiva automaticamente; system prompt, allegati e messaggio iniziale non servono. Le interviste svolte e le trascrizioni si consultano da quella scheda dopo il salvataggio.")}</p>
                   </div>
                 )}
+
+                {mode === 'chat' && <ToggleRow
+                  title={tl("Editor di formule per gli studenti")}
+                  description={tl("Aggiunge un simbolo Σ tra gli strumenti della chat: gli studenti compongono formule matematiche complesse (frazioni, sommatorie, integrali, matrici) e le inseriscono nel messaggio.")}
+                  checked={formData.enable_math_editor}
+                  onChange={() => setFormData({ ...formData, enable_math_editor: !formData.enable_math_editor })}
+                />}
 
                 {!isStudentbot && mode !== 'inquiry' && <ToggleRow
                   title={t('teacherbot.reporting')}
@@ -1111,7 +1126,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
 
               {activeTab === 'inquiry' && mode === 'inquiry' && formData.inquiry_config && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                <h3 className="mb-3 text-base font-bold text-slate-950">{tl("Caso investigativo")}</h3>
+                <h3 className="mb-3 text-base font-semibold text-slate-950">{tl("Caso investigativo")}</h3>
                 <InquiryConfigEditor
                   value={formData.inquiry_config}
                   onChange={(next) => setFormData({ ...formData, inquiry_config: next })}
@@ -1124,7 +1139,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
               <section className="relative flex min-h-[420px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
                 <div className="mb-3 flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="text-base font-bold text-slate-950">
+                    <h3 className="text-base font-semibold text-slate-950">
                       System Prompt <span className="text-red-500">*</span>
                     </h3>
                     <p className="mt-1 text-sm leading-5 text-slate-500">

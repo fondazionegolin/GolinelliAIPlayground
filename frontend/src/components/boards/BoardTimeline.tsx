@@ -71,7 +71,7 @@ export default function BoardTimeline({ sprints, sprintCode, cards, columns, can
         <CalendarRange className="h-8 w-8 text-slate-300" />
         {tl("Nessun task da mostrare sulla timeline.")}
         {canManage && (
-          <button type="button" onClick={onManageSprints} className="inline-flex h-9 items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 text-xs font-bold text-slate-600 hover:border-slate-400">
+          <button type="button" onClick={onManageSprints} className="inline-flex h-9 items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 text-xs font-semibold text-slate-600 hover:border-slate-400">
             <Plus className="h-4 w-4" /> {tl("Crea sprint")}
           </button>
         )}
@@ -93,13 +93,13 @@ export default function BoardTimeline({ sprints, sprintCode, cards, columns, can
               </div>
               <div className="px-1 pb-2 pt-1">
                 <div className="flex items-center gap-2">
-                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ${lane.status === 'current' ? 'bg-violet-600 text-white' : 'bg-slate-800 text-white'}`}>{lane.code}</span>
-                  <span className="text-xs font-bold text-slate-500">{lane.dates}</span>
-                  {lane.status === 'current' && <span className="text-[10px] font-bold text-violet-600">{tl("in corso")}</span>}
+                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${lane.status === 'current' ? 'bg-violet-600 text-white' : 'bg-slate-800 text-white'}`}>{lane.code}</span>
+                  <span className="text-xs font-semibold text-slate-500">{lane.dates}</span>
+                  {lane.status === 'current' && <span className="text-[10px] font-semibold text-violet-600">{tl("in corso")}</span>}
                 </div>
-                <h3 className="mt-1 truncate text-sm font-black text-slate-900" title={lane.title}>{lane.title}</h3>
+                <h3 className="mt-1 truncate text-sm font-semibold text-slate-900" title={lane.title}>{lane.title}</h3>
                 {lane.goal && <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-slate-500">{lane.goal}</p>}
-                <div className="mt-2 flex items-center gap-2 text-[10px] font-bold text-slate-400">
+                <div className="mt-2 flex items-center gap-2 text-[10px] font-semibold text-slate-400">
                   <span>{lane.cards.length} task{points ? ` · ${points} pt` : ''}</span>
                   <span className="h-1 flex-1 overflow-hidden rounded-full bg-slate-100">
                     <span className="block h-full rounded-full bg-emerald-500" style={{ width: `${lane.cards.length ? (done / lane.cards.length) * 100 : 0}%` }} />
@@ -121,7 +121,7 @@ export default function BoardTimeline({ sprints, sprintCode, cards, columns, can
                         title={`${card.title}${column ? ` — ${column.label}` : ''}`}
                       >
                         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: column?.color || '#d4d4d4' }} />
-                        <span className={`min-w-0 flex-1 truncate text-xs ${isDone ? 'text-slate-400 line-through' : 'font-bold text-slate-700'}`}>{card.title}</span>
+                        <span className={`min-w-0 flex-1 truncate text-xs ${isDone ? 'text-slate-400 line-through' : 'font-semibold text-slate-700'}`}>{card.title}</span>
                         {card.story_points ? <span className="shrink-0 text-[10px] text-slate-400">{card.story_points}</span> : null}
                       </button>
                     </li>

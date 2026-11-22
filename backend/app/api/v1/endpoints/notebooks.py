@@ -156,8 +156,10 @@ Modalità WEBGL (grafica 3D) — usa createCanvas(w, h, WEBGL):
 Librerie esterne disponibili SOLO se lo studente le attiva dal pannello "Librerie" del notebook (checkbox);
 il tutor non può iniettare <script> arbitrari, ma può indicare quali abilitare tramite il campo required_libraries.
 ID validi e globali che espongono una volta attivate:
-- "ml5" -> variabile globale ml5 (ml5.handPose, ml5.bodyPose, ml5.objectDetector, ml5.bodySegmentation,
-  ml5.imageClassifier; tutte con API v1: costruttore + callback ready, poi .detectStart(video, cb))
+- "ml5" -> variabile globale ml5 v1 (1.4): ml5.handPose, ml5.bodyPose, ml5.faceMesh, ml5.bodySegmentation,
+  ml5.imageClassifier (classifyStart), ml5.soundClassifier, ml5.neuralNetwork. API v1: costruttore (in preload oppure
+  con callback ready), poi .detectStart(video, cb). ml5.objectDetector NON esiste in questa versione: per riconoscere
+  oggetti usa imageClassifier (etichetta dell'intera inquadratura) e spiegalo allo studente.
 - "matterjs" -> variabile globale Matter (motore fisico 2D: Matter.Engine, Matter.Bodies, Matter.Composite,
   Matter.Mouse, Matter.MouseConstraint, Matter.Constraint, Matter.Body)
 - "tonejs" -> variabile globale Tone (sintesi/sequencer audio: Tone.Synth, Tone.MembraneSynth, Tone.Sequence,
@@ -180,7 +182,58 @@ proposta: verrà attivata automaticamente per lo studente insieme al codice. Non
 se lo studente chiede una libreria non in questo elenco, spiegalo nella risposta invece di inventare un id.
 
 Vincolo sintassi: il controllo di sintassi interno non supporta optional chaining (?.) né nullish coalescing (??).
-Evita questi due operatori: usa if/else, || oppure controlli espliciti (es. typeof x !== 'undefined')."""
+Evita questi due operatori: usa if/else, || oppure controlli espliciti (es. typeof x !== 'undefined').
+
+WEBCAM, TRACKING E SCHERMO INTERO — regole VINCOLANTI (sono la prima causa di sketch rotti):
+L'anteprima può passare a schermo intero in qualsiasi momento: l'iframe cambia dimensione (spesso da 4:3 a 16:9,
+molto più grande) e lo sketch riparte. Il codice deve funzionare a QUALSIASI dimensione e proporzione.
+Il runtime della piattaforma espone GolinelliCam, che usa UN SOLO layout per il video e per i punti e lo ricalcola
+a ogni chiamata dalla dimensione attuale del canvas e del video reale:
+- GolinelliCam.draw(video, {mode:'cover'|'contain'|'stretch', mirror:true}) disegna il video (p5 capture o elemento
+  <video>) e restituisce il layout {x, y, w, h, scale, mirror}. Default: mode 'cover' (riempie senza deformare),
+  mirror true (effetto specchio, naturale per la webcam frontale).
+- GolinelliCam.point(landmark, video, opts) -> {x, y, z} in pixel del canvas, per punti NORMALIZZATI 0..1 (MediaPipe
+  Hands/FaceMesh: results.multiHandLandmarks[i][j], results.multiFaceLandmarks[i][j]).
+- GolinelliCam.videoPoint(keypoint, video, opts) -> {x, y} in pixel del canvas, per punti in PIXEL DEL VIDEO
+  (ml5 v1: hands[i].keypoints[j], poses[i].keypoints[j], box di objectDetector).
+- GolinelliCam.ready(video) -> true quando il video ha un fotogramma valido (usalo prima di hands.send/faceMesh.send).
+- GolinelliCam.unit(video) -> fattore di scala per raggi/spessori (es. circle(p.x, p.y, 12 * GolinelliCam.unit(video))).
+- GolinelliCam.toNormalized(mouseX, mouseY, video) -> punto normalizzato, per confrontare il mouse con i landmark.
+Regole:
+1. Canvas a tutta finestra: createCanvas(windowWidth, windowHeight) e function windowResized() { resizeCanvas(windowWidth,
+   windowHeight); }. Non salvare in setup() valori derivati da width/height (scale, offset, griglie): ricalcolali in
+   draw() o in windowResized().
+2. Webcam p5: video = createCapture(VIDEO); video.size(640, 480); video.hide(); NON chiamare mai video.size(width, height)
+   o video.size(windowWidth, ...): cambierebbe lo spazio delle coordinate di ml5.
+3. Disegna SEMPRE il video con GolinelliCam.draw(video) e converti SEMPRE ogni punto con GolinelliCam.point (MediaPipe)
+   o GolinelliCam.videoPoint (ml5), passando le stesse opzioni (mode/mirror) usate in draw. Mai p.x * width, mai
+   width - p.x * width, mai image(video, 0, 0, width, height) con punti calcolati a parte: è ciò che disallinea.
+4. Non usare l'opzione flipped di ml5 né createCapture(VIDEO, {flipped:true}): lo specchio lo gestisce GolinelliCam
+   (mirror:true di default). Se il disegno NON deve essere speculare passa {mirror:false} sia a draw che ai punti.
+5. MediaPipe raw (librerie "mediapipe-hands"/"mediapipe-face"): crea un <video> con la Camera di MediaPipe oppure usa
+   video.elt di una createCapture; invia i frame solo se GolinelliCam.ready(video); salva in una variabile l'ultimo
+   results e disegnalo in draw() (non disegnare dentro onResults). locateFile:
+   (f) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + f (o /face_mesh/ per FaceMesh).
+6. Gestisci l'assenza di mani/visi: controlla sempre che l'array esista e non sia vuoto prima di leggere [0].
+Esempio minimo ml5 handPose corretto:
+let video, handPose, hands = [];
+function preload() { handPose = ml5.handPose(); }
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  video = createCapture(VIDEO); video.size(640, 480); video.hide();
+  handPose.detectStart(video, (results) => { hands = results; });
+}
+function draw() {
+  background(0);
+  GolinelliCam.draw(video);
+  for (const hand of hands) {
+    for (const kp of hand.keypoints) {
+      const p = GolinelliCam.videoPoint(kp, video);
+      circle(p.x, p.y, 10 * GolinelliCam.unit(video));
+    }
+  }
+}
+function windowResized() { resizeCanvas(windowWidth, windowHeight); }"""
 
 
 def _strip_code_fences(code: str) -> str:
@@ -584,7 +637,7 @@ def _build_hunks(old: str, new: str, context: int = 2, max_hunks: int = 40) -> l
 
 async def _notebook_codegen_edits(
     project_type: str, active_source: str, last_output: str, user_prompt: str,
-    provider: str, model: str, previous_failures: str = "",
+    provider: str, model: str, previous_failures: str = "", context_note: str = "",
 ) -> tuple[str, str, list[dict], list, Optional[str]]:
     """Generazione a MODIFICHE PUNTUALI: invece di riemettere il file intero (lento: migliaia di token
     in output) il modello restituisce solo blocchi {search, replace}. Ritorna
@@ -592,9 +645,17 @@ async def _notebook_codegen_edits(
     solo se il file è vuoto o il modello ha dichiarato una riscrittura completa."""
     lang_label = "p5.js (JavaScript, gira in un browser)" if project_type == "p5js" else "Python"
     code_fence = "javascript" if project_type == "p5js" else "python"
-    system_prompt = f"""Sei un assistente di coding agentico per un singolo file {lang_label} in un notebook didattico.
-Lavori per MODIFICHE PUNTUALI (come un diff): NON riscrivere il file, restituisci solo i blocchi che cambiano.
-Se ci sono errori console riportati, la tua priorità assoluta è risolverli.
+    system_prompt = f"""Sei un ingegnere senior e creative coder esperto di {lang_label}, al lavoro come agente su un singolo
+file di un notebook didattico. Lavori per MODIFICHE PUNTUALI (come un diff): NON riscrivere il file, restituisci solo
+i blocchi che cambiano.
+Metodo (seguilo nel ragionamento prima di scrivere gli edit):
+1. Capisci l'obiettivo dello studente e lo stato del file; se ci sono errori console o di esecuzione, trova la CAUSA
+   (non il sintomo) e risolvila: è la tua priorità assoluta.
+2. Pianifica la modifica MINIMA ma COMPLETA: tutto ciò che serve perché funzioni davvero (variabili, funzioni di
+   supporto, librerie in required_libraries), niente di estraneo alla richiesta, niente TODO o codice a metà.
+3. Simula l'esecuzione prima di consegnare: setup(), il primo draw() quando i dati asincroni (modelli, webcam,
+   risultati) non sono ancora pronti, gli eventi, e il ridimensionamento della finestra / schermo intero.
+4. Mantieni lo stile e i nomi esistenti; aggiungi brevi commenti in italiano solo dove aiutano a capire.
 Restituisci SOLO l'oggetto JSON, NIENTE testo prima o dopo: il PRIMO carattere è {{ e l'ULTIMO è }}.
 
 Formato JSON richiesto:
@@ -629,8 +690,9 @@ Regole sugli edit:
         "role": "user",
         "content": (
             f"Richiesta dello studente: {user_prompt}\n\n"
-            f"Errori o output console riportati:\n{last_output[:1200] or '(nessuno)'}\n{failure_note}\n"
-            f"File corrente:\n```{code_fence}\n{active_source[:80000]}\n```"
+            f"Errori o output console riportati:\n{last_output[:2400] or '(nessuno)'}\n{failure_note}\n"
+            + (f"{context_note}\n\n" if context_note else "")
+            + f"File corrente:\n```{code_fence}\n{active_source[:80000]}\n```"
         ),
     }]
     last_error: Exception | None = None
@@ -661,6 +723,92 @@ Regole sugli edit:
     raise RuntimeError(f"Codegen non ha restituito JSON valido dopo 2 tentativi: {last_error}")
 
 
+_P5_LIBRARY_GLOBALS = {
+    "ml5": re.compile(r"\bml5\."),
+    "mediapipe-hands": re.compile(r"\bnew\s+Hands\s*\("),
+    "mediapipe-face": re.compile(r"\bnew\s+FaceMesh\s*\(|\bFACEMESH_"),
+    "matterjs": re.compile(r"\bMatter\."),
+    "tonejs": re.compile(r"\bTone\."),
+    "p5sound": re.compile(r"\bp5\.(FFT|AudioIn|SoundFile|Amplitude|Oscillator)\b|\bloadSound\s*\("),
+}
+_P5_USES_CAMERA = re.compile(r"createCapture\s*\(|\bnew\s+Camera\s*\(|getUserMedia|GolinelliML")
+
+
+def _p5_uses_camera(code: str) -> bool:
+    return bool(_P5_USES_CAMERA.search(code or ""))
+
+
+def _p5_static_findings(code: str, libraries: list[str]) -> list[str]:
+    """Controlli automatici deterministici sul file p5.js: problemi che il parser non vede ma che
+    rompono lo sketch a runtime o lo disallineano a schermo intero. Passati ai revisori come fatti."""
+    findings: list[str] = []
+    if not code.strip():
+        return findings
+    active = set(libraries or [])
+    for lib_id, pattern in _P5_LIBRARY_GLOBALS.items():
+        if pattern.search(code) and lib_id not in active:
+            findings.append(
+                f"Il codice usa la libreria «{lib_id}» ma non è attiva né in required_libraries: aggiungila a "
+                "required_libraries, altrimenti la variabile globale non esiste (ReferenceError)."
+            )
+    if not re.search(r"\bfunction\s+(setup|draw)\s*\(|\b(setup|draw)\s*=\s*(async\s*)?(function|\()", code):
+        findings.append("Non trovo setup() né draw(): in p5 instance globale lo sketch non partirebbe.")
+    full_window = re.search(r"createCanvas\s*\(\s*windowWidth\s*,\s*windowHeight", code)
+    if full_window and not re.search(r"\bfunction\s+windowResized\s*\(", code):
+        findings.append(
+            "Canvas a tutta finestra senza windowResized(): aggiungi function windowResized() { resizeCanvas(windowWidth, "
+            "windowHeight); } così lo sketch segue lo schermo intero."
+        )
+    if _p5_uses_camera(code):
+        if re.search(r"\.size\s*\(\s*(width|windowWidth)\b", code):
+            findings.append(
+                "video.size(width/windowWidth, …) ridimensiona la webcam sul canvas: lo spazio delle coordinate di ml5 "
+                "cambia a ogni resize. Usa video.size(640, 480) fisso e GolinelliCam per disegnare e mappare."
+            )
+        manual_mapping = re.search(r"width\s*-\s*[\w\[\]\.]+\.x\b|\.x\s*\*\s*width\b|\.y\s*\*\s*height\b", code)
+        if manual_mapping:
+            findings.append(
+                "Coordinate di tracking convertite a mano (p.x * width, width - p.x…): a schermo intero il video e i punti "
+                "si disallineano. Disegna il video con GolinelliCam.draw(video) e converti OGNI punto con "
+                "GolinelliCam.point (MediaPipe, 0..1) o GolinelliCam.videoPoint (ml5, pixel del video)."
+            )
+        if re.search(r"image\s*\(\s*video\s*,", code) and "GolinelliCam.draw" not in code:
+            findings.append(
+                "Il video è disegnato con image(video, …) e non con GolinelliCam.draw: proporzioni e specchio dei punti "
+                "non coincidono con quelli del video quando la finestra cambia."
+            )
+        if re.search(r"flipped\s*:\s*true", code) and "GolinelliCam" in code:
+            findings.append(
+                "flipped:true insieme a GolinelliCam specchia due volte: togli flipped e lascia lo specchio a GolinelliCam."
+            )
+        if re.search(r"\.send\s*\(\s*\{\s*image", code) and "GolinelliCam.ready" not in code and "readyState" not in code:
+            findings.append(
+                "hands/faceMesh.send({image}) senza controllare che il video abbia un frame: proteggi l'invio con "
+                "if (GolinelliCam.ready(video))."
+            )
+        if re.search(r"(multiHandLandmarks|multiFaceLandmarks|hands|poses|faces)\s*\[\s*0\s*\]", code) and not re.search(
+            r"(length\s*(>|===|!==|==)\s*0|\.length\s*\)|length\s*>=\s*1)", code
+        ):
+            findings.append("Si legge [0] di mani/visi/pose senza controllare che l'array non sia vuoto (crash quando non c'è nessuno).")
+    return findings[:8]
+
+
+def _format_hunks_for_review(hunks: list[dict], limit_rows: int = 260) -> str:
+    """Diff leggibile (stile unified) per i revisori: rivedono la MODIFICA, non solo il file."""
+    out: list[str] = []
+    rows_left = limit_rows
+    for hunk in hunks:
+        out.append(f"@@ riga {hunk['old_start']}-{hunk['old_end']} -> {hunk['new_start']}-{hunk['new_end']} @@")
+        for row in hunk["rows"]:
+            if rows_left <= 0:
+                out.append("… (diff troncato)")
+                return "\n".join(out)
+            prefix = "+" if row["op"] == "add" else "-" if row["op"] == "del" else " "
+            out.append(prefix + row["text"])
+            rows_left -= 1
+    return "\n".join(out)
+
+
 REVIEW_FOCUS = {
     "bugs": (
         "ERRORI: cerca solo bug che farebbero fallire il codice a runtime o in sintassi: variabili/funzioni non "
@@ -671,22 +819,33 @@ REVIEW_FOCUS = {
         "RICHIESTA: verifica che il codice soddisfi DAVVERO la richiesta dello studente, punto per punto: parti "
         "mancanti, comportamenti a metà, effetti non collegati agli eventi giusti."
     ),
+    "camera": (
+        "WEBCAM E SCHERMO INTERO: verifica che lo sketch funzioni a qualsiasi dimensione e proporzione della finestra. "
+        "Il video deve essere disegnato con GolinelliCam.draw e OGNI punto (landmark MediaPipe, keypoint ml5, box) "
+        "convertito con GolinelliCam.point/videoPoint con le stesse opzioni mode/mirror; canvas createCanvas(windowWidth, "
+        "windowHeight) con windowResized(); webcam a dimensione fissa (video.size(640, 480)); invii a MediaPipe protetti "
+        "da GolinelliCam.ready(video); array di risultati vuoti gestiti; niente valori derivati da width/height salvati "
+        "in setup(). Correggi ogni violazione."
+    ),
 }
 
 
 async def _notebook_review_edits(
     project_type: str, content: str, user_prompt: str, last_output: str, focus: str,
-    provider: str, model: str, syntax_error: str = "",
+    provider: str, model: str, syntax_error: str = "", diff_text: str = "", findings: list[str] | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Revisore specializzato: legge il file DOPO la modifica e, se trova un problema concreto, risponde con
     soli edit puntuali (non riemette il file). Più revisori con focus diversi girano IN PARALLELO.
     Non solleva mai eccezioni."""
     lang_label = "p5.js (JavaScript)" if project_type == "p5js" else "Python"
     system_prompt = (
-        f"Sei un revisore di codice {lang_label}. Ricevi un file dopo una modifica e la richiesta dello studente.\n"
+        f"Sei un revisore senior di codice {lang_label}: esperto, scettico e preciso. Ricevi il DIFF appena prodotto, "
+        "il file risultante e la richiesta dello studente. Esegui mentalmente il codice (setup, primo draw, eventi, "
+        "ridimensionamento della finestra) e cerca ciò che fallirebbe davvero.\n"
         f"Il tuo UNICO focus: {REVIEW_FOCUS.get(focus, REVIEW_FOCUS['bugs'])}\n"
+        "I 'controlli automatici' sono fatti rilevati da un analizzatore: se sono pertinenti al tuo focus correggili. "
         "Se trovi un problema concreto, correggilo con edit puntuali; altrimenti non modificare nulla. "
-        "Ignora stile e rifiniture.\n"
+        "Non riscrivere parti estranee alla richiesta, ignora stile e rifiniture.\n"
         "Rispondi SOLO con JSON valido, senza markdown:\n"
         '{"edits": [{"search": "frammento ESATTO e unico del file", "replace": "frammento corretto"}], '
         '"issues_found": ["problema risolto, in una frase", ...]}\n'
@@ -696,12 +855,14 @@ async def _notebook_review_edits(
         f"Richiesta dello studente: {user_prompt}\n\n"
         f"Errori console riportati PRIMA della modifica:\n{last_output[:800] or '(nessuno)'}\n\n"
         + (f"Errore di sintassi rilevato dal parser nel file attuale:\n{syntax_error}\n\n" if syntax_error else "")
-        + f"File da rivedere:\n```\n{content[:40000]}\n```"
+        + (f"Controlli automatici sul file:\n" + "\n".join(f"- {f}" for f in findings) + "\n\n" if findings else "")
+        + (f"Diff appena applicato (righe + aggiunte, - rimosse):\n```diff\n{diff_text}\n```\n\n" if diff_text else "")
+        + f"File risultante da rivedere:\n```\n{content[:40000]}\n```"
     )
     try:
         raw = await _generate_text_accumulated(
             [{"role": "user", "content": user_msg}], system_prompt, provider, model,
-            temperature=0.1, max_tokens=4000,
+            temperature=0.1, max_tokens=6000,
         )
         parsed = _extract_json_object(raw)
         edits = [
@@ -766,6 +927,8 @@ async def _run_agent_pipeline_stream(
     project_type: str, active_source: str, last_output: str, user_prompt: str, is_student: bool,
     override: tuple[str, str] | None = None,
     reference_image: str | None = None,
+    diff_base: str | None = None,
+    active_libraries: list[str] | None = None,
 ):
     """Versione streaming della pipeline: invece di restituire tutto alla fine, EMETTE ogni
     bolla di agente non appena lo stadio finisce, poi un frame finale con le proposte. È il
@@ -774,7 +937,22 @@ async def _run_agent_pipeline_stream(
     tiene viva la connessione. In più lo studente vede i widget degli agenti comparire dal vivo.
 
     Yield di tuple: ("stage", messaggio_bolla) ripetuto, poi ("final", (proposals, summary)).
+
+    `diff_base`: modalità RIPARAZIONE. `active_source` è la proposta precedente che, eseguita nel browser, ha dato
+    errori (in `last_output`); la nuova proposta viene comunque presentata come diff rispetto a `diff_base`, il
+    codice reale dello studente. `active_libraries`: librerie p5 già attive nel notebook.
     """
+    base_source = diff_base if diff_base is not None else active_source
+    repairing = diff_base is not None
+    libraries = [lib for lib in (active_libraries or []) if isinstance(lib, str)]
+    context_note = ""
+    if project_type == "p5js":
+        existing = _p5_static_findings(active_source, libraries)
+        context_note = (
+            f"Librerie p5 attive nel notebook: {', '.join(libraries) if libraries else '(nessuna)'}."
+            + ("\nProblemi rilevati automaticamente nel file attuale (correggili se riguardano la richiesta o gli errori):\n"
+               + "\n".join(f"- {f}" for f in existing) if existing else "")
+        )
     # Tutor p5js/python su DeepSeek per tutti (docenti e studenti). "deepseek-pro" è la
     # variante DeepSeek migliore per il codice; il resolver la mappa su provider/model reali.
     provider, model = override or _resolve_coding_model("deepseek-pro", is_student=is_student)
@@ -824,7 +1002,7 @@ async def _run_agent_pipeline_stream(
     for attempt in range(2):
         reasoning, summary, edits, required_libraries, full_content = await _notebook_codegen_edits(
             project_type, active_source, last_output, user_prompt, provider, model,
-            previous_failures="; ".join(edit_failures)[:600],
+            previous_failures="; ".join(edit_failures)[:600], context_note=context_note,
         )
         if full_content is not None and (not active_source.strip() or not edits):
             new_source = full_content
@@ -855,7 +1033,7 @@ async def _run_agent_pipeline_stream(
             "metadata": {"kind": "agent_reasoning"},
         })
 
-    if new_source.strip() == active_source.strip():
+    if new_source.strip() == active_source.strip() and not repairing:
         final_summary = summary or "Il codice soddisfa già la richiesta."
         if edit_failures:
             final_summary = "Non sono riuscito ad applicare la modifica in modo puntuale. Riprova indicando più nel dettaglio dove intervenire."
@@ -867,7 +1045,7 @@ async def _run_agent_pipeline_stream(
         yield ("final", ([], final_summary))
         return
 
-    hunks_after_edit = _build_hunks(active_source, new_source)
+    hunks_after_edit = _build_hunks(base_source, new_source)
     yield ("stage", {
         "role": "assistant", "agent_name": "File Writer",
         "content": (summary or "Cella aggiornata.").strip(),
@@ -879,14 +1057,27 @@ async def _run_agent_pipeline_stream(
     # Revisori in PARALLELO (errori | requisiti): ognuno risponde con soli edit puntuali, quindi sono
     # chiamate brevi; il tempo totale è quello del più lento, non la somma.
     ok, err = _check_syntax(new_source, project_type)
+    focuses = ["bugs", "requirements"]
+    findings: list[str] = []
+    if project_type == "p5js":
+        findings = _p5_static_findings(new_source, libraries + list(required_libraries or []))
+        if _p5_uses_camera(new_source):
+            focuses.append("camera")
+    diff_text = _format_hunks_for_review(hunks_after_edit)
     yield ("active", {
         "agent_name": "Reviewer",
-        "label": "Due revisori in parallelo: uno cerca errori, l'altro verifica che la richiesta sia soddisfatta…",
+        "label": (
+            "Tre revisori in parallelo sul diff: errori, richiesta, webcam e schermo intero…" if len(focuses) == 3
+            else "Due revisori in parallelo sul diff: uno cerca errori, l'altro verifica che la richiesta sia soddisfatta…"
+        ),
     })
-    review_results = await asyncio.gather(
-        _notebook_review_edits(project_type, new_source, user_prompt, last_output, "bugs", provider, model, "" if ok else err),
-        _notebook_review_edits(project_type, new_source, user_prompt, last_output, "requirements", provider, model, "" if ok else err),
-    )
+    review_results = await asyncio.gather(*[
+        _notebook_review_edits(
+            project_type, new_source, user_prompt, last_output, focus, provider, model,
+            "" if ok else err, diff_text=diff_text, findings=findings,
+        )
+        for focus in focuses
+    ])
     issues: list[str] = []
     for review_edits, review_issues in review_results:
         issues.extend(review_issues)
@@ -937,8 +1128,11 @@ async def _run_agent_pipeline_stream(
         "metadata": {"kind": "codegen_result"},
     })
 
-    active_line_count = len(active_source.splitlines()) or 1
-    hunks = _build_hunks(active_source, new_source)
+    if new_source.strip() == base_source.strip():
+        yield ("final", ([], "Nessuna modifica necessaria."))
+        return
+    active_line_count = len(base_source.splitlines()) or 1
+    hunks = _build_hunks(base_source, new_source)
     proposal = {
         "id": "p-0",
         "line_start": 1,
@@ -2448,6 +2642,38 @@ async def notebook_assist_stream(
     project_type = nb.project_type or "python"
     reference_image = _clean_reference_image(request.get("image"))
     history_prompt = f"{user_prompt}\n\n📎 [Immagine di riferimento allegata]" if reference_image else user_prompt
+    active_libraries = [
+        lib for lib in ((nb.editor_settings or {}).get("libraries") or []) if isinstance(lib, str)
+    ]
+    # Riparazione dopo la verifica nel browser: la proposta precedente (candidate_source), eseguita in un'anteprima
+    # nascosta, ha prodotto errori. L'agente corregge la SUA proposta; il diff resta rispetto al codice dello studente.
+    candidate_source = request.get("candidate_source")
+    repair_errors = str(request.get("runtime_errors") or "").strip()[:4000]
+    repairing = project_type == "p5js" and isinstance(candidate_source, str) and bool(candidate_source.strip()) and bool(repair_errors)
+    diff_base: str | None = None
+    repair_stage: dict | None = None
+    if repairing:
+        diff_base = active_source
+        active_source = candidate_source
+        reference_image = None
+        active_libraries = list(dict.fromkeys(active_libraries + [
+            lib for lib in (request.get("candidate_libraries") or []) if isinstance(lib, str) and lib in P5JS_LIBRARY_IDS
+        ]))
+        round_no = int(request.get("repair_round") or 1)
+        last_output = (
+            "ERRORI DI ESECUZIONE della tua proposta precedente, emersi eseguendola davvero nel browser (anteprima "
+            "con webcam simulata, prima in una finestra 640x480 poi ridimensionata a 1280x720 come lo schermo intero):\n"
+            f"{repair_errors}"
+        )
+        user_prompt = (
+            f"{user_prompt}\n\nVERIFICA FALLITA (giro di correzione {round_no}): il file qui sotto è la TUA proposta. "
+            "Correggi la causa di ogni errore di esecuzione elencato senza perdere ciò che la richiesta originale chiede."
+        )
+        repair_stage = {
+            "role": "assistant", "agent_name": "Verifica",
+            "content": f"Eseguendo la proposta sono emersi errori (giro {round_no}): li passo all'agente.\n{repair_errors[:1200]}",
+            "metadata": {"kind": "agent_feedback"},
+        }
     ml_context = await _ml_models_context(db, nb)
     if ml_context:
         user_prompt = f"{user_prompt}\n\n{ml_context}"
@@ -2474,9 +2700,14 @@ async def notebook_assist_stream(
 
         async def run_pipeline():
             try:
+                if repair_stage:
+                    staged.append(repair_stage)
+                    await queue.put({"type": "stage", "message": repair_stage})
                 async for kind, payload in _run_agent_pipeline_stream(
                     project_type, active_source, last_output, user_prompt, is_student, override,
                     reference_image=reference_image,
+                    diff_base=diff_base,
+                    active_libraries=active_libraries,
                 ):
                     if kind == "stage":
                         staged.append(payload)
@@ -2500,7 +2731,8 @@ async def notebook_assist_stream(
                 try:
                     updated_history = _sanitize_tutor_history([
                         *(nb.tutor_messages or []),
-                        {"role": "user", "content": str(history_prompt).strip()},
+                        # Un giro di riparazione non è una nuova richiesta dello studente.
+                        *([] if repairing else [{"role": "user", "content": str(history_prompt).strip()}]),
                         *staged,
                     ])
                     nb.tutor_messages = updated_history

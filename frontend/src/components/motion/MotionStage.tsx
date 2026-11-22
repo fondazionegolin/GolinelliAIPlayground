@@ -269,7 +269,7 @@ export function MotionPlayer({ scene, autoPlay = true }: { scene: Scene; autoPla
         </button>
         <input type="range" aria-label="Posizione" min={0} max={scene.duration} step={0.02} value={shown} onChange={(e) => { const v = Number(e.target.value); clock.current.t = v; setTime(v) }} className="h-9 min-w-0 flex-1 accent-pink-400" />
         <span className="w-16 shrink-0 text-right text-[10px] tabular-nums text-white/80">{shown.toFixed(1)} / {scene.duration.toFixed(0)}s</span>
-        <button type="button" aria-label="Velocità" onClick={() => setSpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length])} className="h-9 min-w-9 shrink-0 rounded bg-white/20 px-1.5 text-xs font-bold text-white">{speed}×</button>
+        <button type="button" aria-label="Velocità" onClick={() => setSpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length])} className="h-9 min-w-9 shrink-0 rounded bg-white/20 px-1.5 text-xs font-semibold text-white">{speed}×</button>
       </div>
     </div>
   )

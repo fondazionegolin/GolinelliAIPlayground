@@ -139,7 +139,7 @@ function SectionCard({
         <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl ${bg} ${color}`}>
           <Icon size={20} />
         </div>
-        <h2 className="text-lg font-bold text-slate-800">{title}</h2>
+        <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
       </div>
       <div className="space-y-3 text-sm leading-relaxed text-slate-600">{children}</div>
     </section>
@@ -149,7 +149,7 @@ function SectionCard({
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1 border-b border-slate-100 py-2 last:border-0 sm:flex-row sm:items-start sm:gap-3">
-      <span className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider text-slate-400 sm:w-44">{label}</span>
+      <span className="flex-shrink-0 text-xs font-semibold text-slate-400 sm:w-44">{label}</span>
       <span className="text-slate-700">{value}</span>
     </div>
   )
@@ -203,12 +203,12 @@ export default function TermsPage() {
         <Link to="/" className="flex items-center gap-3">
           <img src="/logo_new.png" alt={tl("Golinelli AI")} className="h-9 w-auto rounded-md shadow-sm" />
           <span className="text-xl tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
-            <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
-            <span className="font-black text-[var(--logo-pink)]">.ai</span>
+            <span className="font-semibold text-[var(--logo-ink)]">Golinelli</span>
+            <span className="font-semibold text-[var(--logo-pink)]">.ai</span>
           </span>
         </Link>
         <div className="flex items-center gap-3">
-          <span className="hidden text-xs font-semibold uppercase tracking-widest text-slate-400 sm:inline">{tl("Condizioni d'uso")}</span>
+          <span className="hidden text-xs font-semibold text-slate-400 sm:inline">{tl("Condizioni d'uso")}</span>
           <Link
             to="/"
             className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/60 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-white"
@@ -220,7 +220,7 @@ export default function TermsPage() {
 
       {custom ? (
         <main className="mx-auto max-w-5xl space-y-4 px-4 py-10 sm:px-6">
-          <h1 className="text-3xl font-black text-slate-900">{custom.title}</h1>
+          <h1 className="text-3xl font-semibold text-slate-900">{custom.title}</h1>
           <p className="text-sm text-slate-500">{tl("Versione")} {custom.version}</p>
           <iframe
             src={`${custom.source_url}#toolbar=0&navpanes=0&view=FitH`}
@@ -232,10 +232,10 @@ export default function TermsPage() {
       <>
       <header className="relative overflow-hidden">
         <div className="mx-auto max-w-5xl px-4 pb-8 pt-12 sm:px-6">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-rose-700">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
             <Scale size={12} /> {tl("Termini e licenza")}
           </div>
-          <h1 className="mb-3 text-4xl font-black leading-tight text-slate-900 sm:text-5xl">
+          <h1 className="mb-3 text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
             {tl("Condizioni d'uso")} <br />
             <span className="bg-gradient-to-r from-[#fe004d] via-indigo-600 to-[#2d2d2d] bg-clip-text text-transparent">
               {tl("della piattaforma Golinelli.ai")}
@@ -250,7 +250,7 @@ export default function TermsPage() {
       <div className="mx-auto grid max-w-5xl items-start gap-8 px-4 pb-20 sm:px-6 lg:grid-cols-[220px_1fr]">
         <aside className="sticky top-24 hidden lg:block">
           <div className="rounded-2xl border border-white/80 bg-white/70 p-4 shadow-sm backdrop-blur-xl">
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">{tl("Contenuto")}</p>
+            <p className="mb-3 text-[10px] font-semibold text-slate-400">{tl("Contenuto")}</p>
             <nav className="space-y-1">
               {TOC.map((item) => (
                 <a key={item.id} href={`#${item.id}`} className="block truncate py-1 text-xs text-slate-500 transition-colors hover:font-medium hover:text-[var(--logo-pink)]">
@@ -345,11 +345,11 @@ export default function TermsPage() {
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">{tl("Docente")}</p>
+                <p className="text-xs font-semibold text-cyan-700">{tl("Docente")}</p>
                 <p className="mt-1 text-sm text-slate-700">{tl("Limite mensile individuale, stabilito dalla Fondazione al momento dell'approvazione dell'account e aggiornabile.")}</p>
               </div>
               <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">{tl("Studenti")}</p>
+                <p className="text-xs font-semibold text-cyan-700">{tl("Studenti")}</p>
                 <p className="mt-1 text-sm text-slate-700">{tl("Fondo mensile condiviso, senza limite individuale per singolo Studente.")}</p>
               </div>
             </div>

@@ -50,37 +50,37 @@ type TemplateHistoryResponse = {
 
 const DEFAULT_CONFIGS: Record<string, EmailConfig> = {
   teacher_invitation: {
-    headerTitle: tl("🎓 Golinelli.ai"),
+    headerTitle: tl("Golinelli.ai"),
     color1: '#667eea',
     color2: '#764ba2',
-    greeting: tl("Ciao, {first_name}!"),
+    greeting: tl("Ciao, {first_name}"),
     bodyText:
       'Sei stato invitato a unirti alla piattaforma Golinelli.ai come docente.\n\nPer accettare l\'invito e configurare il tuo account, clicca sul pulsante qui sotto:',
     buttonLabel: tl("Accetta invito"),
-    warningText: tl("⚠️ Questo link scadrà tra 7 giorni."),
+    warningText: tl("Questo link scadrà tra 7 giorni."),
     footerText: tl("Questa email è stata inviata automaticamente dalla piattaforma Golinelli.ai."),
   },
   teacher_activation: {
-    headerTitle: tl("🎓 Golinelli.ai"),
+    headerTitle: tl("Golinelli.ai"),
     color1: '#667eea',
     color2: '#764ba2',
-    greeting: tl("Benvenuto/a, {first_name}!"),
+    greeting: tl("Benvenuto/a, {first_name}"),
     bodyText:
       'Siamo lieti di informarti che la tua richiesta di account docente è stata approvata.\n\nPer completare l\'attivazione del tuo account, clicca sul pulsante qui sotto:',
     buttonLabel: tl("Attiva il tuo account"),
-    warningText: tl("⚠️ Questo link è personale e scadrà tra 72 ore. Non condividerlo con nessuno."),
+    warningText: tl("Questo link è personale e scadrà tra 72 ore. Non condividerlo con nessuno."),
     footerText:
       'Questa email è stata inviata automaticamente dalla piattaforma Golinelli.ai.\nSe non hai richiesto questo account, puoi ignorare questa email.',
   },
   password_reset: {
-    headerTitle: tl("🔐 Golinelli.ai"),
+    headerTitle: tl("Golinelli.ai"),
     color1: '#f093fb',
     color2: '#f5576c',
-    greeting: tl("Ciao, {first_name}!"),
+    greeting: tl("Ciao, {first_name}"),
     bodyText:
       'Un amministratore ha impostato una nuova password temporanea per il tuo account.\n\nLa tua password temporanea è: {temporary_password}\n\nPer accedere, clicca sul pulsante qui sotto:',
     buttonLabel: tl("Vai al login"),
-    warningText: tl("⚠️ Per sicurezza, cambia la password subito dopo il primo accesso."),
+    warningText: tl("Per sicurezza, cambia la password subito dopo il primo accesso."),
     footerText: tl("Questa email è stata inviata automaticamente dalla piattaforma Golinelli.ai."),
   },
 }
@@ -496,7 +496,7 @@ export default function EmailPage() {
           <Card>
             <CardContent className="p-4 space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase text-slate-500 tracking-wide">
+                <Label className="text-xs font-semibold text-slate-500">
                   {tl("Caso d'uso")}
                 </Label>
                 <select
@@ -519,7 +519,7 @@ export default function EmailPage() {
           {templateKey !== 'beta_disclaimer' && (
             <Card>
               <CardContent className="p-4 space-y-1.5">
-                <Label className="text-xs font-semibold uppercase text-slate-500 tracking-wide">
+                <Label className="text-xs font-semibold text-slate-500">
                   {tl("Oggetto email")}
                 </Label>
                 <Input
@@ -546,7 +546,7 @@ export default function EmailPage() {
                 />
                 {mode === 'html' && (
                   <p className="ml-1 text-xs text-amber-700">
-                    {tl("⚠️ Le modifiche HTML potrebbero non essere riconvertite in visuale.")}
+                    {tl("Le modifiche HTML potrebbero non essere riconvertite in visuale.")}
                   </p>
                 )}
               </div>

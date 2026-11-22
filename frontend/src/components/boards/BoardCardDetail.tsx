@@ -29,7 +29,7 @@ export type DetailCard = {
 
 const CARD_TYPE_LABEL = { epic: 'Epic', story: 'Story', task: 'Task' } as const
 const PRIORITY_LABEL: Record<Priority, string> = { alta: tl("Alta"), media: tl("Media"), bassa: tl("Bassa") }
-const sectionTitle = 'text-[10px] font-black uppercase tracking-wide text-slate-400'
+const sectionTitle = 'text-[10px] font-semibold text-slate-400'
 const fieldClass = 'mt-1.5 h-10 text-sm'
 
 /** Task detail where every field is edited in place and saved as soon as it changes: no separate edit mode. */
@@ -117,7 +117,7 @@ export default function BoardCardDetail({ boardId, card, labels, members, sprint
         <div className="flex items-start gap-3 px-6 pb-3 pt-5">
           <span className="mt-4 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#d4d4d4' }} aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-wide">
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold">
               {card.card_type && <span className={`rounded-full px-2 py-0.5 ${card.card_type === 'epic' ? 'bg-violet-100 text-violet-700' : card.card_type === 'story' ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-600'}`}>{CARD_TYPE_LABEL[card.card_type]}</span>}
               {sprint && <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/[0.06] px-2 py-0.5 text-slate-600"><CalendarRange className="h-3 w-3" />{sprintCode} · {sprint.name}{formatSprintDates(sprint) ? ` · ${formatSprintDates(sprint)}` : ''}</span>}
             </div>
@@ -132,10 +132,10 @@ export default function BoardCardDetail({ boardId, card, labels, members, sprint
                 onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
                 aria-label={tl("Titolo del task")}
                 data-field-appearance="plain"
-                className="mt-1 w-full rounded-lg border-0 bg-transparent px-1 py-0.5 -mx-1 text-xl font-black leading-7 text-slate-900 outline-none hover:bg-slate-900/[0.04] focus:bg-slate-900/[0.05] focus:ring-2 focus:ring-slate-300"
+                className="mt-1 w-full rounded-lg border-0 bg-transparent px-1 py-0.5 -mx-1 text-xl font-semibold leading-7 text-slate-900 outline-none hover:bg-slate-900/[0.04] focus:bg-slate-900/[0.05] focus:ring-2 focus:ring-slate-300"
               />
-            ) : <h3 id="board-card-title" className="mt-1 text-xl font-black leading-7 text-slate-900">{card.title}</h3>}
-            {parent && <button type="button" onClick={() => onOpenCard(parent.id)} className="mt-1 max-w-full truncate text-left text-xs font-bold text-slate-500 hover:text-slate-800 hover:underline">↳ Epic: {parent.title}</button>}
+            ) : <h3 id="board-card-title" className="mt-1 text-xl font-semibold leading-7 text-slate-900">{card.title}</h3>}
+            {parent && <button type="button" onClick={() => onOpenCard(parent.id)} className="mt-1 max-w-full truncate text-left text-xs font-semibold text-slate-500 hover:text-slate-800 hover:underline">↳ Epic: {parent.title}</button>}
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
         </div>
@@ -233,7 +233,7 @@ export default function BoardCardDetail({ boardId, card, labels, members, sprint
                     <li key={child.id}>
                       <button type="button" onClick={() => onOpenCard(child.id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-900/[0.05]">
                         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: child.color || '#d4d4d4' }} />
-                        <span className="min-w-0 flex-1 truncate font-bold">{child.title}</span>
+                        <span className="min-w-0 flex-1 truncate font-semibold">{child.title}</span>
                       </button>
                     </li>
                   ))}
@@ -249,8 +249,8 @@ export default function BoardCardDetail({ boardId, card, labels, members, sprint
 
         {canEdit && (
           <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-6 py-3">
-            <button type="button" disabled={deletePending} onClick={onDelete} className="inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /> {tl("Elimina")}</button>
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500">{tl("Colore")}{colorControl}</div>
+            <button type="button" disabled={deletePending} onClick={onDelete} className="inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /> {tl("Elimina")}</button>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">{tl("Colore")}{colorControl}</div>
           </div>
         )}
       </div>

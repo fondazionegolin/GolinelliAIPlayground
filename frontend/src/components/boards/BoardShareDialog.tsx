@@ -90,7 +90,7 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
       <div className="ds-popover flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-[var(--ds-radius-card)]" role="dialog" aria-modal="true" aria-labelledby="board-share-title">
         <div className="flex items-start justify-between gap-4 px-6 pt-6">
           <div>
-            <h3 id="board-share-title" className="flex items-center gap-2 text-lg font-black text-slate-900"><Share2 className="h-5 w-5" /> {tl("Condividi board")}</h3>
+            <h3 id="board-share-title" className="flex items-center gap-2 text-lg font-semibold text-slate-900"><Share2 className="h-5 w-5" /> {tl("Condividi board")}</h3>
             <p className="mt-1 text-sm text-slate-500">{tl("Scegli chi può vedere la board e chi può modificarne i task.")}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}>
@@ -100,7 +100,7 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <section className="space-y-2">
-            <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{tl("Sessione")}</h4>
+            <h4 className="text-xs font-semibold text-slate-500">{tl("Sessione")}</h4>
             {!board.session_id ? (
               <div className="rounded-[var(--ds-radius-control)] bg-slate-50 p-3 text-sm text-slate-600">
                 <p>{tl("La board non è collegata a una sessione: per condividerla con gli studenti collegala alla sessione attiva.")}</p>
@@ -109,7 +109,7 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
                     type="button"
                     disabled={boardPatchPending}
                     onClick={() => onBoardPatch({ session_id: activeSessionId })}
-                    className="mt-2 inline-flex h-9 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] disabled:opacity-40"
+                    className="mt-2 inline-flex h-9 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-semibold text-[var(--selection-active-text)] disabled:opacity-40"
                   >
                     <Link2 className="h-4 w-4" /> {tl("Collega alla sessione attiva")}
                   </button>
@@ -117,7 +117,7 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
               </div>
             ) : (
               <div className="space-y-2 rounded-[var(--ds-radius-control)] bg-slate-50 p-3">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                   <input
                     type="checkbox"
                     checked={sessionShared}
@@ -127,7 +127,7 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
                   {tl("Condividi con tutta la sessione")}{board.session_title ? ` “${board.session_title}”` : ''}
                 </label>
                 {sessionShared && (
-                  <label className="ml-6 flex items-center gap-2 text-xs font-bold text-slate-500">
+                  <label className="ml-6 flex items-center gap-2 text-xs font-semibold text-slate-500">
                     <input type="checkbox" checked={board.students_can_edit} disabled={boardPatchPending} onChange={(event) => onBoardPatch({ students_can_edit: event.target.checked })} />
                     {tl("tutti gli studenti possono modificare i task")}
                   </label>
@@ -137,13 +137,13 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
           </section>
 
           <section className="space-y-2">
-            <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{tl("Persone esterne alla piattaforma")}{external.length ? ` · ${external.length}` : ''}</h4>
+            <h4 className="text-xs font-semibold text-slate-500">{tl("Persone esterne alla piattaforma")}{external.length ? ` · ${external.length}` : ''}</h4>
             <p className="text-xs text-slate-500">{tl("Scrivi il nome di chi collabora ma non ha un account: potrai indicarlo come responsabile dei task. Non riceve accesso alla board.")}</p>
             <div className="space-y-2 rounded-[var(--ds-radius-control)] bg-slate-50 p-2">
               {external.length > 0 && (
                 <ul className="flex flex-wrap gap-1.5">
                   {external.map((person) => (
-                    <li key={person.id} className="inline-flex items-center gap-1 rounded-full bg-amber-100 py-0.5 pl-2.5 pr-1 text-xs font-bold text-amber-900">
+                    <li key={person.id} className="inline-flex items-center gap-1 rounded-full bg-amber-100 py-0.5 pl-2.5 pr-1 text-xs font-semibold text-amber-900">
                       <UserRound className="h-3 w-3" /> {person.name}
                       <button type="button" disabled={boardPatchPending} onClick={() => onBoardPatch({ external_people: external.filter((item) => item.id !== person.id) })} className="rounded-full p-0.5 hover:bg-amber-200" aria-label={tl("Rimuovi {0}", person.name)}><X className="h-3 w-3" /></button>
                     </li>
@@ -153,7 +153,7 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
               <div className="flex gap-1.5">
                 <input value={externalName} maxLength={60} onChange={(event) => setExternalName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addExternal() } }}
                   placeholder={tl("Nome e cognome")} aria-label={tl("Nome della persona esterna")} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" />
-                <button type="button" disabled={!externalName.trim() || boardPatchPending} onClick={addExternal} className="inline-flex h-9 items-center gap-1 rounded-full bg-white px-3 text-xs font-bold text-slate-700 shadow-[var(--ds-shadow-1)] disabled:opacity-40"><Plus className="h-3.5 w-3.5" /> {tl("Aggiungi")}</button>
+                <button type="button" disabled={!externalName.trim() || boardPatchPending} onClick={addExternal} className="inline-flex h-9 items-center gap-1 rounded-full bg-white px-3 text-xs font-semibold text-slate-700 shadow-[var(--ds-shadow-1)] disabled:opacity-40"><Plus className="h-3.5 w-3.5" /> {tl("Aggiungi")}</button>
               </div>
             </div>
           </section>
@@ -189,12 +189,12 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
         </div>
 
         <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
-          <button type="button" onClick={onClose} className="h-10 rounded-lg px-4 text-sm font-bold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
+          <button type="button" onClick={onClose} className="h-10 rounded-lg px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
           <button
             type="button"
             disabled={save.isPending || isLoading}
             onClick={() => save.mutate()}
-            className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-semibold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {save.isPending ? tl("Salvataggio…") : tl("Salva condivisione")}
           </button>
@@ -217,7 +217,7 @@ function PeoplePicker({ title, empty, search, onSearch, people, selected, onChan
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{title}{count ? ` · ${count}` : ''}</h4>
+        <h4 className="text-xs font-semibold text-slate-500">{title}{count ? ` · ${count}` : ''}</h4>
         <SearchPill value={search} onValueChange={onSearch} placeholder={tl("Cerca")} aria-label={tl("Cerca {0}", title.toLowerCase())} className="w-40" />
       </div>
       <div className="max-h-52 space-y-1 overflow-y-auto rounded-[var(--ds-radius-control)] bg-slate-50 p-1">
@@ -236,7 +236,7 @@ function PeoplePicker({ title, empty, search, onSearch, people, selected, onChan
                     onChange(next)
                   }}
                 />
-                <span className="min-w-0 truncate font-bold">{person.name}</span>
+                <span className="min-w-0 truncate font-semibold">{person.name}</span>
                 {person.detail && <span className="hidden min-w-0 truncate text-xs text-slate-400 sm:inline">{person.detail}</span>}
               </label>
               {isSelected && (

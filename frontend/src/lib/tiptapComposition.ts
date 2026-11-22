@@ -1,6 +1,6 @@
 import { Extension, wrappingInputRule } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
-import { COMPOSITION_INDENT, getCompositionPrefs } from '@/lib/documentComposition'
+import { getCompositionPrefs } from '@/lib/documentComposition'
 
 // Abbreviations that end with a full stop but do not end a sentence (it, en): no capital after them.
 const ABBREVIATIONS = new Set([
@@ -30,11 +30,10 @@ const compositionKey = new PluginKey('documentComposition')
 /**
  * Compositional niceties while typing, all switchable from the "Composizione" menu:
  * lists from "- " / "1. " / "1) " / "• ", automatic capitals, typographic quotes/dashes/ellipsis,
- * double-space guard and a small first-line indent on new paragraphs.
+ * double-space guard. Enter never adds an indent: a new paragraph starts flush left.
  */
 export const DocumentComposition = Extension.create({
   name: 'documentComposition',
-  // Run before the default Enter/list keymaps so the indent logic can claim the keystroke.
   priority: 1000,
 
   addInputRules() {
@@ -70,15 +69,6 @@ export const DocumentComposition = Extension.create({
       'Mod-Alt-h': ({ editor }) => (editor.isActive('importedHighlight')
         ? editor.chain().focus().unsetMark('importedHighlight').run()
         : editor.chain().focus().setMark('importedHighlight', { color: '#fef08a' }).run()),
-      Enter: ({ editor }) => {
-        if (!getCompositionPrefs().indent) return false
-        const { $from, empty } = editor.state.selection
-        const parent = $from.parent
-        // Only a body paragraph with text, directly in the page (not headings, lists, table cells, quotes).
-        if (!empty || parent.type.name !== 'paragraph' || $from.depth !== 1 || parent.content.size === 0) return false
-        if ($from.parentOffset === 0) return false
-        return editor.chain().splitBlock().updateAttributes('paragraph', { textIndent: COMPOSITION_INDENT }).run()
-      },
     }
   },
 

@@ -39,17 +39,17 @@ function ProjectCard({ project, onOpen }: { project: LibraryProject; onOpen: (pr
             <img src={project.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover object-top transition duration-300 group-hover:scale-[1.03]" />
           ) : (
             <div className="flex h-full w-full items-center justify-center" style={{ background: cover.background }}>
-              <span className="text-4xl font-black tracking-tight text-white/90">{cover.initials}</span>
+              <span className="text-4xl font-semibold tracking-tight text-white/90">{cover.initials}</span>
             </div>
           )}
           {project.visibility === 'class_shared' && (
-            <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-bold text-white">
+            <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-semibold text-white">
               <Users className="h-3 w-3" />{tl("Condiviso")}
             </span>
           )}
         </div>
         <div className="px-4 pb-4 pt-3">
-          <h2 className="truncate text-sm font-black text-[var(--text-primary)]">{project.title}</h2>
+          <h2 className="truncate text-sm font-semibold text-[var(--text-primary)]">{project.title}</h2>
           <p className="mt-1 truncate text-[11px] text-[var(--text-secondary)]">
             {owner} · {new Date(project.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
           </p>
@@ -81,7 +81,7 @@ export default function VibeLabLibrary({ projects, loading, search, onSearch, on
           <div className="min-w-0 flex-1">
             <SectionHeading
               section="/teacher/coding"
-              className="text-2xl font-black tracking-tight text-[var(--text-primary)]"
+              className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]"
               subtitle={tl("Descrivi cosa vuoi creare: Vibe Lab fa qualche domanda, sceglie lo stile con te e costruisce un'app vera, con immagini, mappe e assistenti AI reali.")}
               subtitleClassName="mt-3 max-w-2xl text-sm text-[var(--text-secondary)]"
             >
@@ -109,7 +109,7 @@ export default function VibeLabLibrary({ projects, loading, search, onSearch, on
         ) : projects.length === 0 ? (
           <button type="button" onClick={onNew} className="ui-card flex w-full flex-col items-center gap-3 px-6 py-20 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ds-surface-muted)] text-[var(--app-accent)]"><Sparkles className="h-6 w-6" /></span>
-            <span className="text-lg font-black text-[var(--text-primary)]">{tl("Crea il tuo primo progetto")}</span>
+            <span className="text-lg font-semibold text-[var(--text-primary)]">{tl("Crea il tuo primo progetto")}</span>
             <span className="max-w-md text-sm text-[var(--text-secondary)]">{tl("Un'idea, una pagina, un'app: descrivila a parole e Vibe Lab la costruisce per te.")}</span>
           </button>
         ) : visible.length === 0 ? (

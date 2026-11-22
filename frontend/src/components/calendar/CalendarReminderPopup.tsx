@@ -63,8 +63,8 @@ export function CalendarReminderPopup({ role, userId }: { role: 'teacher' | 'stu
               <Bell className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-secondary)]">{tl("Tra 10 minuti · ore {0}", hhmm(reminder.start))}</div>
-              <div className="truncate text-sm font-bold text-[var(--text-primary)]">{reminder.title}</div>
+              <div className="text-[10px] font-semibold text-[var(--text-secondary)]">{tl("Tra 10 minuti · ore {0}", hhmm(reminder.start))}</div>
+              <div className="truncate text-sm font-semibold text-[var(--text-primary)]">{reminder.title}</div>
               {reminder.description && <p className="mt-0.5 line-clamp-2 text-xs text-[var(--text-secondary)]">{reminder.description}</p>}
             </div>
             <IconButton tone="neutral" surface="ghost" size="sm" aria-label={tl("Chiudi")} onClick={() => dismiss(reminder.id)}><X className="h-4 w-4" /></IconButton>

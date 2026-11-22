@@ -1146,8 +1146,8 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
             </Button>
           )}
 
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] ${
-            `${PASTEL_ICON_BACKGROUNDS[projectTone]} ${PASTEL_ICON_TEXT[projectTone]}`
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${
+`${PASTEL_ICON_BACKGROUNDS[projectTone]} ${PASTEL_ICON_TEXT[projectTone]}`
           }`}>
             {projectType}
           </span>
@@ -1261,13 +1261,13 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                 <Button type="button" density="compact" tone={mlModels.length ? 'accent' : 'neutral'} surface="soft" onClick={() => setModelsOpen(true)} title={isEnglish ? 'Use a model trained in the ML Lab (hands, pose, images)' : 'Usa un modello addestrato nel Lab ML (mani, pose, immagini)'}>
                   <Brain />
                   {tl("Modelli")}
-                  {mlModels.length > 0 && <span className="ml-0.5 rounded-full bg-violet-600 px-1.5 py-0.5 text-[9px] font-bold text-white">{mlModels.length}</span>}
+                  {mlModels.length > 0 && <span className="ml-0.5 rounded-full bg-violet-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">{mlModels.length}</span>}
                 </Button>
                 <Button type="button" density="compact" tone="neutral" surface="soft" onClick={() => setLibraryManagerOpen((v) => !v)} title={isEnglish ? 'Manage extra libraries' : 'Gestisci librerie aggiuntive'}>
                   <PackagePlus />
                   {tl("Librerie")}
                   {(editorSettings.libraries ?? []).length > 0 && (
-                    <span className="ml-0.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                    <span className="ml-0.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">
                       {(editorSettings.libraries ?? []).length}
                     </span>
                   )}
@@ -1581,7 +1581,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                   <div className="flex items-center gap-2 px-4 py-2">
                     <Terminal className="h-3.5 w-3.5 text-slate-400" />
                     <span className="text-xs font-semibold text-slate-400">{isEnglish ? 'Runner diagnostics' : 'Diagnostica runner'}</span>
-                    <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                       runtime error
                     </span>
                     <div className="flex-1" />
@@ -1738,7 +1738,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                 >
                   <Terminal className="h-4 w-4" />
                   {consoleEntries.length > 0 && (
-                    <span className="text-[10px] font-bold tabular-nums">{consoleEntries.length}</span>
+                    <span className="text-[10px] font-semibold tabular-nums">{consoleEntries.length}</span>
                   )}
                 </button>
               )}
@@ -1756,12 +1756,12 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                         <Terminal className="h-3.5 w-3.5 text-slate-400" />
                         <span className="text-xs font-semibold text-slate-400">{isEnglish ? 'Console' : 'Console'}</span>
                         {consoleEntries.length > 0 && (
-                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${hasErrors ? 'bg-[#BA68C8]' : 'bg-[#E91E63]'}`}>
+                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white ${hasErrors ? 'bg-[#BA68C8]' : 'bg-[#E91E63]'}`}>
                             {consoleEntries.length}
                           </span>
                         )}
                         {previewRuntimeError && (
-                          <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                             runtime error
                           </span>
                         )}
@@ -1821,7 +1821,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                         {/* AI analysis response */}
                         {(consoleAiLoading || consoleAiResponse) && (
                           <div className="border-t border-slate-800 px-4 py-3">
-                            <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-indigo-400">
+                            <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold text-indigo-400">
                               <Bot className="h-3 w-3" />
                               {isEnglish ? 'AI Analysis' : 'Analisi AI'}
                             </div>
@@ -1959,6 +1959,11 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                 onApplyProposal={(proposalId) => applyProposal(activeCell.id, proposalId)}
                 onRejectProposal={(proposalId) => rejectProposal(activeCell.id, proposalId)}
                 onOpenVersions={() => setVersionsOpen(true)}
+                verify={projectType === 'p5js' ? {
+                  buildFiles: (candidate) => cells.map((c) => ({ name: c.name ?? 'sketch.js', source: c.id === activeCell.id ? candidate : c.source })),
+                  libraries: editorSettings.libraries ?? [],
+                  mlModels,
+                } : undefined}
               />
             ) : (
               <Suspense fallback={null}>
@@ -2063,7 +2068,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
         <DialogBody className="max-h-[calc(100vh-10rem)] overflow-y-auto px-6 py-5">
           <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
             <nav className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs lg:sticky lg:top-0 lg:self-start">
-              <p className="mb-3 font-bold uppercase tracking-wide text-slate-500">{tl("Indice")}</p>
+              <p className="mb-3 font-semibold text-slate-500">{tl("Indice")}</p>
               <div className="grid gap-2">
                 <a href="#mb-base" className="text-slate-700 hover:text-slate-950">{tl("1. Base del programma")}</a>
                 <a href="#mb-vars" className="text-slate-700 hover:text-slate-950">{tl("2. Variabili e tipi")}</a>
@@ -2081,7 +2086,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
 
             <div className="grid gap-4">
               <section id="mb-base" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">{tl("1. Base del programma")}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{tl("1. Base del programma")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   {tl("Un programma micro:bit usa MicroPython. Importa le API della scheda, poi descrive cosa deve fare una volta o in un ciclo continuo.")}
                 </p>
@@ -2096,7 +2101,7 @@ display.clear()`}</pre>
               </section>
 
               <section id="mb-vars" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">{tl("2. Variabili e tipi")}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{tl("2. Variabili e tipi")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   {tl("Le variabili salvano numeri, testi e stati booleani. Usa nomi brevi ma leggibili: `temp`, `passi`, `acceso`.")}
                 </p>
@@ -2114,7 +2119,7 @@ display.show(str(passi))`}</pre>
               </section>
 
               <section id="mb-print" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">{tl("3. Print e seriale")}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{tl("3. Print e seriale")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   {tl("`print()` invia testo al monitor seriale. Il cruscotto live legge bene righe nel formato `chiave=valore`. Evita f-string: usa `.format()` per compatibilita con MicroPython micro:bit.")}
                 </p>
@@ -2131,7 +2136,7 @@ while True:
               </section>
 
               <section id="mb-if" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">{tl("4. Condizioni")}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{tl("4. Condizioni")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   {tl("`if`, `elif`, `else` permettono di prendere decisioni. L'indentazione e parte della sintassi: le righe del blocco devono essere rientrate.")}
                 </p>
@@ -2152,7 +2157,7 @@ while True:
               </section>
 
               <section id="mb-loops" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">{tl("5. Cicli e tempo")}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{tl("5. Cicli e tempo")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   {tl("`while True` ripete per sempre. `for` ripete un numero definito di volte. `sleep(ms)` mette in pausa senza consumare troppe risorse.")}
                 </p>
@@ -2173,7 +2178,7 @@ while True:
               </section>
 
               <section id="mb-display" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">6. Display LED</h3>
+                <h3 className="text-sm font-semibold text-slate-900">6. Display LED</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   {tl("Il display e una matrice 5x5. Puoi mostrare immagini predefinite, testo o creare immagini personalizzate con luminosita da 0 a 9.")}
                 </p>
@@ -2194,7 +2199,7 @@ display.scroll("N S E O")`}</pre>
               </section>
 
               <section id="mb-buttons" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">{tl("7. Pulsanti e touch")}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{tl("7. Pulsanti e touch")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   {tl("`button_a` e `button_b` leggono i pulsanti frontali. Su micro:bit V2 puoi usare anche il logo touch con `pin_logo`.")}
                 </p>
@@ -2215,7 +2220,7 @@ while True:
               </section>
 
               <section id="mb-sensors" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">{tl("8. Sensori integrati")}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{tl("8. Sensori integrati")}</h3>
                 <div className="mt-3 grid gap-2 text-xs leading-5 text-slate-700 md:grid-cols-2">
                   <div className="rounded-lg bg-slate-50 p-3"><strong>{tl("Temperatura:")}</strong> {tl("`temperature()` restituisce gradi Celsius approssimati.")}</div>
                   <div className="rounded-lg bg-slate-50 p-3"><strong>{tl("Luce:")}</strong> {tl("`display.read_light_level()` restituisce 0-255.")}</div>
@@ -2242,7 +2247,7 @@ while True:
               </section>
 
               <section id="mb-sound" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">{tl("9. Suono")}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{tl("9. Suono")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   {tl("Per riprodurre note importa il modulo `music`. Non importare `music` da `microbit`: usa `import music` su una riga separata.")}
                 </p>
@@ -2259,7 +2264,7 @@ while True:
               </section>
 
               <section id="mb-pins" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">{tl("10. Pin e sensori esterni")}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{tl("10. Pin e sensori esterni")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   {tl("I pin permettono di collegare LED, pulsanti, potenziometri e sensori. Collega sempre GND in comune e rispetta 3V. Evita sensori che richiedono 5V sui pin dati della micro:bit.")}
                 </p>
@@ -2288,7 +2293,7 @@ while True:
               </section>
 
               <section id="mb-projects" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">{tl("11. Progetti guidati")}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{tl("11. Progetti guidati")}</h3>
                 <div className="mt-3 grid gap-3 text-xs leading-5 text-slate-700">
                   <div className="rounded-lg bg-slate-50 p-3">
                     <strong>{tl("Data logger ambientale.")}</strong> {tl("Stampa ogni secondo temperatura e luce; quando premi A cambia frequenza di lettura.")}
@@ -2354,12 +2359,12 @@ while True:
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-xs font-extrabold uppercase tracking-[0.16em] text-indigo-500">
+              <span className="text-xs font-semibold text-indigo-500">
                 {onboardingStep + 1} / {steps.length}
               </span>
               <button onClick={finish} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>
-            <h3 className="mt-4 text-xl font-black text-slate-950">{step[0]}</h3>
+            <h3 className="mt-4 text-xl font-semibold text-slate-950">{step[0]}</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">{step[1]}</p>
             <div className="mt-6 flex items-center justify-between">
               <Button type="button" tone="neutral" surface="ghost" disabled={onboardingStep === 0} onClick={() => setOnboardingStep(value => Math.max(0, (value ?? 1) - 1))}>
@@ -2425,7 +2430,7 @@ function AppearanceMenu({ open, onToggle, onClose, settings, onChange, isEnglish
         <>
           <div className="fixed inset-0 z-[200]" onClick={onClose} />
           <div className="fixed z-[201] w-64 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-slate-900" style={{ top: position.top, right: position.right }}>
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{isEnglish ? 'Editor appearance' : 'Aspetto dell’editor'}</p>
+            <p className="text-[10px] font-semibold text-slate-400">{isEnglish ? 'Editor appearance' : 'Aspetto dell’editor'}</p>
             <label className="block text-xs font-semibold text-slate-600">
               {isEnglish ? 'Theme' : 'Tema'}
               <Select value={settings.theme} onChange={(e) => onChange({ theme: e.target.value as NotebookTheme })} density="compact" surface="glass" className="mt-1 h-8 w-full px-2 pr-6 text-[11px]">

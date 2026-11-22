@@ -21,9 +21,9 @@ const AVATAR_STYLE: Record<Member['kind'], string> = {
 export function Avatar({ person, size = 'sm', ringClass = 'ring-white' }: { person: Member; size?: 'sm' | 'md'; ringClass?: string }) {
   const dim = size === 'md' ? 'h-7 w-7 text-[10px]' : 'h-6 w-6 text-[9px]'
   return (
-    <span className={`group/av relative inline-flex ${dim} shrink-0 items-center justify-center rounded-full font-black ring-2 ${ringClass} ${AVATAR_STYLE[person.kind]}`} aria-label={`${person.name} (${KIND_LABEL[person.kind]})`}>
+    <span className={`group/av relative inline-flex ${dim} shrink-0 items-center justify-center rounded-full font-semibold ring-2 ${ringClass} ${AVATAR_STYLE[person.kind]}`} aria-label={`${person.name} (${KIND_LABEL[person.kind]})`}>
       {initials(person.name)}
-      <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-[11px] font-bold text-white opacity-0 shadow-[var(--ds-shadow-1)] transition-opacity group-hover/av:opacity-100">{person.name} · {KIND_LABEL[person.kind]}</span>
+      <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-[11px] font-semibold text-white opacity-0 shadow-[var(--ds-shadow-1)] transition-opacity group-hover/av:opacity-100">{person.name} · {KIND_LABEL[person.kind]}</span>
     </span>
   )
 }
@@ -219,7 +219,7 @@ export function LabelDropdown({ labels, value, canEdit, onChange }: { labels: Ar
           </button>
         )}
         {chosen.map((label) => (
-          <span key={label.id} className="rounded-full px-2.5 py-1 text-xs font-bold text-white" style={{ backgroundColor: label.color }}>{label.name}</span>
+          <span key={label.id} className="rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ backgroundColor: label.color }}>{label.name}</span>
         ))}
         {!canEdit && chosen.length === 0 && <p className="text-sm text-slate-400">—</p>}
       </div>
@@ -230,7 +230,7 @@ export function LabelDropdown({ labels, value, canEdit, onChange }: { labels: Ar
             const active = value.includes(label.id)
             return (
               <button key={label.id} type="button" role="option" aria-selected={active} onClick={() => toggle(label.id)}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-bold text-slate-700 hover:bg-slate-900/[0.06]">
+                className={`flex min-h-9 w-full items-center gap-2 rounded-[var(--control-radius)] px-3 py-1.5 text-left text-xs font-semibold text-[var(--text-primary)] transition-colors ${active ? 'ds-selected' : 'hover:bg-[var(--ds-control-hover)]'}`}>
                 <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: label.color }} />
                 <span className="flex-1">{label.name}</span>
                 {active && <Check className="h-3.5 w-3.5" />}
@@ -260,7 +260,7 @@ export function AddColumnTile({ existing, disabled, onAdd }: { existing: string[
   if (!open) {
     return (
       <button type="button" disabled={disabled} onClick={() => setOpen(true)}
-        className="flex min-h-[72px] w-full shrink-0 items-center justify-center gap-2 rounded-[var(--ds-radius-panel)] bg-white/60 text-sm font-bold text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 lg:h-fit lg:w-[260px] lg:min-h-[56px]"
+        className="flex min-h-[72px] w-full shrink-0 items-center justify-center gap-2 rounded-[var(--ds-radius-panel)] bg-white/60 text-sm font-semibold text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 lg:h-fit lg:w-[260px] lg:min-h-[56px]"
         title={disabled ? tl("Numero massimo di colonne raggiunto") : tl("Aggiungi una colonna")}>
         <Plus className="h-5 w-5" /> {tl("Aggiungi colonna")}
       </button>
@@ -276,16 +276,16 @@ export function AddColumnTile({ existing, disabled, onAdd }: { existing: string[
         onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); submit(label) } if (event.key === 'Escape') { setOpen(false); setLabel('') } }}
         placeholder={tl("Nome della colonna")}
         aria-label={tl("Nome della nuova colonna")}
-        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300"
+        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-slate-300"
       />
       <div className="flex flex-wrap gap-1">
         {COLUMN_SUGGESTIONS.filter((item) => !taken.has(item.toLowerCase())).map((item) => (
-          <button key={item} type="button" onClick={() => submit(item)} className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 shadow-[var(--ds-shadow-1)] hover:text-slate-900">+ {item}</button>
+          <button key={item} type="button" onClick={() => submit(item)} className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-[var(--ds-shadow-1)] hover:text-slate-900">+ {item}</button>
         ))}
       </div>
       <div className="flex justify-end gap-1.5">
-        <button type="button" onClick={() => { setOpen(false); setLabel('') }} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-bold text-slate-500 hover:bg-white"><X className="h-3.5 w-3.5" /> {tl("Annulla")}</button>
-        <button type="button" disabled={!label.trim()} onClick={() => submit(label)} className="inline-flex h-8 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] disabled:opacity-40"><Check className="h-3.5 w-3.5" /> {tl("Aggiungi")}</button>
+        <button type="button" onClick={() => { setOpen(false); setLabel('') }} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-slate-500 hover:bg-white"><X className="h-3.5 w-3.5" /> {tl("Annulla")}</button>
+        <button type="button" disabled={!label.trim()} onClick={() => submit(label)} className="inline-flex h-8 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-semibold text-[var(--selection-active-text)] disabled:opacity-40"><Check className="h-3.5 w-3.5" /> {tl("Aggiungi")}</button>
       </div>
     </div>
   )

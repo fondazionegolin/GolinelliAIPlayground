@@ -70,7 +70,7 @@ export default function TeacherNotebookPicker({
       >
         <Database className="h-4 w-4" />
         {attached.length > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-0.5 text-[9px] font-bold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-0.5 text-[9px] font-semibold text-white">
             {attached.length}
           </span>
         )}
@@ -78,7 +78,7 @@ export default function TeacherNotebookPicker({
 
       {open && (
         <div className={`absolute bottom-full z-50 mb-2 w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-xl ${align === 'right' ? 'right-0' : 'left-0'}`}>
-          <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Notebook RAG da usare nella chat")}</p>
+          <p className="px-2 py-1 text-[10px] font-semibold text-slate-400">{tl("Notebook RAG da usare nella chat")}</p>
           <div className="max-h-52 space-y-0.5 overflow-y-auto">
             {notebooks.length === 0 && (
               <p className="px-2 py-3 text-center text-[11px] text-slate-400">{tl("Nessun notebook ancora: creane uno e caricaci i tuoi documenti.")}</p>

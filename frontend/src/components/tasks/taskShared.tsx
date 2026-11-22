@@ -143,7 +143,7 @@ export function TaskContentPreview({ task }: { task: TaskData }) {
  if (slides) {
  return (
  <div className="rounded-lg bg-[var(--surface-base)] p-3">
- <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+ <p className="mb-2 text-xs font-semibold text-[var(--text-muted)]">
  {tl("Presentazione ·")} {slides.length} slide
  </p>
  <div className="space-y-2">
@@ -163,7 +163,7 @@ export function TaskContentPreview({ task }: { task: TaskData }) {
  if (Array.isArray(content.questions)) {
  return (
  <div className="rounded-lg bg-[var(--surface-base)] p-3">
- <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+ <p className="mb-2 text-xs font-semibold text-[var(--text-muted)]">
  {tl("Quiz ·")} {content.questions.length} {tl("domande")}
  </p>
  <ol className="list-decimal space-y-2 pl-5 text-sm text-[var(--text-primary)]">
@@ -212,7 +212,7 @@ export function SubmissionContentPreview({ submission, task }: { submission: Sub
  <div className="space-y-2">
  {text && <p className="text-sm text-[var(--text-primary)]">{text}</p>}
  <div className="rounded-lg bg-[var(--surface-base)] p-2">
- <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+ <p className="mb-2 text-xs font-semibold text-[var(--text-muted)]">
  {tl("Risposte quiz")}
  </p>
  <ol className="list-decimal space-y-2 pl-5 text-sm text-[var(--text-primary)]">
@@ -297,11 +297,11 @@ export function ExerciseCorrectionPanel({
  <div className="mt-3 overflow-hidden rounded-xl bg-[var(--surface-base)]">
  <div className="flex items-center justify-between gap-3 bg-[var(--surface-logo-violet)] px-3 py-2">
  <div>
- <p className="text-xs font-bold text-[var(--logo-violet-strong)]">{tl("Correzione in linea")}</p>
+ <p className="text-xs font-semibold text-[var(--logo-violet-strong)]">{tl("Correzione in linea")}</p>
  <p className="text-[11px] text-[var(--logo-violet-strong)]">{tl("Le modifiche vengono evidenziate automaticamente.")}</p>
  </div>
  {correction && (
- <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+ <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
  correction.status === 'read'
  ? 'bg-[var(--surface-logo-blue)] text-[var(--logo-blue-strong)]'
  : 'bg-[var(--surface-logo-violet)] text-[var(--logo-violet-strong)]'
@@ -323,7 +323,7 @@ export function ExerciseCorrectionPanel({
  aria-label={tl("Correzione della risposta di {0}", submission.student_nickname)}
  />
  <div className="rounded-lg bg-[var(--surface-muted)] p-3">
- <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[var(--text-muted)]">{tl("Anteprima per lo studente")}</p>
+ <p className="mb-2 text-[10px] font-semibold text-[var(--text-muted)]">{tl("Anteprima per lo studente")}</p>
  <TrackedCorrectionText original={original} corrected={correctedText} />
  </div>
  <div className="flex justify-end gap-2">
@@ -406,10 +406,10 @@ export function SubmissionFeedbackEditor({ submission, task, sessionId }: { subm
  <div className="mt-3 overflow-hidden rounded-xl bg-[var(--surface-base)]">
  <div className="flex items-center justify-between gap-3 bg-[var(--surface-logo-blue)] px-3 py-2">
  <div>
- <p className="text-xs font-bold text-[var(--logo-blue-strong)]">{tl("Feedback del docente")}</p>
+ <p className="text-xs font-semibold text-[var(--logo-blue-strong)]">{tl("Feedback del docente")}</p>
  <p className="text-[11px] text-[var(--logo-blue-strong)]">{tl("Salva in bozza oppure pubblica quando è pronto.")}</p>
  </div>
- <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${submission.feedback_published_at ? 'bg-[var(--surface-logo-blue)] text-[var(--logo-blue-strong)]' : 'bg-[var(--surface-muted)] text-[var(--text-muted)]'}`}>
+ <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${submission.feedback_published_at ? 'bg-[var(--surface-logo-blue)] text-[var(--logo-blue-strong)]' : 'bg-[var(--surface-muted)] text-[var(--text-muted)]'}`}>
  {submission.feedback_published_at ? tl("Pubblicato · {0}", new Date(submission.feedback_published_at).toLocaleDateString('it-IT')) : tl("Non pubblicato")}
  </span>
  </div>
@@ -419,17 +419,17 @@ export function SubmissionFeedbackEditor({ submission, task, sessionId }: { subm
  const question = questions[questionIndex]
  return (
  <label key={`${submission.id}-feedback-${questionIndex}`} className="block rounded-lg bg-[var(--surface-muted)] p-2.5">
- <span className="mb-1.5 block text-[11px] font-bold text-[var(--text-primary)]">{questionIndex + 1}. {question?.question || tl("Risposta")}</span>
+ <span className="mb-1.5 block text-[11px] font-semibold text-[var(--text-primary)]">{questionIndex + 1}. {question?.question || tl("Risposta")}</span>
  <Textarea value={answerFeedback[String(questionIndex)] || ''} onChange={(event) => setAnswerFeedback(current => ({ ...current, [String(questionIndex)]: event.target.value }))} rows={2} density="compact" placeholder={tl("Commento su questa risposta…")} className="min-h-0" />
  </label>
  )
  })}
  <label className="block">
- <span className="mb-1.5 block text-[11px] font-bold text-[var(--text-primary)]">{tl("Feedback complessivo")}</span>
+ <span className="mb-1.5 block text-[11px] font-semibold text-[var(--text-primary)]">{tl("Feedback complessivo")}</span>
  <Textarea value={overallFeedback} onChange={(event) => setOverallFeedback(event.target.value)} rows={3} density="compact" placeholder={tl("Scrivi il riepilogo per lo studente…")} className="min-h-0" />
  </label>
  <label className="block max-w-40">
- <span className="mb-1.5 block text-[11px] font-bold text-[var(--text-primary)]">{tl("Voto (opzionale)")}</span>
+ <span className="mb-1.5 block text-[11px] font-semibold text-[var(--text-primary)]">{tl("Voto (opzionale)")}</span>
  <Input density="compact" value={score} onChange={(event) => setScore(event.target.value)} placeholder="es. 8/10" />
  </label>
  <div className="flex justify-end gap-2 pt-3">

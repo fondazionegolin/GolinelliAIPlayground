@@ -1570,13 +1570,13 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
         <div className="flex flex-wrap items-center gap-1.5">
           <IconTool label={tl("Importa CSV/XLSX")} onClick={() => fileInputRef.current?.click()}><FileUp className="h-4 w-4" /></IconTool>
           <input ref={fileInputRef} type="file" className="hidden" accept=".csv,.xlsx,.xls" onChange={async (event) => { const file = event.target.files?.[0]; if (file) await importSheet(file); event.target.value = '' }} />
-          <IconTool label={tl("Esporta CSV")} onClick={exportCsv}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
-          <IconTool label={tl("Esporta XLSX")} onClick={exportXlsx}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">X</span></span></IconTool>
+          <IconTool label={tl("Esporta CSV")} onClick={exportCsv}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-semibold">C</span></span></IconTool>
+          <IconTool label={tl("Esporta XLSX")} onClick={exportXlsx}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-semibold">X</span></span></IconTool>
           <div className="mx-1 h-6 w-px bg-slate-200" />
-          <IconTool label={selectionMode === 'row' ? tl("Inserisci riga dopo la selezione") : tl("Aggiungi riga")} onClick={addRow}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
-          <IconTool label={selectionMode === 'column' ? tl("Inserisci colonna dopo la selezione") : tl("Aggiungi colonna")} onClick={addColumn}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
-          <IconTool label={tl("Elimina riga selezionata")} onClick={removeSelectedRow} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
-          <IconTool label={tl("Elimina colonna selezionata")} onClick={removeSelectedColumn} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
+          <IconTool label={selectionMode === 'row' ? tl("Inserisci riga dopo la selezione") : tl("Aggiungi riga")} onClick={addRow}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-semibold">R</span></span></IconTool>
+          <IconTool label={selectionMode === 'column' ? tl("Inserisci colonna dopo la selezione") : tl("Aggiungi colonna")} onClick={addColumn}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-semibold">C</span></span></IconTool>
+          <IconTool label={tl("Elimina riga selezionata")} onClick={removeSelectedRow} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-semibold">R</span></span></IconTool>
+          <IconTool label={tl("Elimina colonna selezionata")} onClick={removeSelectedColumn} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-semibold">C</span></span></IconTool>
           <IconTool label={tl("Pulisci tutta la tabella")} onClick={clearSheet}><Eraser className="h-4 w-4" /></IconTool>
           <div className="mx-1 h-6 w-px bg-slate-200" />
           <IconTool label={tl("Annulla (Ctrl+Z)")} onClick={undo} disabled={!historyRef.current.past.length}><Undo2 className="h-4 w-4" /></IconTool>
@@ -1587,7 +1587,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
           <IconTool label={tl("Taglia")} onClick={() => void copySelection(true)} disabled={!normalizedSelection}><Scissors className="h-4 w-4" /></IconTool>
           <IconTool label={tl("Copia selezione")} onClick={() => void copySelection()} disabled={!normalizedSelection}><Copy className="h-4 w-4" /></IconTool>
           <IconTool label={tl("Incolla")} onClick={() => void pasteSelection()} disabled={!selectedCell}><ClipboardPaste className="h-4 w-4" /></IconTool>
-          <IconTool label={tl("Separa testo in colonne")} onClick={splitSelection} disabled={!normalizedSelection}><span className="text-[11px] font-black">a|b</span></IconTool>
+          <IconTool label={tl("Separa testo in colonne")} onClick={splitSelection} disabled={!normalizedSelection}><span className="text-[11px] font-semibold">a|b</span></IconTool>
           <div className="mx-1 h-6 w-px bg-slate-200" />
           <IconTool label={tl("Crea grafico dalla selezione")} onClick={() => openChartFromSelection(false)} active={activeContextMenu === 'chart'}><BarChart3 className="h-4 w-4" /></IconTool>
           <IconTool label={tl("Regressione lineare")} onClick={() => openChartFromSelection(true)} active={activeContextMenu === 'chart' && chartConfig.type === 'scatter'}><TrendingUp className="h-4 w-4" /></IconTool>
@@ -1602,8 +1602,8 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
-          <span className="flex h-8 min-w-14 items-center justify-center rounded-md bg-slate-100 px-2 text-xs font-bold text-slate-600">{selectedCell ? `${columnName(selectedCell.col)}${selectedCell.row + 1}` : '-'}</span>
-          <span className="text-xs font-black text-slate-400">fx</span>
+          <span className="flex h-8 min-w-14 items-center justify-center rounded-md bg-slate-100 px-2 text-xs font-semibold text-slate-600">{selectedCell ? `${columnName(selectedCell.col)}${selectedCell.row + 1}` : '-'}</span>
+          <span className="text-xs font-semibold text-slate-400">fx</span>
           <div className="relative min-w-56 flex-1">
             <Input
               ref={formulaBarRef}
@@ -1626,7 +1626,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                     onClick={() => completeFormula(item.name)}
                     className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-violet-50"
                   >
-                    <span className="font-mono text-xs font-bold text-violet-700">={item.name}(...)</span>
+                    <span className="font-mono text-xs font-semibold text-violet-700">={item.name}(...)</span>
                     <span className="text-[11px] text-slate-500">{item.hint}</span>
                   </button>
                 ))}
@@ -1641,12 +1641,12 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
           <IconTool label={tl("Allinea a sinistra")} active={selectedStyle.textAlign === 'left'} onClick={() => applyStyle({ textAlign: 'left' })}><AlignLeft className="h-4 w-4" /></IconTool>
           <IconTool label={tl("Centra")} active={selectedStyle.textAlign === 'center'} onClick={() => applyStyle({ textAlign: 'center' })}><AlignCenter className="h-4 w-4" /></IconTool>
           <IconTool label={tl("Allinea a destra")} active={selectedStyle.textAlign === 'right'} onClick={() => applyStyle({ textAlign: 'right' })}><AlignRight className="h-4 w-4" /></IconTool>
-          <IconTool label={tl("Testo a capo")} active={selectedStyle.whiteSpace === 'normal'} onClick={() => applyStyle({ whiteSpace: selectedStyle.whiteSpace === 'normal' ? 'nowrap' : 'normal' })}><span className="text-[11px] font-black">↵</span></IconTool>
-          <label className="flex h-9 w-9 cursor-pointer flex-col items-center justify-center rounded-lg border border-slate-200 bg-white text-[12px] font-black text-slate-700 hover:bg-slate-100" title={tl("Colore testo")}>
+          <IconTool label={tl("Testo a capo")} active={selectedStyle.whiteSpace === 'normal'} onClick={() => applyStyle({ whiteSpace: selectedStyle.whiteSpace === 'normal' ? 'nowrap' : 'normal' })}><span className="text-[11px] font-semibold">↵</span></IconTool>
+          <label className="flex h-9 w-9 cursor-pointer flex-col items-center justify-center rounded-lg border border-slate-200 bg-white text-[12px] font-semibold text-slate-700 hover:bg-slate-100" title={tl("Colore testo")}>
             A<span className="h-1 w-5 rounded-sm" style={{ backgroundColor: selectedStyle.color || '#0f172a' }} />
             <input type="color" className="sr-only" value={selectedStyle.color || '#0f172a'} onChange={event => applyStyle({ color: event.target.value })} aria-label={tl("Colore testo")} />
           </label>
-          <label className="flex h-9 w-9 cursor-pointer flex-col items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] font-black text-slate-700 hover:bg-slate-100" title={tl("Colore cella")}>
+          <label className="flex h-9 w-9 cursor-pointer flex-col items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-100" title={tl("Colore cella")}>
             ▧<span className="h-1 w-5 rounded-sm border border-slate-200" style={{ backgroundColor: selectedStyle.backgroundColor || '#ffffff' }} />
             <input type="color" className="sr-only" value={selectedStyle.backgroundColor || '#ffffff'} onChange={event => applyStyle({ backgroundColor: event.target.value })} aria-label={tl("Colore cella")} />
           </label>
@@ -1654,8 +1654,8 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
             {NUMBER_FORMATS.map(format => <option key={format.code} value={format.code}>{format.label}</option>)}
             {!NUMBER_FORMATS.some(format => format.code === (selectedStyle.numberFormat || GENERAL_FORMAT)) && <option value="custom">{selectedStyle.numberFormat}</option>}
           </select>
-          <IconTool label={tl("Meno decimali")} onClick={() => stepSelectionDecimals(-1)}><span className="text-[10px] font-black">,0</span></IconTool>
-          <IconTool label={tl("Più decimali")} onClick={() => stepSelectionDecimals(1)}><span className="text-[10px] font-black">,00</span></IconTool>
+          <IconTool label={tl("Meno decimali")} onClick={() => stepSelectionDecimals(-1)}><span className="text-[10px] font-semibold">,0</span></IconTool>
+          <IconTool label={tl("Più decimali")} onClick={() => stepSelectionDecimals(1)}><span className="text-[10px] font-semibold">,00</span></IconTool>
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
@@ -1672,7 +1672,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
 
         {/* Always rendered: a bar appearing mid-drag would shift the grid under the mouse. */}
         <div className="mt-2 flex min-h-11 flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/70 p-2">
-            <span className="flex items-center gap-1.5 text-[11px] font-bold text-violet-800"><Sigma className="h-3.5 w-3.5" /> {tl("Operazioni suggerite")}</span>
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-800"><Sigma className="h-3.5 w-3.5" /> {tl("Operazioni suggerite")}</span>
             {!isMultipleSelection ? (
               <span className="text-[11px] text-slate-600">{tl("Seleziona più celle per calcolare somma, media e altro.")}</span>
             ) : smartSelection ? (
@@ -1682,7 +1682,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                     key={item.name}
                     type="button"
                     onClick={() => insertSmartStatistic(item.name as StatFunction)}
-                    className="rounded-md border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-violet-700 shadow-sm transition hover:border-violet-400 hover:bg-violet-100"
+                    className="rounded-md border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 shadow-sm transition hover:border-violet-400 hover:bg-violet-100"
                     title={tl("{0}; inserisce il risultato {1} senza includere celle vuote esterne ai dati", item.hint, smartSelection.direction === 'row' ? 'a destra' : 'sotto')}
                   >
                     {item.label}

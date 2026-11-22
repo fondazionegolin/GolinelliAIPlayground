@@ -197,7 +197,7 @@ export default function UDACreatorPage() {
     mutationFn: () => udaApi.publishUda(classId!, udaId!),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['uda', classId, udaId] })
-      toast({ title: tl("UDA pubblicata su {0} sessioni!", res.data.session_count) })
+      toast({ title: tl("UDA pubblicata su {0} sessioni", res.data.session_count) })
     },
     onError: () => toast({ title: tl("Errore pubblicazione"), variant: 'destructive' }),
   })
@@ -309,7 +309,7 @@ export default function UDACreatorPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1 min-w-0">
-          <SectionHeading section="/teacher/classes" compact className="text-lg font-bold text-slate-800 truncate" subtitle={<>{tl("Unità Didattica")}</>} subtitleClassName="text-xs text-slate-500">{uda.title}</SectionHeading>
+          <SectionHeading section="/teacher/classes" compact className="text-lg font-semibold text-slate-800 truncate" subtitle={<>{tl("Unità Didattica")}</>} subtitleClassName="text-xs text-slate-500">{uda.title}</SectionHeading>
         </div>
         {/* Phase stepper — flat, minimal */}
         <div className="hidden md:flex items-center gap-1">
@@ -501,7 +501,7 @@ export default function UDACreatorPage() {
                   <div className="grid gap-2">
                     {uda.plan.items?.map((item, i) => (
                       <div key={item.id || i} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-                        <span className="text-xs font-bold text-slate-300 w-5 text-center">{i + 1}</span>
+                        <span className="text-xs font-semibold text-slate-300 w-5 text-center">{i + 1}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColor(item.type || (item as { task_type?: string }).task_type || 'lesson')}`}>
                           {TYPE_LABELS[item.type || (item as { task_type?: string }).task_type || 'lesson'] || item.type}
                         </span>
@@ -539,7 +539,7 @@ export default function UDACreatorPage() {
                   <div key={i} className="flex items-center gap-2.5 text-sm">
                     {item.state === 'running' && <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-400 flex-shrink-0" />}
                     {item.state === 'done' && <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center"><span className="block w-1.5 h-1.5 rounded-full bg-slate-400" /></span>}
-                    {item.state === 'error' && <span className="flex-shrink-0 text-red-400 text-xs font-bold">!</span>}
+                    {item.state === 'error' && <span className="flex-shrink-0 text-red-400 text-xs font-semibold">!</span>}
                     <span className={item.state === 'done' ? 'text-slate-500' : item.state === 'error' ? 'text-red-500' : 'text-slate-700'}>
                       {item.text}
                     </span>
@@ -1006,7 +1006,7 @@ function ChildPreviewModal({
           {child.task_type === 'exercise' && (
             <div className="space-y-4">
               <div className={`rounded-xl p-4 ${editing ? 'border border-slate-200' : 'bg-slate-50'}`}>
-                <p className="text-xs font-semibold text-slate-500 uppercase mb-1">{tl("Istruzioni")}</p>
+                <p className="text-xs font-semibold text-slate-500 mb-1">{tl("Istruzioni")}</p>
                 {editing ? (
                   <textarea
                     className="w-full text-sm border-0 focus:outline-none resize-none bg-transparent"
@@ -1084,7 +1084,7 @@ function ChildPreviewModal({
                   <div className="bg-indigo-600 px-6 py-4">
                     {editing ? (
                       <input
-                        className="w-full text-lg font-bold text-white bg-transparent border-b border-white/40 focus:outline-none"
+                        className="w-full text-lg font-semibold text-white bg-transparent border-b border-white/40 focus:outline-none"
                         value={slides[slideIndex].title}
                         onChange={e => {
                           const updated = [...slides]
@@ -1093,7 +1093,7 @@ function ChildPreviewModal({
                         }}
                       />
                     ) : (
-                      <h3 className="text-lg font-bold text-white">{slides[slideIndex].title}</h3>
+                      <h3 className="text-lg font-semibold text-white">{slides[slideIndex].title}</h3>
                     )}
                   </div>
                   <div className="p-6 min-h-[200px]">

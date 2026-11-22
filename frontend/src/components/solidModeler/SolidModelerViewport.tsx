@@ -817,7 +817,7 @@ export default function SolidModelerViewport({
   return <>
     <div ref={hostRef} className="absolute inset-0" />
     {edgeMode && activeEdge && edgeObject && <div ref={quoteRef} className="absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border-2 border-orange-400 bg-white p-1 shadow-lg">
-      <label className="flex items-center gap-1 text-xs font-bold text-slate-700">
+      <label className="flex items-center gap-1 text-xs font-semibold text-slate-700">
         <input key={`${edgeObject.id}:${activeEdge.id}:${edgeLength(edgeObject, activeEdge)}`} aria-label={tl("Lunghezza dello spigolo")} type="number" min="0.1" step="0.1" defaultValue={Number(edgeLength(edgeObject, activeEdge).toFixed(2))} className="w-20 rounded border p-1" onBlur={e => { if (e.target.value.trim()) onEdgeLength?.(activeEdge.id, Number(e.target.value)) }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }} /> mm
       </label>
     </div>}

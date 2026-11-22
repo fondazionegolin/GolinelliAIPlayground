@@ -21,15 +21,15 @@ export default function PublicWorkflowPage() {
       <header className="flex items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2.5">
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white"><GitBranch className="h-4 w-4" /></span>
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--text-secondary)]">{tl("Golinelli.ai · Dataflow")}</p>
-          <p className="truncate text-sm font-black text-[var(--text-primary)]">{app.data?.title ?? tl("Workflow condiviso")}</p>
+          <p className="text-[10px] font-semibold text-[var(--text-secondary)]">{tl("Golinelli.ai · Dataflow")}</p>
+          <p className="truncate text-sm font-semibold text-[var(--text-primary)]">{app.data?.title ?? tl("Workflow condiviso")}</p>
         </div>
       </header>
       <main className="min-h-0 flex-1">
         {app.isLoading && <div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}
         {app.isError && (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-            <p className="text-lg font-black text-[var(--text-primary)]">{tl("Link non valido")}</p>
+            <p className="text-lg font-semibold text-[var(--text-primary)]">{tl("Link non valido")}</p>
             <p className="max-w-sm text-sm text-[var(--text-secondary)]">{tl("Il workflow non esiste più oppure il docente ha disattivato la condivisione.")}</p>
           </div>
         )}

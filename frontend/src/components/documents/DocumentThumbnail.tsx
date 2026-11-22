@@ -84,10 +84,10 @@ export function SlidePreview({ content, title, backdrop = 'bg-slate-100', intera
           }}
         >
           {slide && !slide.blocks?.some(block => block.type === 'text' || block.type === 'image') && (
-            <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{slide.title || title}</h3>
+            <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-semibold text-slate-900">{slide.title || title}</h3>
           )}
           {!slide && (
-            <div className="flex h-full items-center justify-center px-16 text-center text-4xl font-bold text-slate-300">
+            <div className="flex h-full items-center justify-center px-16 text-center text-4xl font-semibold text-slate-300">
               {title}
             </div>
           )}
@@ -181,7 +181,7 @@ function DocumentPagePreview({ html }: { html: string }) {
     <div ref={hostRef} className="relative h-full w-full overflow-hidden bg-slate-100">
       {hostWidth > 0 && (
         <article
-          className="absolute left-0 top-0 origin-top-left overflow-hidden bg-white px-16 py-14 text-[16px] leading-7 text-slate-800 [&_h1]:mb-5 [&_h1]:text-4xl [&_h1]:font-bold [&_h2]:mb-4 [&_h2]:text-3xl [&_h2]:font-bold [&_h3]:mb-3 [&_h3]:text-2xl [&_h3]:font-semibold [&_img]:h-auto [&_img]:max-w-full [&_li]:my-1 [&_ol]:my-4 [&_ol]:pl-6 [&_p]:mb-4 [&_table]:w-full [&_ul]:my-4 [&_ul]:pl-6"
+          className="absolute left-0 top-0 origin-top-left overflow-hidden bg-white px-16 py-14 text-[16px] leading-7 text-slate-800 [&_h1]:mb-5 [&_h1]:text-4xl [&_h1]:font-semibold [&_h2]:mb-4 [&_h2]:text-3xl [&_h2]:font-semibold [&_h3]:mb-3 [&_h3]:text-2xl [&_h3]:font-semibold [&_img]:h-auto [&_img]:max-w-full [&_li]:my-1 [&_ol]:my-4 [&_ol]:pl-6 [&_p]:mb-4 [&_table]:w-full [&_ul]:my-4 [&_ul]:pl-6"
           style={{ width: DIMENSIONS.a4.width, height: DIMENSIONS.a4.height, transform: `scale(${scale})` }}
           dangerouslySetInnerHTML={{ __html: safeHtml }}
         />

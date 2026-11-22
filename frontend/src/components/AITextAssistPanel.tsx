@@ -171,7 +171,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-violet-400 flex-shrink-0" />
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">{tl("Assistente AI")}</p>
+              <p className="text-xs font-semibold text-slate-300">{tl("Assistente AI")}</p>
             </div>
             <p className="truncate text-xs text-slate-400 mt-0.5">
               {selectedText.length > 120 ? `${selectedText.substring(0, 120)}...` : selectedText}
@@ -219,7 +219,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
               className="flex flex-col items-center gap-1 rounded-lg bg-violet-600/40 px-2 py-1.5 text-center transition-colors hover:bg-violet-600/60"
               title={tl("Converti in formula KaTeX")}
             >
-              <span className="text-[11px] font-bold text-violet-300">∑</span>
+              <span className="text-[11px] font-semibold text-violet-300">∑</span>
               <span className="text-[10px] font-medium text-violet-200 leading-tight">Formula</span>
             </button>
             <button

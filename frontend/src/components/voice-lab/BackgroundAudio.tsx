@@ -294,7 +294,7 @@ export function BackgroundAudioProvider({ children }: { children: ReactNode }) {
     }} />
     {identity && panelOpen && createPortal(<div className="fixed right-0 top-0 z-[200]">
       <section data-audio-panel role="dialog" aria-modal="false" aria-label={tl('Musica e playlist')} style={anchor ? { top: anchor.top, right: anchor.right, maxHeight: `calc(100dvh - ${anchor.top + 12}px)` } : undefined} className={`ds-popover absolute w-[min(35rem,calc(100vw-1.5rem))] overflow-y-auto rounded-3xl p-3 text-[var(--text-primary)] ${anchor ? '' : 'right-3 top-[calc(4.25rem+env(safe-area-inset-top))] max-h-[calc(100dvh-5rem)]'}`} onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }} onDrop={drop}>
-        <div className="mb-3 flex items-center justify-between"><h2 className="flex items-center gap-2 text-sm font-bold"><Music className="h-4 w-4" />{tl('Player audio')}</h2><IconButton autoFocus tone="neutral" surface="ghost" aria-label={tl('Chiudi')} onClick={() => setPanelOpen(false)}><X /></IconButton></div>
+        <div className="mb-3 flex items-center justify-between"><h2 className="flex items-center gap-2 text-sm font-semibold"><Music className="h-4 w-4" />{tl('Player audio')}</h2><IconButton autoFocus tone="neutral" surface="ghost" aria-label={tl('Chiudi')} onClick={() => setPanelOpen(false)}><X /></IconButton></div>
         <NavbarAudioPanel />
       </section>
     </div>, document.body)}

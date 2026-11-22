@@ -51,7 +51,7 @@ export default function WorkflowShareDialog({ workflowId, title, onClose }: { wo
 
   const row = (on: boolean, label: string, hint: string | undefined, onClick: () => void) => (
     <button key={label + hint} type="button" disabled={busy} onClick={onClick} aria-pressed={on}
-      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold transition ${on ? 'bg-violet-100 text-violet-900' : 'bg-[var(--surface-muted)] text-[var(--text-primary)] hover:bg-[var(--surface-base)]'}`}>
+      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${on ? 'bg-violet-100 text-violet-900' : 'bg-[var(--surface-muted)] text-[var(--text-primary)] hover:bg-[var(--surface-base)]'}`}>
       <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${on ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-300'}`}>{on && <Check className="h-3 w-3" />}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {hint && <span className="shrink-0 text-[10px] font-semibold text-[var(--text-secondary)]">{hint}</span>}
@@ -71,20 +71,20 @@ export default function WorkflowShareDialog({ workflowId, title, onClose }: { wo
         ) : (
           <div className="grid gap-5 md:grid-cols-2">
             <section className="space-y-3">
-              <p className="flex items-center gap-2 text-sm font-black text-[var(--text-primary)]"><Users className="h-4 w-4 text-sky-600" /> {tl("Classi e sessioni")}</p>
+              <p className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]"><Users className="h-4 w-4 text-sky-600" /> {tl("Classi e sessioni")}</p>
               <p className="text-[11px] leading-4 text-[var(--text-secondary)]">{tl("Gli studenti li trovano in «Workflow condivisi». Le AI che usano sono a carico del loro limite di sessione.")}</p>
               {targets.isLoading && <p className="text-xs text-[var(--text-secondary)]">{tl("Carico le classi…")}</p>}
               {targets.data?.classes.length === 0 && <p className="text-xs text-[var(--text-secondary)]">{tl("Non hai classi attive.")}</p>}
               <div className="space-y-1.5">
-                <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]">{tl("Tutta la classe")}</p>
+                <p className="text-[10px] font-semibold text-[var(--text-secondary)]">{tl("Tutta la classe")}</p>
                 {targets.data?.classes.map((c) => row(share.shared_class_ids.includes(c.id), c.name, c.school_grade ?? undefined, () => update({ class_ids: toggle(share.shared_class_ids, c.id) })))}
               </div>
               {sessionsByClass.length > 0 && (
                 <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]">{tl("Solo una sessione")}</p>
+                  <p className="text-[10px] font-semibold text-[var(--text-secondary)]">{tl("Solo una sessione")}</p>
                   {sessionsByClass.map(([className, sessions]) => (
                     <div key={className} className="space-y-1">
-                      <p className="text-[10px] font-bold text-[var(--text-secondary)]">{className}</p>
+                      <p className="text-[10px] font-semibold text-[var(--text-secondary)]">{className}</p>
                       {sessions.map((s) => row(share.shared_session_ids.includes(s.id), s.title, undefined, () => update({ session_ids: toggle(share.shared_session_ids, s.id) })))}
                     </div>
                   ))}
@@ -94,7 +94,7 @@ export default function WorkflowShareDialog({ workflowId, title, onClose }: { wo
 
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="flex items-center gap-2 text-sm font-black text-[var(--text-primary)]"><Globe className="h-4 w-4 text-violet-600" /> {tl("Link diretto")}</p>
+                <p className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]"><Globe className="h-4 w-4 text-violet-600" /> {tl("Link diretto")}</p>
                 <Button onClick={() => update({ public_enabled: !share.public_enabled })} disabled={busy} aria-pressed={share.public_enabled}
                   tone={share.public_enabled ? 'accent' : 'neutral'} surface={share.public_enabled ? 'solid' : 'outline'} density="compact" className="rounded-full">
                   {share.public_enabled ? tl("Attivo") : tl("Disattivo")}

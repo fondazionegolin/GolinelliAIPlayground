@@ -296,7 +296,7 @@ export default function TeacherDashboard() {
                   onClick: () => setStudentsWindowOpen((open) => !open),
                   active: studentsWindowOpen,
                   badge: (
-                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black leading-none text-white ring-2 ring-white">
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-semibold leading-none text-white ring-2 ring-white">
                       {onlineStudents.length}
                     </span>
                   ),
@@ -307,7 +307,7 @@ export default function TeacherDashboard() {
                           <UserRound className="h-4 w-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold text-slate-800">{tl("Studenti della sessione")}</p>
+                          <p className="text-sm font-semibold text-slate-800">{tl("Studenti della sessione")}</p>
                           <p className="text-[11px] text-slate-400">{onlineStudents.length} online · {visibleSessionStudents.length} {tl("iscritti")}</p>
                         </div>
                       </div>
@@ -385,7 +385,7 @@ export default function TeacherDashboard() {
                 ) : (
                   <div className="flex h-full items-center justify-center p-8">
                     <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-                      <SectionHeading section="/teacher/coding" as="h2" compact className="justify-center text-sm font-bold text-slate-900" subtitle={<>
+                      <SectionHeading section="/teacher/coding" as="h2" compact className="justify-center text-sm font-semibold text-slate-900" subtitle={<>
                         {tl("Il Vibe Lab docente usa la sessione corrente per condividere app, versioni e commit con la classe.")}
                       </>} subtitleClassName="mt-2 text-xs leading-relaxed text-slate-500">{tl("Seleziona una sessione")}</SectionHeading>
                     </div>
@@ -554,8 +554,8 @@ function TeacherMobileNavigation({
             <Menu className="h-6 w-6" strokeWidth={2.5} />
           </button>
           <button type="button" onClick={() => onNavigate('/teacher')} className="hidden min-w-0 flex-1 text-left sm:block">
-            <span className="block text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: accentColor }}>{tl("Area docente")}</span>
-            <span className="block truncate text-base font-black leading-tight text-slate-950">
+            <span className="block text-[9px] font-semibold" style={{ color: accentColor }}>{tl("Area docente")}</span>
+            <span className="block truncate text-base font-semibold leading-tight text-slate-950">
               {isHome ? 'Home' : items.find(item => currentPath.startsWith(item.path) && item.path !== '/teacher')?.label || 'Workspace'}
             </span>
           </button>
@@ -563,13 +563,13 @@ function TeacherMobileNavigation({
             {currentSession ? (
               <button type="button" onClick={() => onNavigate(`/teacher/sessions/${currentSession.id}`)} className="flex h-10 max-w-full items-center gap-2 rounded-full bg-emerald-50 px-3 text-left text-emerald-800 ring-1 ring-emerald-200 sm:max-w-[14rem]" title={currentSession.name}>
                 <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" />
-                <span className="min-w-0"><span className="block text-[8px] font-black uppercase leading-none tracking-wider text-emerald-600">Live</span><span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{currentSession.name}</span></span>
+                <span className="min-w-0"><span className="block text-[8px] font-semibold leading-none text-emerald-600">Live</span><span className="mt-0.5 block truncate text-[11px] font-semibold leading-tight">{currentSession.name}</span></span>
               </button>
             ) : (
               // No session yet: the slot opens the list of available sessions right away.
               <button type="button" onClick={() => setSessionsOpen(true)} className="flex h-10 max-w-full items-center gap-2 rounded-full bg-slate-100 px-3 text-left text-slate-600 ring-1 ring-slate-200 sm:max-w-[14rem]" aria-haspopup="dialog" aria-label={tl("Scegli una sessione")}>
                 <span className="h-2 w-2 shrink-0 rounded-full bg-slate-300" />
-                <span className="min-w-0 flex-1 truncate text-[12px] font-bold">{tl("Scegli sessione")}</span>
+                <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">{tl("Scegli sessione")}</span>
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />
               </button>
             )}
@@ -579,10 +579,10 @@ function TeacherMobileNavigation({
             <NavbarMusicButton sessionId={currentSession?.id} />
             <NavbarRecordButton />
             <NavbarCalendarClock compact sessionId={currentSession?.id} accentColor={accentColor} />
-            <button type="button" onClick={onOpenChat} className="relative flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-slate-800" title={teacherName || tl("Docente")} aria-label={tl("Apri chat di classe · {0}", teacherName || 'Docente')}>
+            <button type="button" onClick={onOpenChat} className="relative flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-semibold text-slate-800" title={teacherName || tl("Docente")} aria-label={tl("Apri chat di classe · {0}", teacherName || 'Docente')}>
               <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-slate-700" strokeWidth={1.8} />
               <span className="relative -translate-y-px">{teacherName?.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'D'}</span>
-              {unreadCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+              {unreadCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-semibold text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
             </button>
           </div>
         </div>
@@ -628,7 +628,7 @@ function TeacherMobileNavigation({
                     className={`flex min-h-[64px] w-full items-center gap-4 rounded-[20px] px-4 py-3 text-left transition active:scale-[0.98] ${active ? 'border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-lg' : 'bg-slate-50 text-slate-800'}`}
                   >
                     <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${active ? 'bg-white/15' : 'bg-white text-sky-700 shadow-sm'}`}><Icon className="h-5 w-5" /></span>
-                    <span className="min-w-0 flex-1 truncate text-[15px] font-extrabold">{label}</span>
+                    <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{label}</span>
                     <ChevronRight className="h-5 w-5 opacity-40" />
                   </Link>
                 )
@@ -638,8 +638,8 @@ function TeacherMobileNavigation({
               <ThemeToggleMenuItem persist={(ui_theme) => teacherApi.updateProfile({ ui_theme })} />
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <button type="button" onClick={() => { setOpen(false); onOpenFeedback() }} className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-orange-50 font-bold text-orange-600 active:scale-[0.98]"><MessageSquarePlus className="h-5 w-5" />Feedback</button>
-              <button type="button" onClick={onLogout} className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-rose-50 font-bold text-rose-700 active:scale-[0.98]"><LogOut className="h-5 w-5" />{t('navbar.logout')}</button>
+              <button type="button" onClick={() => { setOpen(false); onOpenFeedback() }} className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-orange-50 font-semibold text-orange-600 active:scale-[0.98]"><MessageSquarePlus className="h-5 w-5" />Feedback</button>
+              <button type="button" onClick={onLogout} className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-rose-50 font-semibold text-rose-700 active:scale-[0.98]"><LogOut className="h-5 w-5" />{t('navbar.logout')}</button>
             </div>
           </aside>
         </div>
@@ -659,7 +659,9 @@ function MobileTeacherHome({
   accentColor: string
   onOpenAssistant: () => void
 }) {
+  const { i18n } = useTranslation()
   const firstName = teacherName?.trim().split(/\s+/)[0] || tl("docente")
+  const todayLabel = (() => { const label = new Date().toLocaleDateString(i18n.language || 'it-IT', { weekday: 'long', day: 'numeric', month: 'long' }); return label.charAt(0).toUpperCase() + label.slice(1) })()
   const tools = [
     { to: '/teacher/classes', title: tl("Classi"), description: tl("Gestisci studenti e gruppi"), icon: Users, tone: 'bg-sky-50 text-sky-700' },
     { to: '/teacher/sessions', title: tl("Sessioni"), description: tl("Prepara e avvia una lezione"), icon: PlayCircle, tone: 'bg-rose-50 text-rose-600' },
@@ -671,14 +673,13 @@ function MobileTeacherHome({
   return (
     <div className="min-h-full w-full overflow-y-auto bg-neutral-100 px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
       <section className="relative overflow-hidden rounded-[2rem] bg-slate-950 px-6 pb-6 pt-7 text-white">
-        <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full opacity-30 blur-3xl" style={{ backgroundColor: accentColor }} />
         <div className="relative">
-          <div className="flex items-center gap-2 text-sm font-bold text-emerald-400">
+          <div className="flex items-center gap-2 text-sm font-semibold text-emerald-400">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_0_5px_rgba(52,211,153,0.12)]" />
             {tl("Area docente connessa")}
           </div>
-          <p className="mt-14 text-base font-bold text-slate-400">{tl("Ciao,")} {firstName}</p>
-          <h1 className="mt-2 max-w-[15rem] text-4xl font-black leading-[1.05] tracking-tight">{tl("Cosa prepariamo oggi?")}</h1>
+          <p className="mt-14 text-base font-medium text-slate-400">{firstName}</p>
+          <h1 className="mt-2 max-w-[15rem] text-4xl font-medium leading-[1.05] tracking-tight">{todayLabel}</h1>
           <button
             type="button"
             onClick={onOpenAssistant}
@@ -687,7 +688,7 @@ function MobileTeacherHome({
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-700">
               <AcademicAiIcon className="h-6 w-6" />
             </span>
-            <span className="flex-1 text-lg font-black">{tl("Apri l'assistente AI")}</span>
+            <span className="flex-1 text-lg font-semibold">{tl("Apri l'assistente AI")}</span>
             <ChevronRight className="h-6 w-6" strokeWidth={2.5} />
           </button>
         </div>
@@ -700,8 +701,8 @@ function MobileTeacherHome({
             <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-xs font-bold uppercase tracking-wider text-emerald-600">{tl("Sessione attiva")}</span>
-            <span className="block truncate text-base font-black text-slate-900">{currentSession.name}</span>
+            <span className="block text-xs font-semibold text-emerald-600">{tl("Sessione attiva")}</span>
+            <span className="block truncate text-base font-semibold text-slate-900">{currentSession.name}</span>
             <span className="block truncate text-xs text-slate-400">{currentSession.className}{currentSession.joinCode ? ` · ${currentSession.joinCode}` : ''}</span>
           </span>
           <ChevronRight className="h-5 w-5 text-slate-400" />
@@ -710,8 +711,8 @@ function MobileTeacherHome({
 
       <div className="mt-6 flex items-end justify-between px-1">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em]" style={{ color: accentColor }}>Workspace</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">{tl("I tuoi strumenti")}</h2>
+          <p className="text-xs font-semibold" style={{ color: accentColor }}>Workspace</p>
+          <h2 className="mt-1 text-2xl font-semibold text-slate-950">{tl("I tuoi strumenti")}</h2>
         </div>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3">
@@ -720,7 +721,7 @@ function MobileTeacherHome({
             <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${tone}`}>
               <Icon className="h-6 w-6" />
             </span>
-            <h3 className="mt-auto line-clamp-2 text-base font-black leading-tight text-slate-950">{title}</h3>
+            <h3 className="mt-auto line-clamp-2 text-base font-semibold leading-tight text-slate-950">{title}</h3>
             <p className="mt-1 hidden text-sm font-semibold leading-snug text-slate-400 md:block">{description}</p>
           </Link>
         ))}

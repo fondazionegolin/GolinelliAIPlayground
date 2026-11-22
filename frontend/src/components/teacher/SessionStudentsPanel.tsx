@@ -204,7 +204,7 @@ export function SessionStudentsPanel({ sessionId, onlineUsers, className = '' }:
                 <button type="button" onClick={() => setNewPassword(generatePassword())} className={`${iconBtn} hover:bg-slate-100 hover:text-slate-700`} title={tl("Genera password")} aria-label={tl("Genera password")}>
                   <RefreshCw className="h-3.5 w-3.5" />
                 </button>
-                <button type="submit" disabled={busyId !== null} className="h-8 shrink-0 rounded-full bg-violet-600 px-3 text-xs font-bold text-white disabled:opacity-50">
+                <button type="submit" disabled={busyId !== null} className="h-8 shrink-0 rounded-full bg-violet-600 px-3 text-xs font-semibold text-white disabled:opacity-50">
                   {busyId === student.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : tl("Imposta")}
                 </button>
                 <button type="button" onClick={() => setResetId(null)} className={`${iconBtn} hover:bg-slate-100`} aria-label={tl("Annulla")}>
@@ -214,7 +214,7 @@ export function SessionStudentsPanel({ sessionId, onlineUsers, className = '' }:
             )}
             {lastReset?.id === student.id && (
               <p className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] text-emerald-700">
-                {tl("Nuova password")}: <span className="select-all font-mono font-bold">{lastReset.password}</span>
+                {tl("Nuova password")}: <span className="select-all font-mono font-semibold">{lastReset.password}</span>
               </p>
             )}
           </div>

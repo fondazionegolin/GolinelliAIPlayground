@@ -194,7 +194,7 @@ function NotebookCard({
           <ProjectIcon type={notebook.project_type} className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <span className="line-clamp-2 text-sm font-extrabold leading-snug text-slate-950">{notebook.title}</span>
+          <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-950">{notebook.title}</span>
           <p className="mt-0.5 truncate text-xs text-slate-500">
             {getProjectLabel(notebook.project_type)} · {formatCellCount(notebook.cell_count, isEnglish)} · {updatedLabel}
           </p>
@@ -373,8 +373,8 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
         <div className="mb-6 flex flex-wrap items-center gap-3">
           {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} />}
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Coding Lab</p>
-            <SectionHeading section="/teacher/notebooks" className="text-2xl font-black tracking-tight text-slate-950">{isEnglish ? 'Build, run, understand' : 'Scrivi, esegui, capisci'}</SectionHeading>
+            <p className="text-[11px] font-semibold text-slate-400">Coding Lab</p>
+            <SectionHeading section="/teacher/notebooks" className="text-2xl font-semibold tracking-tight text-slate-950">{isEnglish ? 'Build, run, understand' : 'Scrivi, esegui, capisci'}</SectionHeading>
           </div>
           {!isEmpty && (
             <SearchPill value={search} placeholder={isEnglish ? 'Search projects…' : 'Cerca progetti…'} aria-label={isEnglish ? 'Search projects' : 'Cerca progetti'} onValueChange={setSearch} className="w-full sm:w-64" />
@@ -385,7 +385,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
         {isStudent && assignments.length > 0 && (
           <section className="mb-8 rounded-2xl bg-indigo-50/70 p-4 ring-1 ring-indigo-200">
             <div className="mb-3">
-              <h3 className="text-sm font-extrabold text-indigo-950">{isEnglish ? 'Assigned by your teacher' : 'Assegnati dal docente'}</h3>
+              <h3 className="text-sm font-semibold text-indigo-950">{isEnglish ? 'Assigned by your teacher' : 'Assegnati dal docente'}</h3>
               <p className="mt-1 text-xs text-indigo-700">{isEnglish ? 'Open your private copy. The teacher template will not change.' : 'Apri la tua copia privata: il template del docente non verrà modificato.'}</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -393,8 +393,8 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
                 <div key={assignment.id} className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-extrabold text-slate-950">{assignment.title}</p>
-                      <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{assignment.project_type}</p>
+                      <p className="truncate text-sm font-semibold text-slate-950">{assignment.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">{assignment.project_type}</p>
                     </div>
                     {assignment.submitted_at && <CheckCircle className="h-4 w-4 shrink-0 text-emerald-500" />}
                   </div>
@@ -411,7 +411,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
         {isEmpty ? (
           // first visit: a visual preview of what each kind of project does
           <section className="mx-auto max-w-5xl text-center">
-            <h2 className="text-3xl font-black tracking-tight text-slate-950">{isEnglish ? 'What do you want to build?' : 'Che cosa vuoi creare?'}</h2>
+            <h2 className="text-3xl font-semibold tracking-tight text-slate-950">{isEnglish ? 'What do you want to build?' : 'Che cosa vuoi creare?'}</h2>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
               {isEnglish
                 ? 'Pick a kind of project. Each one keeps code, results, previews and tutor help together.'
@@ -424,7 +424,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
                   <div className="flex items-start gap-3 px-1 pb-1">
                     <span className="ds-squircle flex h-11 w-11 shrink-0 items-center justify-center text-white" style={{ background: colorOf(type) }}><ProjectIcon type={type} className="h-5 w-5" /></span>
                     <div>
-                      <h3 className="text-base font-extrabold text-slate-950">{getProjectLabel(type)}</h3>
+                      <h3 className="text-base font-semibold text-slate-950">{getProjectLabel(type)}</h3>
                       <p className="mt-0.5 text-xs leading-5 text-slate-500">{getProjectDescription(type, isEnglish)}</p>
                     </div>
                   </div>
@@ -480,7 +480,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-black text-slate-950">{isEnglish ? 'Assign notebook' : 'Assegna notebook'}</h3>
+                <h3 className="text-lg font-semibold text-slate-950">{isEnglish ? 'Assign notebook' : 'Assegna notebook'}</h3>
                 <p className="mt-1 text-sm text-slate-500">{shareNotebook.title}</p>
               </div>
               <button className="rounded-lg p-1 text-slate-400 hover:bg-slate-100" onClick={() => setShareNotebook(null)}><X className="h-4 w-4" /></button>
@@ -558,7 +558,7 @@ function ReadyTemplateGallery({
 }) {
   return (
     <section className={className}>
-      <button type="button" onClick={onToggle} className="mx-auto flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100">
+      <button type="button" onClick={onToggle} className="mx-auto flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100">
           <Sparkles className="h-3.5 w-3.5" />
           <span>{isEnglish ? 'Ready-made examples' : 'Modelli pronti'}</span>
           {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -585,11 +585,11 @@ function ReadyTemplateGallery({
                   <span className={`flex h-10 w-10 items-center justify-center rounded-lg ${s.iconBg} ${s.icon}`}>
                     <ProjectIcon type={template.projectType} className="h-5 w-5" />
                   </span>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${s.badge}`}>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${s.badge}`}>
                     {getProjectLabel(template.projectType)}
                   </span>
                 </div>
-                <h3 className="text-sm font-black leading-tight text-slate-950">
+                <h3 className="text-sm font-semibold leading-tight text-slate-950">
                   {isEnglish ? template.titleEn : template.title}
                 </h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
@@ -599,12 +599,12 @@ function ReadyTemplateGallery({
               <div className="mt-4">
                 <div className="mb-3 flex flex-wrap gap-1.5">
                   {template.chips.map(chip => (
-                    <span key={chip} className="rounded-full bg-white/75 px-2 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-slate-200/70">
+                    <span key={chip} className="rounded-full bg-white/75 px-2 py-1 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200/70">
                       {chip}
                     </span>
                   ))}
                 </div>
-                <span className="inline-flex h-9 w-full items-center justify-center rounded-full border border-slate-300 bg-white/80 px-3 text-xs font-extrabold text-slate-700 transition group-hover:bg-white">
+                <span className="inline-flex h-9 w-full items-center justify-center rounded-full border border-slate-300 bg-white/80 px-3 text-xs font-semibold text-slate-700 transition group-hover:bg-white">
                   {isEnglish ? 'Use this model' : 'Usa questo modello'}
                 </span>
               </div>
@@ -654,8 +654,8 @@ function Section({
     <section className="mb-9">
       <div className="mb-3 flex items-center gap-3 px-1">
         <span className="ds-squircle flex h-8 w-8 items-center justify-center text-white" style={{ background: colorOf(type) }}><ProjectIcon type={type} className="h-4 w-4" /></span>
-        <h3 className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{getProjectLabel(type)}</h3>
-        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-500">{notebooks.length}</span>
+        <h3 className="text-sm font-semibold text-slate-700">{getProjectLabel(type)}</h3>
+        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{notebooks.length}</span>
         <p className="hidden text-xs text-slate-400 sm:block">{getProjectDescription(type, isEnglish)}</p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -703,7 +703,7 @@ function CreateDialog({
       >
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-black text-slate-900">{isEnglish ? 'New notebook' : 'Nuovo notebook'}</h3>
+            <h3 className="text-lg font-semibold text-slate-900">{isEnglish ? 'New notebook' : 'Nuovo notebook'}</h3>
             <p className="mt-1 text-xs leading-5 text-slate-500">
               {isEnglish ? 'Choose the workspace type, then name it.' : 'Scegli il tipo di spazio, poi dagli un nome.'}
             </p>
@@ -728,7 +728,7 @@ function CreateDialog({
             >
               <div className={`mb-1 flex items-center gap-1.5 ${selected ? s.icon : 'text-slate-600'}`}>
                 <ProjectIcon type={type} className="h-4 w-4" />
-                <span className="text-sm font-bold">{getProjectLabel(type)}</span>
+                <span className="text-sm font-semibold">{getProjectLabel(type)}</span>
               </div>
               <p className="text-xs leading-4 text-slate-500">{getProjectDescription(type, isEnglish)}</p>
             </button>
@@ -770,7 +770,7 @@ function CreateDialog({
             surface="solid"
             onClick={onCreate}
             disabled={isPending}
-            className="flex-1 font-extrabold"
+            className="flex-1 font-semibold"
           >
             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : (isEnglish ? 'Create' : 'Crea')}
           </Button>

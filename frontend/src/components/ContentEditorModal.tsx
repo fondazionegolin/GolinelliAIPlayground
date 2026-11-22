@@ -156,7 +156,7 @@ export function ContentEditorModal({ content, type, onSave, onCancel }: ContentE
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">
+            <h2 className="text-xl font-semibold text-gray-900">
               {tl("Modifica")} {type === 'quiz' ? tl("Quiz") : type === 'lesson' ? tl("Lezione") : type === 'exercise' ? tl("Esercizio") : tl("Presentazione")}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
@@ -800,7 +800,7 @@ function PresentationFormEditor({ content, onChange }: { content: PresentationDa
             <div key={index} className="border rounded-lg overflow-hidden bg-white shadow-sm">
               <div className="flex items-center justify-between p-3 bg-gray-50 border-b">
                 <div className="flex items-center gap-3 flex-1">
-                  <span className="font-bold text-gray-500 text-lg w-6">{index + 1}</span>
+                  <span className="font-semibold text-gray-500 text-lg w-6">{index + 1}</span>
                   <input
                     type="text"
                     value={slide.title}

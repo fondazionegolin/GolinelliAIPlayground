@@ -73,7 +73,7 @@ export function QuizCard({ item, viewer, canRecord, onRecord }: Common & { item:
       </div>
       {answered && (
         <div className="mt-2 rounded-xl bg-white/70 px-2.5 py-2 text-[12px] leading-snug" role="status">
-          <strong className={correct.has(choice!) ? 'text-emerald-700' : 'text-rose-700'}>{correct.has(choice!) ? tl("Corretto!") : tl("Non è corretto.")}</strong>
+          <strong className={correct.has(choice!) ? 'text-emerald-700' : 'text-rose-700'}>{correct.has(choice!) ? tl("Corretto") : tl("Non è corretto.")}</strong>
           {item.explanation && <span className="ml-1 text-slate-700">{item.explanation}</span>}
           <button type="button" {...stop} onClick={() => setChoice(null)} className="ml-2 font-semibold text-slate-500 underline">{tl("Riprova")}</button>
           {!canRecord && <span className="mt-1 block text-[10px] text-slate-500">{tl("Risposta non registrata: la lavagna è in sola lettura.")}</span>}
@@ -138,7 +138,7 @@ export function CheckCard({ item, viewer, canRecord, onRecord, onValidate }: Com
       </div>
       {result && (
         <div className={`mt-2 rounded-xl px-2.5 py-1.5 text-[12px] leading-snug ${result.ok ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'}`} role="status">
-          <strong>{result.ok ? tl("Ben fatto!") : tl("Quasi…")}</strong> {result.feedback}
+          <strong>{result.ok ? tl("Ben fatto") : tl("Quasi…")}</strong> {result.feedback}
         </div>
       )}
       {showKey && <p className="mt-1.5 rounded-xl bg-white/70 px-2.5 py-1.5 text-[12px] text-slate-700"><strong>{tl("Soluzione:")}</strong> {item.expected}</p>}

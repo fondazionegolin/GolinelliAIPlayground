@@ -75,7 +75,7 @@ function LinkQr({ url, name }: { url: string; name: string }) {
       <a
         href={dataUrl}
         download={`qr-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'chatbot'}.png`}
-        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
       >
         <Download className="h-3.5 w-3.5" /> {tl("Scarica PNG")}
       </a>
@@ -169,7 +169,7 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
                 <ArrowLeft className="h-4 w-4" />
               </button>
             )}
-            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
               <Link2 className="h-4 w-4" />
               {view === 'list' && tl("Link pubblici — {0}", teacherbotName)}
               {view === 'create' && tl("Nuovo link")}

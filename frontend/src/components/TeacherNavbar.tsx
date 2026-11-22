@@ -416,7 +416,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                 <button
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
-                  className="brand-beta-pill absolute -bottom-1 -right-2 rounded-full border-0 px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
+                  className="brand-beta-pill absolute -bottom-1 -right-2 rounded-full border-0 px-1.5 py-0.5 text-[6px] font-semibold leading-none tracking-[0.06em] shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
                   aria-label={tl("Scopri le novità della versione beta")}
                 >
                   BETA
@@ -452,10 +452,10 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                     className="flex min-w-0 items-center gap-2 pl-3 pr-2 transition-colors hover:bg-slate-200/60"
                     aria-expanded={showSessionsMenu}
                   >
-                    <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
+                    <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500' : 'bg-slate-300'}`} />
                     <div className="hidden min-w-0 text-left md:block">
                       <span
-                        className="block max-w-[120px] truncate text-[11px] font-bold leading-tight text-[var(--teacher-accent-text)]"
+                        className="block max-w-[120px] truncate text-[11px] font-semibold leading-tight text-[var(--teacher-accent-text)]"
                         title={currentSession ? currentSession.name : t('navbar.no_session')}
                       >
                         {currentSession ? currentSession.name : t('navbar.no_session')}
@@ -478,13 +478,13 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                 {showSessionsMenu && (
                   <div className="ds-popover nav-cluster-unroll absolute top-full right-0 z-50 mt-2 w-80 overflow-hidden rounded-[var(--ds-radius-panel)] max-md:fixed max-md:left-3 max-md:right-3 max-md:top-[4.25rem] max-md:mt-0 max-md:w-auto max-md:max-w-none">
                     {/* Header */}
-                    <div className="px-5 py-4 bg-slate-50/65">
-                      <h3 className="font-bold text-slate-800">{t('navbar.sessions_title')}</h3>
+                    <div className="px-5 pb-3 pt-4">
+                      <h3 className="font-semibold text-slate-800">{t('navbar.sessions_title')}</h3>
                       <p className="text-xs text-slate-500 mt-0.5">{t('navbar.select_session_hint')}</p>
                     </div>
 
                     {/* Sessions List */}
-                    <div className="max-h-72 overflow-y-auto p-2">
+                    <div className="max-h-72 overflow-y-auto px-2 pb-2">
                       {activeSessions.length === 0 ? (
                         <div className="text-center py-8">
                           <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
@@ -507,9 +507,9 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                             return (
                               <div
                                 key={session.id}
-                                className={`group flex w-full items-stretch overflow-hidden rounded-xl border-0 transition-all duration-150 ${isSelected
+                                className={`group flex w-full items-stretch overflow-hidden rounded-[var(--control-radius)] border-0 transition-colors duration-150 ${isSelected
                                   ? 'ds-selected'
-                                  : 'bg-transparent hover:bg-slate-100/65'
+                                  : 'bg-transparent hover:bg-[var(--ds-control-hover)] focus-within:bg-[var(--ds-control-hover)]'
                                   }`}
                               >
                                 <button
@@ -517,7 +517,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                                   onClick={selectSession}
                                   className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
                                 >
-                                  <div className={`h-3 w-3 flex-shrink-0 rounded-full transition-colors ${isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-slate-400'
+                                  <div className={`h-3 w-3 flex-shrink-0 rounded-full transition-colors ${isSelected ? 'bg-green-500' : 'bg-slate-300 group-hover:bg-slate-400'
                                     }`} />
                                   <div className="min-w-0 flex-1">
                                     <p className={`truncate text-sm font-medium ${isSelected ? 'text-slate-900' : 'text-slate-700'}`}>
@@ -528,7 +528,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                                         {session.className}
                                       </p>
                                       {session.joinCode && (
-                                        <span className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-black leading-none tracking-widest ${isSelected ? 'bg-white text-slate-700' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}`}>
+                                        <span className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold leading-none tracking-widest ${isSelected ? 'bg-white text-slate-700' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}`}>
                                           {session.joinCode}
                                         </span>
                                       )}
@@ -547,7 +547,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                                     setShowSessionsMenu(false)
                                     navigate(`/teacher/sessions/${session.id}`)
                                   }}
-                                  className="flex w-10 shrink-0 items-center justify-center text-slate-400 transition-colors hover:bg-white/75 hover:text-slate-800"
+                                  className="flex w-10 shrink-0 items-center justify-center text-slate-400 transition-colors hover:text-slate-800"
                                   title={t('navbar.configure_session')}
                                   aria-label={`${t('navbar.configure_session')}: ${session.name}`}
                                 >
@@ -584,7 +584,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="group flex items-center gap-1 rounded-full border-0 p-1 transition-all hover:bg-white/65 hover:shadow-[var(--ds-shadow-1)]"
+                  className="group flex items-center gap-1 rounded-full border-0 p-1 transition hover:bg-white/65 hover:shadow-[var(--ds-shadow-1)]"
                   title={`${profile.firstName} ${profile.lastName}`}
                 >
                   {profile.avatarUrl ? (
@@ -595,7 +595,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                       style={{ boxShadow: 'var(--ds-shadow-control)' }}
                     />
                   ) : (
-                    <div className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-sm font-bold text-white transition-transform duration-200 group-hover:scale-110`} style={{ boxShadow: 'var(--ds-shadow-control)' }}>
+                    <div className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-sm font-semibold text-white transition-transform duration-200 group-hover:scale-110`} style={{ boxShadow: 'var(--ds-shadow-control)' }}>
                       {getInitials()}
                     </div>
                   )}
@@ -695,14 +695,14 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                   size="sm"
                   variant="ghost"
                   className={`${isActive(item.path)
-                    ? 'bg-[var(--teacher-accent)] text-white font-bold'
+                    ? 'bg-[var(--teacher-accent)] text-white font-semibold'
                     : 'text-slate-500 hover:text-[var(--teacher-accent-text)]'
                     }`}
                 >
                   <span className="relative">
                     {item.label}
                     {(item.badgeCount ?? 0) > 0 && (
-                      <span className="ml-1 rounded-full bg-[#fe004d] px-1.5 py-0.5 text-[10px] font-black text-white">{item.badgeCount! > 9 ? '9+' : item.badgeCount}</span>
+                      <span className="ml-1 rounded-full bg-[#fe004d] px-1.5 py-0.5 text-[10px] font-semibold text-white">{item.badgeCount! > 9 ? '9+' : item.badgeCount}</span>
                     )}
                   </span>
                 </Button>
@@ -835,7 +835,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
     <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4">
       <div className="ds-popover rounded-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between bg-slate-50/55 px-6 py-4 shadow-[var(--ds-shadow-1)]">
-          <h2 className="text-lg font-bold text-slate-900">{t('navbar.settings_title')}</h2>
+          <h2 className="text-lg font-semibold text-slate-900">{t('navbar.settings_title')}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
             ✕
           </button>
@@ -878,40 +878,40 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">{t('navbar.first_name')}</label>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t('navbar.first_name')}</label>
               <input
                 type="text"
                 value={formData.firstName}
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none transition-all focus:shadow-[var(--ds-shadow-focus)]"
+                className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none transition focus:shadow-[var(--ds-shadow-focus)]"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">{t('navbar.last_name')}</label>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t('navbar.last_name')}</label>
               <input
                 type="text"
                 value={formData.lastName}
                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none transition-all focus:shadow-[var(--ds-shadow-focus)]"
+                className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none transition focus:shadow-[var(--ds-shadow-focus)]"
                 required
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">{t('navbar.email')}</label>
+            <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t('navbar.email')}</label>
             <input
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none transition-all focus:shadow-[var(--ds-shadow-focus)]"
+              className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none transition focus:shadow-[var(--ds-shadow-focus)]"
               required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">{t('navbar.language_label')}</label>
+            <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t('navbar.language_label')}</label>
             <LanguageSwitcher variant="full" />
           </div>
 
@@ -922,7 +922,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <button
               type="button"
               onClick={() => setShowPasswordSection(v => !v)}
-              className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wide hover:text-slate-700 transition-colors w-full text-left"
+              className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors w-full text-left"
             >
               <KeyRound className="h-3.5 w-3.5" />
               {tl("Cambia password")}

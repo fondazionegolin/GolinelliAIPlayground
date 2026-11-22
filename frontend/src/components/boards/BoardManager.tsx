@@ -1,5 +1,6 @@
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useEffect, useMemo, useState, useRef } from 'react'
+import { takeHandoff } from '@/lib/platformHandoff'
 import { useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { boardsApi, type BackgroundJob, type BoardCardFields, type BoardSprintInput } from '@/lib/api'
@@ -153,6 +154,15 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   const [aiFramework, setAiFramework] = useState<'kanban' | 'scrum'>('kanban')
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiFile, setAiFile] = useState<File | null>(null)
+  // Agentic hand-off from the support chat: the AI-backlog form opens with the description (and source text) filled in.
+  useEffect(() => {
+    const handoff = takeHandoff(['boards'])
+    if (!handoff) return
+    setCreateMode('ai')
+    setAiPrompt([handoff.brief, handoff.source ? `\n\nMateriale di partenza:\n${handoff.source.slice(0, 6000)}` : ''].join(''))
+    setShowCreateForm(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [inlineColumnId, setInlineColumnId] = useState<string | null>(null)
   const [inlineDraft, setInlineDraft] = useState<CardDraft>(emptyDraft())
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)
@@ -609,7 +619,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 role="tab"
                 aria-selected={createMode === mode}
                 onClick={() => setCreateMode(mode)}
-                className={`inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-bold ${createMode === mode ? 'bg-white text-slate-900 shadow-[var(--ds-shadow-1)]' : 'text-slate-500'}`}
+                className={`inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-semibold ${createMode === mode ? 'bg-white text-slate-900 shadow-[var(--ds-shadow-1)]' : 'text-slate-500'}`}
               >
                 {mode === 'ai' && <Sparkles className="h-3.5 w-3.5" />}{label}
               </button>
@@ -618,7 +628,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={createMode === 'ai' ? tl("Titolo (facoltativo)") : tl("Titolo board")} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" />
           {createMode === 'ai' ? (
             <>
-              <label className="block text-[11px] font-bold text-slate-500">
+              <label className="block text-[11px] font-semibold text-slate-500">
                 Framework
                 <select value={aiFramework} onChange={(e) => setAiFramework(e.target.value as 'kanban' | 'scrum')} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal text-slate-900">
                   {FRAMEWORKS.map((framework) => <option key={framework.id} value={framework.id}>{framework.label}</option>)}
@@ -632,7 +642,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 placeholder={tl("Descrivi il progetto: obiettivo, destinatari, vincoli, scadenze…")}
                 className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
               />
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 hover:border-slate-400">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:border-slate-400">
                 <FileUp className="h-4 w-4 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{aiFile ? aiFile.name : tl("Carica un file di progetto (PDF, DOCX, PPTX, TXT, MD)")}</span>
                 {aiFile && (
@@ -646,7 +656,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 type="button"
                 disabled={(!aiPrompt.trim() && !aiFile) || generateBoard.isPending || Boolean(backlogJob) || (isStudent && !sessionId)}
                 onClick={() => generateBoard.mutate()}
-                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-semibold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {generateBoard.isPending || backlogJob ? <><Loader2 className="h-4 w-4 animate-spin" /> {tl("Genero il backlog…")}</> : <><Sparkles className="h-4 w-4" /> {tl("Genera backlog")}</>}
               </button>
@@ -667,12 +677,12 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 <select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-2 text-sm">
                   {templates.map((template) => <option key={template.id} value={template.id}>{template.label}</option>)}
                 </select>
-                <button disabled={(isStudent && !sessionId) || createBoard.isPending} onClick={() => createBoard.mutate()} className="inline-flex h-9 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
+                <button disabled={(isStudent && !sessionId) || createBoard.isPending} onClick={() => createBoard.mutate()} className="inline-flex h-9 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-semibold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
                   <Plus className="h-4 w-4" /> {tl("Crea")}
                 </button>
               </div>
               {sessionId && (
-                <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+                <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
                   <input type="checkbox" checked={shareOnCreate} onChange={(e) => setShareOnCreate(e.target.checked)} />
                   {tl("condividi con la classe")}
                 </label>
@@ -733,7 +743,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
             <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 border-b border-slate-200 bg-white px-3 py-1.5 md:flex md:flex-wrap md:justify-between md:gap-2 md:px-4 md:py-2">
               <div className="flex min-w-0 items-center gap-2">
                 {isMobile && <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label={tl("Torna alle board")}><ArrowLeft className="h-5 w-5" /></button>}
-                <SectionHeading section="/teacher/boards" as="h2" compact className="truncate text-lg font-bold">{board.title}</SectionHeading>
+                <SectionHeading section="/teacher/boards" as="h2" compact className="truncate text-lg font-semibold">{board.title}</SectionHeading>
               </div>
               <div className="col-span-2 flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 md:col-span-1">
                 <div className="inline-flex h-11 shrink-0 items-center gap-0.5 rounded-xl bg-slate-100 p-1 md:h-9" role="tablist" aria-label={tl("Vista")}>
@@ -744,19 +754,19 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                       role="tab"
                       aria-selected={viewMode === mode}
                       onClick={() => setViewMode(mode)}
-                      className={`inline-flex h-full items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${viewMode === mode ? 'bg-white text-slate-900 shadow-[var(--ds-shadow-1)]' : 'text-slate-500 hover:text-slate-800'}`}
+                      className={`inline-flex h-full items-center gap-1 rounded-lg px-2.5 text-xs font-semibold ${viewMode === mode ? 'bg-white text-slate-900 shadow-[var(--ds-shadow-1)]' : 'text-slate-500 hover:text-slate-800'}`}
                     >
                       <Icon className="h-4 w-4" /><span className="hidden sm:inline">{label}</span>
                     </button>
                   ))}
                 </div>
-                <label className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white pl-2.5 pr-1 text-xs font-bold text-slate-600 md:h-9">
+                <label className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white pl-2.5 pr-1 text-xs font-semibold text-slate-600 md:h-9">
                   <CalendarRange className="h-4 w-4 text-slate-400" aria-hidden="true" />
                   <span className="sr-only">{tl("Filtra per sprint")}</span>
                   <select
                     value={activeSprintFilter || ''}
                     onChange={(event) => setSprintFilter(event.target.value || null)}
-                    className="h-full max-w-[180px] bg-transparent pr-1 text-xs font-bold text-slate-700 outline-none"
+                    className="h-full max-w-[180px] bg-transparent pr-1 text-xs font-semibold text-slate-700 outline-none"
                   >
                     <option value="">{tl("Tutti gli sprint")}</option>
                     {sprints.map((sprint) => (
@@ -777,7 +787,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     type="button"
                     onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
                     aria-pressed={selectMode}
-                    className={`inline-flex h-11 items-center gap-1 rounded-xl border px-3 text-xs font-bold md:h-9 ${selectMode ? 'border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    className={`inline-flex h-11 items-center gap-1 rounded-xl border px-3 text-xs font-semibold md:h-9 ${selectMode ? 'border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                   >
                     <ListChecks className="h-4 w-4" /> {tl("Seleziona")}
                   </button>
@@ -787,7 +797,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     type="button"
                     onClick={() => setMineOnly((value) => !value)}
                     aria-pressed={mineOnly}
-                    className={`inline-flex h-11 items-center gap-1 rounded-xl border px-3 text-xs font-bold md:h-9 ${mineOnly ? 'border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    className={`inline-flex h-11 items-center gap-1 rounded-xl border px-3 text-xs font-semibold md:h-9 ${mineOnly ? 'border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                   >
                     <UserRound className="h-4 w-4" /> {tl("I miei task")}
                   </button>
@@ -800,21 +810,21 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     <div className={`${labelsMenuOpen ? 'block' : 'hidden group-hover:block group-focus-within:block'} absolute right-0 top-full z-30 min-w-44 pt-1`}>
                       <div className="rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg" role="group" aria-label={tl("Etichette")}>
                         {labels.map((label) => (
-                          <button key={label.id} type="button" aria-pressed={labelFilter === label.id} onClick={() => { setLabelFilter(labelFilter === label.id ? null : label.id); setLabelsMenuOpen(false) }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-slate-100 ${labelFilter === label.id ? 'font-bold text-slate-900' : 'text-slate-600'}`}>
+                          <button key={label.id} type="button" aria-pressed={labelFilter === label.id} onClick={() => { setLabelFilter(labelFilter === label.id ? null : label.id); setLabelsMenuOpen(false) }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-slate-100 ${labelFilter === label.id ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>
                             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: label.color }} />{label.name}<span className="ml-auto pl-3 text-[10px] font-medium text-slate-400">{labelCounts[label.id] || 0}</span>
                           </button>
                         ))}
                         {board.can_manage && <button type="button" onClick={() => { setLabelsMenuOpen(false); setLabelsOpen(true) }} className="w-full rounded-lg border-t border-slate-100 px-2 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-100">{tl("Gestisci etichette")}</button>}
                         {board.can_edit && cards.length > 0 && (
                           <div className="mt-1 space-y-0.5 border-t border-slate-100 pt-1">
-                            <button type="button" disabled={autoLabeling} onClick={() => { setLabelsMenuOpen(false); void runAutoLabel('unlabeled') }} className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                            <button type="button" disabled={autoLabeling} onClick={() => { setLabelsMenuOpen(false); void runAutoLabel('unlabeled') }} className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
                               <Sparkles className="h-3.5 w-3.5" /> {tl("Raggruppa ed etichetta i task con l’IA")}
                             </button>
                             <button type="button" disabled={autoLabeling} onClick={() => { setLabelsMenuOpen(false); void runAutoLabel('all') }} className="w-full rounded-lg px-2 py-1.5 pl-7 text-left text-[11px] text-slate-500 hover:bg-slate-50 disabled:opacity-50">
                               {tl("Rianalizza anche quelli già etichettati")}
                             </button>
                             {board.can_manage && (
-                              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50">
+                              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
                                 <input type="checkbox" checked={Boolean(board.auto_label)} onChange={(event) => updateBoard.mutate({ auto_label: event.target.checked })} />
                                 {tl("Etichetta automaticamente i nuovi task")}
                               </label>
@@ -827,7 +837,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 )}
                 <PresenceAvatars people={boardPresence.others} />
                 {isShared && (
-                  <div className="hidden h-9 shrink-0 items-center gap-1.5 rounded-xl bg-violet-50 px-2 text-[11px] font-bold text-violet-700 sm:inline-flex" aria-label={tl("Condivisa con")}>
+                  <div className="hidden h-9 shrink-0 items-center gap-1.5 rounded-xl bg-violet-50 px-2 text-[11px] font-semibold text-violet-700 sm:inline-flex" aria-label={tl("Condivisa con")}>
                     <Users className="h-3.5 w-3.5" />
                     <span>{tl("Condivisa con")}</span>
                     {sharedWithClass && <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] text-white" title={board.session_title || undefined}>{tl("Tutta la classe")}</span>}
@@ -835,7 +845,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                   </div>
                 )}
                 {board.can_manage && (
-                  <button type="button" onClick={() => setShareOpen(true)} className={`inline-flex h-11 w-11 items-center justify-center gap-1 rounded-xl border text-sm font-bold md:h-9 md:w-auto md:px-3 ${isShared ? 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`} title={isShared ? tl("Condivisione") : tl("Condividi")}>
+                  <button type="button" onClick={() => setShareOpen(true)} className={`inline-flex h-11 w-11 items-center justify-center gap-1 rounded-xl border text-sm font-semibold md:h-9 md:w-auto md:px-3 ${isShared ? 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`} title={isShared ? tl("Condivisione") : tl("Condividi")}>
                     {board.visibility === 'session_shared' ? <Share2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                     <span className="hidden md:inline">{isShared ? tl("Condivisa") : tl("Condividi")}</span>
                   </button>
@@ -856,8 +866,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           title={[sprint.name, sprint.goal].filter(Boolean).join(' — ')}
                           className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-2.5 py-1 text-left transition ${active ? 'bg-slate-900 text-white shadow-[var(--ds-shadow-1)]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                         >
-                          <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ${active ? 'bg-white/15' : status === 'current' ? 'bg-violet-600 text-white' : 'bg-white text-slate-700'}`}>{sprintCode[sprint.id]}</span>
-                          <span className="text-[11px] font-bold leading-4">
+                          <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${active ? 'bg-white/15' : status === 'current' ? 'bg-violet-600 text-white' : 'bg-white text-slate-700'}`}>{sprintCode[sprint.id]}</span>
+                          <span className="text-[11px] font-semibold leading-4">
                             {formatSprintDates(sprint) || tl("Date da definire")}
                             {status === 'current' && <span className={`ml-1 ${active ? 'text-white/70' : 'text-violet-600'}`}>{tl("· in corso")}</span>}
                           </span>
@@ -866,13 +876,13 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     })}
                     {sprints.length === 0 && <span className="self-center text-[11px] text-slate-400">{tl("Nessuno sprint pianificato.")}</span>}
                     {board.can_manage && (
-                      <button type="button" onClick={() => setSprintsOpen(true)} className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:border-slate-400 hover:text-slate-800">
+                      <button type="button" onClick={() => setSprintsOpen(true)} className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-500 hover:border-slate-400 hover:text-slate-800">
                         {sprints.length ? <><Edit2 className="h-3 w-3" /> {tl("Gestisci sprint")}</> : <><Plus className="h-3 w-3" /> {tl("Crea sprint")}</>}
                       </button>
                     )}
                   </div>
                   {activeSprintFilter && activeSprintFilter !== 'none' && sprintById[activeSprintFilter]?.goal && (
-                    <p className="mt-1 truncate text-xs text-slate-500"><span className="font-bold text-slate-700">{tl("Obiettivo")} {sprintCode[activeSprintFilter]}:</span> {sprintById[activeSprintFilter].goal}</p>
+                    <p className="mt-1 truncate text-xs text-slate-500"><span className="font-semibold text-slate-700">{tl("Obiettivo")} {sprintCode[activeSprintFilter]}:</span> {sprintById[activeSprintFilter].goal}</p>
                   )}
                 </div>
               )}
@@ -889,13 +899,13 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
               />
             ) : <>
             {isMobile && <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2" aria-label={tl("Colonne board")}>
-              {columns.map((column) => <button key={column.id} type="button" onClick={() => setMobileColumnId(column.id)} className={`min-h-11 shrink-0 rounded-full px-4 text-xs font-black ${activeMobileColumnId === column.id ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'bg-slate-100 text-slate-600'}`}>{column.label} <span className="opacity-60">{(grouped[column.id] || []).length}</span></button>)}
+              {columns.map((column) => <button key={column.id} type="button" onClick={() => setMobileColumnId(column.id)} className={`min-h-11 shrink-0 rounded-full px-4 text-xs font-semibold ${activeMobileColumnId === column.id ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'bg-slate-100 text-slate-600'}`}>{column.label} <span className="opacity-60">{(grouped[column.id] || []).length}</span></button>)}
               {board.can_manage && (
                 <button
                   type="button"
                   onClick={() => addColumn()}
                   disabled={columns.length >= 12 || updateBoard.isPending}
-                  className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full border border-dashed border-slate-300 bg-white px-4 text-xs font-black text-slate-600 disabled:opacity-40"
+                  className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full border border-dashed border-slate-300 bg-white px-4 text-xs font-semibold text-slate-600 disabled:opacity-40"
                   aria-label={tl("Nuova colonna")}
                 >
                   <Plus className="h-4 w-4" /> {tl("Nuova colonna")}
@@ -980,7 +990,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                                 event.currentTarget.blur()
                               }
                             }}
-                            className="h-7 w-full rounded-md border border-slate-300 px-2 text-xs font-black uppercase tracking-wide outline-none focus:ring-2 focus:ring-slate-300"
+                            className="h-7 w-full rounded-md border border-slate-300 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-slate-300"
                             aria-label={tl("Rinomina {0}", column.label)}
                           />
                         </div>
@@ -1016,7 +1026,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     )}
                     {selectMode && (grouped[column.id] || []).length > 0 && (
                       <button type="button" onClick={() => togglePicked((grouped[column.id] || []).map((item) => item.id))}
-                        className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-bold text-slate-600 hover:bg-slate-900/[0.06]"
+                        className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-900/[0.06]"
                         title={tl("Seleziona tutti i task della colonna")} aria-label={tl("Seleziona tutti i task della colonna")}>
                         {(grouped[column.id] || []).every((item) => pickedIds.has(item.id)) ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
                       </button>
@@ -1089,19 +1099,19 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                       >
                         <div className="flex items-start gap-2">
                           {selectMode && (pickedIds.has(card.id) ? <CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-[var(--logo-violet)]" aria-hidden="true" /> : <Square className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />)}
-                          <h4 className="min-w-0 flex-1 text-sm font-bold leading-5 text-slate-900">{card.title}</h4>
+                          <h4 className="min-w-0 flex-1 text-sm font-semibold leading-5 text-slate-900">{card.title}</h4>
                           <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#d4d4d4' }} aria-hidden="true" />
                         </div>
                         {((card.card_type && card.card_type !== 'task') || (card.labels || []).some((id) => labelById[id]) || (card.sprint_id && sprintById[card.sprint_id])) && (
                           <div className="mt-2 flex flex-wrap gap-1">
                             {card.sprint_id && sprintById[card.sprint_id] && (
-                              <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[10px] font-black text-white" title={sprintById[card.sprint_id].name}>{sprintCode[card.sprint_id]}</span>
+                              <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-white" title={sprintById[card.sprint_id].name}>{sprintCode[card.sprint_id]}</span>
                             )}
                             {card.card_type && card.card_type !== 'task' && (
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${card.card_type === 'epic' ? 'bg-violet-100 text-violet-700' : 'bg-sky-50 text-sky-700'}`}>{CARD_TYPE_LABEL[card.card_type]}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${card.card_type === 'epic' ? 'bg-violet-100 text-violet-700' : 'bg-sky-50 text-sky-700'}`}>{CARD_TYPE_LABEL[card.card_type]}</span>
                             )}
                             {(card.labels || []).map((id) => labelById[id] && (
-                              <span key={id} className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ backgroundColor: `${labelById[id].color}1f`, color: labelById[id].color }}>
+                              <span key={id} className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: `${labelById[id].color}1f`, color: labelById[id].color }}>
                                 {labelById[id].name}
                               </span>
                             ))}
@@ -1109,8 +1119,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                         )}
                         {(card.priority || card.story_points || (card.assignees || []).length > 0) && (
                           <div className="mt-2 flex items-start gap-1.5">
-                            {card.priority && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${PRIORITY_STYLE[card.priority].className}`}>{PRIORITY_STYLE[card.priority].label}</span>}
-                            {card.story_points ? <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600" title="Story point">{card.story_points} pt</span> : null}
+                            {card.priority && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${PRIORITY_STYLE[card.priority].className}`}>{PRIORITY_STYLE[card.priority].label}</span>}
+                            {card.story_points ? <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600" title="Story point">{card.story_points} pt</span> : null}
                             <AssigneeStack people={card.assignees || []} />
                           </div>
                         )}
@@ -1127,7 +1137,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                       </article>
                     ))}
                     {(grouped[column.id] || []).length === 0 && (
-                      <div className={`flex min-w-[180px] flex-1 items-center justify-center text-xs ${draggingCardId ? 'font-bold text-sky-600' : 'text-slate-300'}`}>
+                      <div className={`flex min-w-[180px] flex-1 items-center justify-center text-xs ${draggingCardId ? 'font-semibold text-sky-600' : 'text-slate-300'}`}>
                         <LayoutTemplate className="mr-1 h-3 w-3" />
                         {draggingCardId ? tl("Rilascia qui") : searchQuery ? tl("Nessun risultato") : tl("Nessun task")}
                       </div>
@@ -1145,8 +1155,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       </main>}
       {selectMode && board?.can_edit && (
         <div className="ds-popover fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-[var(--ds-radius-card)] px-3 py-2" role="toolbar" aria-label={tl("Azioni sui task selezionati")}>
-          <span className="px-1 text-sm font-bold text-slate-800">{tl("{0} selezionati", String(pickedIds.size))}</span>
-          <select value={bulkTarget} onChange={(event) => setBulkTarget(event.target.value)} aria-label={tl("Sposta in")} className="ds-field h-10 rounded-[var(--ds-field-radius)] px-3 text-sm font-bold">
+          <span className="px-1 text-sm font-semibold text-slate-800">{tl("{0} selezionati", String(pickedIds.size))}</span>
+          <select value={bulkTarget} onChange={(event) => setBulkTarget(event.target.value)} aria-label={tl("Sposta in")} className="ds-field h-10 rounded-[var(--ds-field-radius)] px-3 text-sm font-semibold">
             <option value="">{tl("Sposta in…")}</option>
             {columns.map((column) => <option key={column.id} value={column.id}>{column.label}</option>)}
           </select>
@@ -1223,7 +1233,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="delete-column-title">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 id="delete-column-title" className="text-lg font-black text-slate-900">{tl("Elimina colonna")}</h3>
+                <h3 id="delete-column-title" className="text-lg font-semibold text-slate-900">{tl("Elimina colonna")}</h3>
                 <p className="mt-1 text-sm text-slate-500">
                   {tl("I task di “")}{columns.find((column) => column.id === columnToDelete.columnId)?.label}{tl("” devono essere spostati prima dell’eliminazione.")}
                 </p>
@@ -1232,7 +1242,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <label className="mt-5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+            <label className="mt-5 block text-xs font-semibold text-slate-500">
               {tl("Sposta i task in")}
               <select
                 autoFocus
@@ -1246,8 +1256,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
               </select>
             </label>
             <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setColumnToDelete(null)} className="h-10 rounded-lg px-4 text-sm font-bold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
-              <button type="button" disabled={updateBoard.isPending} onClick={confirmDeleteColumn} className="h-10 rounded-lg bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={() => setColumnToDelete(null)} className="h-10 rounded-lg px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
+              <button type="button" disabled={updateBoard.isPending} onClick={confirmDeleteColumn} className="h-10 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
                 {updateBoard.isPending ? tl("Eliminazione…") : tl("Sposta ed elimina")}
               </button>
             </div>
@@ -1303,7 +1313,7 @@ function CardForm({ boardId, heading, draft, onChange, labels, members, sprints,
   onSubmit: () => void
 }) {
   const set = (patch: Partial<CardDraft>) => onChange({ ...draft, ...patch })
-  const fieldLabel = 'block text-[10px] font-bold uppercase tracking-wide text-slate-500'
+  const fieldLabel = 'block text-[10px] font-semibold text-slate-500'
   const inputClass = 'mt-1 w-full rounded-md border border-slate-200 px-2 text-sm font-normal normal-case tracking-normal text-slate-900 outline-none focus:ring-2 focus:ring-slate-300'
   return (
     <form
@@ -1315,7 +1325,7 @@ function CardForm({ boardId, heading, draft, onChange, labels, members, sprints,
     >
       {heading && (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-black text-slate-700">{heading}</p>
+          <p className="text-xs font-semibold text-slate-700">{heading}</p>
           <button type="button" onClick={onCancel} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Annulla")}>
             <X className="h-4 w-4" />
           </button>
@@ -1341,7 +1351,7 @@ function CardForm({ boardId, heading, draft, onChange, labels, members, sprints,
                   type="button"
                   aria-pressed={active}
                   onClick={() => set({ labels: active ? draft.labels.filter((id) => id !== label.id) : [...draft.labels, label.id] })}
-                  className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${active ? 'text-white' : 'bg-slate-100 text-slate-500'}`}
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${active ? 'text-white' : 'bg-slate-100 text-slate-500'}`}
                   style={active ? { backgroundColor: label.color } : undefined}
                 >
                   {label.name}
@@ -1384,8 +1394,8 @@ function CardForm({ boardId, heading, draft, onChange, labels, members, sprints,
       <div className="flex items-center justify-between gap-2 pt-1">
         <ColorPicker value={draft.color} onChange={(color) => set({ color })} />
         <div className="flex gap-2">
-          <button type="button" onClick={onCancel} className="h-8 rounded-md px-2 text-xs font-bold text-slate-500 hover:bg-slate-100">{tl("Annulla")}</button>
-          <button disabled={!draft.title.trim() || pending} className="inline-flex h-8 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
+          <button type="button" onClick={onCancel} className="h-8 rounded-md px-2 text-xs font-semibold text-slate-500 hover:bg-slate-100">{tl("Annulla")}</button>
+          <button disabled={!draft.title.trim() || pending} className="inline-flex h-8 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-semibold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
             <Check className="h-3.5 w-3.5" /> {submitLabel}
           </button>
         </div>

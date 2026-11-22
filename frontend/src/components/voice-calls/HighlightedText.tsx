@@ -25,7 +25,7 @@ export function useHighlighter(texts: string[]): Highlighter {
 export function Marked({ piece, colorOf }: { piece: Piece; colorOf: (keyword: string) => string }) {
   switch (piece.mark) {
     case 'keyword':
-      return <strong className="font-bold underline decoration-2 underline-offset-[3px]" style={{ textDecorationColor: colorOf(piece.keyword ?? '') }}>{piece.text}</strong>
+      return <strong className="font-semibold underline decoration-2 underline-offset-[3px]" style={{ textDecorationColor: colorOf(piece.keyword ?? '') }}>{piece.text}</strong>
     case 'number':
       return <span className="rounded bg-amber-400/25 px-1 font-semibold text-amber-700 dark:text-amber-300">{piece.text}</span>
     case 'name':

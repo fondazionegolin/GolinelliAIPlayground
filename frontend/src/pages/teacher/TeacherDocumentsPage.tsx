@@ -8,7 +8,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Plus, Trash2, Upload, Monitor, FileText, FileSpreadsheet, PenTool, User, MonitorPlay, Search, X,
-  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Sparkles, FileUp, PanelTop, ChevronDown, Clock } from '@/components/icons'
+  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, FileUp, PanelTop, ChevronDown, Clock } from '@/components/icons'
 import { filesApi, teacherApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
 import { printSlidesAsPdf } from '@/lib/slidesPdf'
@@ -19,17 +19,18 @@ import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLID
 import { createShapeBlock, applyStyleToBlocks, applyBlockGroupReplacement, blockGroupAssistTarget } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
-import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderPageSetupMenu, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
-import { DEFAULT_PAGE_SETUP, pageDimensions, readDocumentAgentPreference, readPageSetup, saveDocumentAgentPreference, withPageBreaks, type PageSetup } from '@/lib/documentPage'
+import { DocumentEditorHeader, HeaderExportMenu, HeaderAssistantButton, HeaderIconButton, HeaderPageSetupMenu, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
+import { DEFAULT_PAGE_SETUP, documentRow, documentRulingBackground, documentUsableHeight, pageDimensions, readDocumentAgentPreference, readPageSetup, saveDocumentAgentPreference, withPageBreaks, type PageSetup } from '@/lib/documentPage'
 import { DOCUMENT_TARGETS, takeHandoff } from '@/lib/platformHandoff'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
 import DocumentPageWidget from '@/components/documents/DocumentPageWidget'
+import DocumentOutline from '@/components/documents/DocumentOutline'
 import { DocumentRuler } from '@/components/documents/DocumentRuler'
 import { DocumentPageDecorations } from '@/components/documents/DocumentPageDecorations'
 import { DocumentHeaderFooterDialog } from '@/components/documents/DocumentHeaderFooterDialog'
 import { DEFAULT_HEADER_FOOTER, readHeaderFooter, type HeaderFooterConfig } from '@/lib/documentHeaderFooter'
 import { applyFormatOperations, type FormatOperation, type FormatRange } from '@/lib/documentFormatOps'
-import { applyWriteProposal, buildPlanStats, buildWritingContext, type WriteProposal } from '@/lib/documentWriting'
+import { applyWriteProposal, buildAnalysisText, buildPlanStats, buildWritingContext, type WriteProposal } from '@/lib/documentWriting'
 import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
 import { collectDocumentColors } from '@/components/ui/ColorPicker'
 import PresentationStudio from '@/components/presentation/PresentationStudio'
@@ -201,8 +202,8 @@ function CollapsibleSection({ title, count, collapsed, onToggle, children }: {
     <section>
       <button type="button" onClick={onToggle} aria-expanded={!collapsed} className="mb-3 flex w-full items-center gap-2 text-left">
         <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
-        <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{title}</h2>
-        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{count}</span>
+        <h2 className="text-[10px] font-semibold text-slate-400">{title}</h2>
+        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{count}</span>
         <span className="h-px flex-1 bg-slate-200" />
       </button>
       {!collapsed && children}
@@ -297,6 +298,8 @@ export default function TeacherDocumentsPage() {
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
   const [pageSetup, setPageSetup] = useState<PageSetup>(DEFAULT_PAGE_SETUP)
   const docPage = pageDimensions(pageSetup)
+  // Baseline grid: one row = the document line spacing; each sheet holds a whole number of rows.
+  const docRow = documentRow(pageSetup)
   const [documentPageCount, setDocumentPageCount] = useState(1)
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
@@ -489,6 +492,7 @@ export default function TeacherDocumentsPage() {
   })
   const getDocumentAssistStats = (target: DocumentAssistContext) => editor ? buildPlanStats(editor, document.title, assistTarget(target), assistRange(target)) : {}
   const getDocumentWritingContext = (target: DocumentAssistContext) => editor ? buildWritingContext(editor, document.title, assistTarget(target)) : {}
+  const getDocumentAnalysisText = (target: DocumentAssistContext) => editor ? buildAnalysisText(editor, assistTarget(target)) : ''
   const applyDocumentAssistOperations = (operations: FormatOperation[], target: DocumentAssistContext) =>
     editor ? applyFormatOperations(editor, operations, assistRange(target)).lines : []
 
@@ -1957,7 +1961,7 @@ export default function TeacherDocumentsPage() {
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-bold text-slate-900">{isEnglish ? 'Create new' : 'Crea nuovo'}</h3>
+            <h3 className="text-lg font-semibold text-slate-900">{isEnglish ? 'Create new' : 'Crea nuovo'}</h3>
             <p className="text-sm text-slate-500">{isEnglish ? 'Choose the type of content to create.' : 'Scegli il tipo di contenuto da creare.'}</p>
           </div>
           <button type="button" onClick={() => setShowNewModal(false)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label={isEnglish ? 'Close' : 'Chiudi'}><X className="h-4 w-4" /></button>
@@ -1968,7 +1972,7 @@ export default function TeacherDocumentsPage() {
             return (
               <button key={option.key} type="button" onClick={() => { option.create(); setShowNewModal(false) }} className="flex flex-col items-start gap-2 rounded-xl border border-slate-200 p-3 text-left transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
                 <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${option.tone}`}><Icon className="h-5 w-5" /></span>
-                <span><span className="block text-sm font-bold text-slate-900">{option.label}</span><span className="block text-xs text-slate-500">{option.hint}</span></span>
+                <span><span className="block text-sm font-semibold text-slate-900">{option.label}</span><span className="block text-xs text-slate-500">{option.hint}</span></span>
               </button>
             )
           })}
@@ -2022,7 +2026,7 @@ export default function TeacherDocumentsPage() {
           <input ref={documentFileInputRef} type="file" multiple accept={DOCUMENT_IMPORT_ACCEPT} className="hidden" onChange={(event) => void importDocumentFiles(Array.from(event.target.files || []))} />
           <div className="ds-frame-header hidden h-14 items-center px-6 md:flex">
             <div className="flex items-center gap-2">
-              <SectionHeading section="/teacher/documents" compact className="text-base font-bold text-slate-800">{isEnglish ? 'Documents' : 'Documenti'}</SectionHeading>
+              <SectionHeading section="/teacher/documents" compact className="text-base font-semibold text-slate-800">{isEnglish ? 'Documents' : 'Documenti'}</SectionHeading>
             </div>
           </div>
 
@@ -2054,7 +2058,7 @@ export default function TeacherDocumentsPage() {
                   <div className="w-20 h-20 rounded-[24px] bg-slate-100 flex items-center justify-center mb-5">
                     <FileText className="h-10 w-10 text-slate-500" />
                   </div>
-                  <h3 className="text-lg font-bold text-slate-700 mb-1">{isEnglish ? 'No documents yet' : 'Nessun documento'}</h3>
+                  <h3 className="text-lg font-semibold text-slate-700 mb-1">{isEnglish ? 'No documents yet' : 'Nessun documento'}</h3>
                   <p className="text-sm text-slate-400 mb-6">{isEnglish ? 'Create a document or a presentation to get started' : 'Crea un documento oppure una presentazione per iniziare'}</p>
                   <Button onClick={() => setShowPresentationStudio(true)}>
                     <Plus className="h-4 w-4 mr-2" />
@@ -2068,7 +2072,7 @@ export default function TeacherDocumentsPage() {
                 <section>
                   <div className="mb-3 flex items-center gap-2">
                     <Clock className="h-3.5 w-3.5 text-slate-400" />
-                    <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{isEnglish ? 'Recently edited' : 'Modificati di recente'}</h2>
+                    <h2 className="text-[10px] font-semibold text-slate-400">{isEnglish ? 'Recently edited' : 'Modificati di recente'}</h2>
                     <span className="h-px flex-1 bg-slate-200" />
                   </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -2082,7 +2086,7 @@ export default function TeacherDocumentsPage() {
                         onOpen={() => shared ? void loadDocument(doc as StoredDocument) : void loadDraft(doc as DraftDocument)}
                         onDelete={() => shared ? void handleDeletePublished(doc as StoredDocument) : void handleDeleteDraft(doc as DraftDocument)}
                         deleteLabel={shared ? (isEnglish ? 'Remove from session' : 'Rimuovi dalla sessione') : (isEnglish ? 'Delete draft' : 'Elimina bozza')}
-                        status={<span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${shared ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200 text-slate-700'}`}>{shared ? (isEnglish ? 'Shared' : 'Condiviso') : (isEnglish ? 'Draft' : 'Bozza')}</span>}
+                        status={<span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${shared ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200 text-slate-700'}`}>{shared ? (isEnglish ? 'Shared' : 'Condiviso') : (isEnglish ? 'Draft' : 'Bozza')}</span>}
                         meta={<>
                           {shared && <p className="truncate">{(doc as StoredDocument).sessionName}</p>}
                           <p className="truncate text-slate-400">{formatDocumentDateTime(doc.updatedAt)}</p>
@@ -2129,13 +2133,13 @@ export default function TeacherDocumentsPage() {
                 <section className="rounded-[26px] border border-emerald-200/80 bg-emerald-50/70 p-4 shadow-sm">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
-                      <h2 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">{isEnglish ? 'Shared by Students' : 'Condivisi dagli studenti'} {docSearch && <span className="normal-case font-normal">({filteredStudentDocuments.length})</span>}</h2>
+                      <h2 className="text-[10px] font-semibold text-emerald-700">{isEnglish ? 'Shared by Students' : 'Condivisi dagli studenti'} {docSearch && <span className="normal-case font-normal">({filteredStudentDocuments.length})</span>}</h2>
                       <p className="mt-1 text-xs text-emerald-700/70">{isEnglish ? 'Latest submissions from the class' : 'Ultimi invii ricevuti dalla classe'}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => toggleSection('students')}
-                      className="rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-100 transition-colors hover:bg-white"
+                      className="rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 shadow-sm ring-1 ring-emerald-100 transition-colors hover:bg-white"
                     >
                       {(!!collapsedSections.students) ? (isEnglish ? 'Expand' : 'Espandi') : (isEnglish ? 'Collapse' : 'Comprimi')}
                     </button>
@@ -2155,7 +2159,7 @@ export default function TeacherDocumentsPage() {
                             {docIcon(doc.type)}
                           </span>
                           <span className="min-w-0">
-                            <span className="block truncate text-[11px] font-bold leading-tight text-slate-800">{doc.authorName}</span>
+                            <span className="block truncate text-[11px] font-semibold leading-tight text-slate-800">{doc.authorName}</span>
                             <span className="block truncate text-[11px] leading-tight text-slate-600">{doc.title}</span>
                           </span>
                         </button>
@@ -2174,9 +2178,9 @@ export default function TeacherDocumentsPage() {
                           onDelete={() => void handleDeletePublished(doc)}
                           deleteLabel={isEnglish ? 'Remove submission' : 'Rimuovi invio'}
                           status={doc.correction?.status === 'pending'
-                            ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">{isEnglish ? 'Corrected' : 'Corretto'}</span>
+                            ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">{isEnglish ? 'Corrected' : 'Corretto'}</span>
                             : doc.correction?.status === 'accepted'
-                              ? <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">{isEnglish ? 'Accepted' : 'Accettato'}</span>
+                              ? <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">{isEnglish ? 'Accepted' : 'Accettato'}</span>
                               : null}
                           meta={<>
                             <p className="flex items-center gap-1 truncate"><User className="h-3 w-3 shrink-0 text-emerald-500" />{doc.authorName}</p>
@@ -2208,7 +2212,7 @@ export default function TeacherDocumentsPage() {
                         onDelete={() => void handleDeletePublished(doc)}
                         deleteLabel={isEnglish ? 'Remove from session' : 'Rimuovi dalla sessione'}
                         status={doc.status === 'draft'
-                          ? <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-700" title={isEnglish ? 'Saved in the session, not visible to students yet' : 'Salvato nella sessione, non ancora visibile agli studenti'}>{isEnglish ? 'Hidden' : 'Nascosto'}</span>
+                          ? <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700" title={isEnglish ? 'Saved in the session, not visible to students yet' : 'Salvato nella sessione, non ancora visibile agli studenti'}>{isEnglish ? 'Hidden' : 'Nascosto'}</span>
                           : null}
                         meta={<>
                           <p className="truncate">{doc.sessionName}</p>
@@ -2224,7 +2228,7 @@ export default function TeacherDocumentsPage() {
           </div>
           {documentDragActive && (
             <div className="pointer-events-none absolute inset-4 z-50 flex items-center justify-center rounded-[28px] border-2 border-dashed border-sky-500 bg-sky-50/95 shadow-2xl backdrop-blur-sm">
-              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-sky-600" /><p className="mt-3 text-lg font-black text-slate-900">{isEnglish ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX, CSV</p></div>
+              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-sky-600" /><p className="mt-3 text-lg font-semibold text-slate-900">{isEnglish ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX, CSV</p></div>
             </div>
           )}
         </div>
@@ -2343,19 +2347,13 @@ export default function TeacherDocumentsPage() {
               {(mode === 'document' || mode === 'slides') && (
                 <>
                   <HeaderToolDivider />
-                  <HeaderIconButton
-                    label={isEnglish ? 'Document assistant' : 'Assistente documento'}
-                    onClick={() => setDocumentAgentOpen(value => !value)}
-                    active={documentAgentOpen}
-                  >
-                    <Sparkles className="h-4 w-4" />
-                  </HeaderIconButton>
+                  <HeaderAssistantButton open={documentAgentOpen} onClick={() => setDocumentAgentOpen(value => !value)} label={isEnglish ? 'Assistant' : 'Assistente'} />
                 </>
               )}
             </>
           )}
           primary={activeStudentSubmissionId ? (
-            <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[11px] font-bold text-amber-800">
+            <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[11px] font-semibold text-amber-800">
               {isEnglish ? 'Changes are sent to the student' : 'Le modifiche vengono inviate allo studente'}
             </span>
           ) : (
@@ -2391,6 +2389,8 @@ export default function TeacherDocumentsPage() {
             slideHistory={mode === 'slides' ? slideHistory : undefined}
             editor={editor}
             showRuledLines={showRuledLines}
+            lineSpacing={pageSetup.lineSpacing}
+            onLineSpacingChange={(lineSpacing) => setPageSetup((previous) => ({ ...previous, lineSpacing }))}
             onToggleRuledLines={() => setShowRuledLines(v => !v)}
             scale={scale}
             setScale={setScale}
@@ -2416,15 +2416,15 @@ export default function TeacherDocumentsPage() {
         <div className="flex-1 flex overflow-hidden"> 
           
           {/* LEFT SIDEBAR: Documents & Slides */}
-          <div className={`${mode === 'slides' ? 'w-64' : 'w-0'} bg-white border-r border-slate-200 flex flex-col transition-all duration-200 overflow-hidden shrink-0`}>
+          <div className={`${mode === 'slides' ? 'w-64' : 'w-0'} bg-white border-r border-slate-200 flex flex-col transition duration-200 overflow-hidden shrink-0`}>
             
             {/* Slide Navigation (Only in Slide Mode) */}
             {mode === 'slides' && (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
                  <div className="flex min-h-12 items-center justify-between border-b border-slate-100 px-3">
                    <div className="flex items-center gap-2">
-                     <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglish ? 'Slides' : 'Slide'}</span>
-                     {selectedSlideIds.length > 1 && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">{selectedSlideIds.length}</span>}
+                     <span className="font-semibold text-[10px] text-slate-400">{isEnglish ? 'Slides' : 'Slide'}</span>
+                     {selectedSlideIds.length > 1 && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600">{selectedSlideIds.length}</span>}
                    </div>
                    <div className="flex items-center gap-0.5">
                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setSelectedSlideIds(ids => ids.length === document.slides.length ? [] : document.slides.map(item => item.id))} title={selectedSlideIds.length === document.slides.length ? tl("Deseleziona tutte") : tl("Seleziona tutte")}><CheckSquare className="h-3.5 w-3.5" /></Button>
@@ -2468,7 +2468,7 @@ export default function TeacherDocumentsPage() {
                      >
                        <div className="mb-2 flex items-center gap-2 px-0.5">
                          <GripVertical className="h-3.5 w-3.5 text-slate-300" />
-                         <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{idx + 1}</span>
+                         <span className="text-[10px] font-semibold text-slate-400">{idx + 1}</span>
                          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{slide.title}</span>
                        </div>
                        <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-inner pointer-events-none">
@@ -2543,6 +2543,7 @@ export default function TeacherDocumentsPage() {
 
           </div>
 
+          {mode === 'document' && <DocumentOutline editor={editor} scrollRef={docScrollRef} />}
           {/* Main Area */}
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           {mode === 'document' && (
@@ -2589,12 +2590,13 @@ export default function TeacherDocumentsPage() {
              {mode === 'document' && (
                <div
                  ref={documentPageRef}
-                 className={`document-sheet ${showRuledLines ? 'document-ruled ' : ''}theme-keep mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden`}
+                 className={`document-sheet ${showRuledLines ? 'document-ruled ' : ''}theme-keep mb-6 print:shadow-none flex flex-col relative transition overflow-hidden`}
                  style={{
                    width: docPage.width,
                    minHeight: docPage.height * documentPageCount + DOC_PAGE_GAP * Math.max(0, documentPageCount - 1),
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
+                   ['--doc-row' as string]: `${docRow}px`,
                    backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${docPage.height}px, #e5e7eb ${docPage.height}px, #e5e7eb ${docPage.height + DOC_PAGE_GAP}px)`,
                    boxShadow: '0 10px 30px rgba(23, 23, 23, 0.12)',
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
@@ -2629,10 +2631,10 @@ export default function TeacherDocumentsPage() {
                       className="pointer-events-none absolute z-0"
                       style={{
                         top: pageIndex * (docPage.height + DOC_PAGE_GAP) + docMargins.vertical,
-                        height: docPage.height - docMargins.vertical * 2,
+                        height: documentUsableHeight(docPage.height, docMargins.vertical, docMargins.vertical, docRow),
                         left: docMargins.horizontal,
                         right: docMargins.horizontal,
-                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(163, 163, 163, 0.35) 21px, rgba(163, 163, 163, 0.35) 22px, transparent 22px, transparent 28px)',
+                        backgroundImage: documentRulingBackground(docRow),
                       }}
                     />
                   ))}
@@ -2659,7 +2661,7 @@ export default function TeacherDocumentsPage() {
                       content={document.textContent || ''}
                       onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
                       onEditorReady={(e) => { setEditor(e); setTimeout(() => e.commands.focus('start'), 80) }}
-                      contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px] [&_.ProseMirror]:leading-7 [&_.ProseMirror_p]:m-0 [&_.ProseMirror_h1]:m-0 [&_.ProseMirror_h2]:m-0 [&_.ProseMirror_h3]:m-0 [&_.ProseMirror_ul]:my-0 [&_.ProseMirror_ol]:my-0"
+                      contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px]"
                       aiPanelAnchor={aiPanelAnchor}
                       enableSelectionAssist={false}
                       pagination={{
@@ -2667,6 +2669,8 @@ export default function TeacherDocumentsPage() {
                         pageGap: DOC_PAGE_GAP,
                         marginTop: docMargins.vertical,
                         marginBottom: docMargins.vertical,
+                        row: docRow,
+                        layoutKey: String(docMargins.horizontal),
                         onPageCountChange: setDocumentPageCount,
                       }}
                       onMissingSelectionForAI={() => {
@@ -2707,7 +2711,7 @@ export default function TeacherDocumentsPage() {
                          newSlides[currentSlideIndex].title = e.target.value
                          setDocument(d => ({ ...d, slides: newSlides }))
                        }}
-                       className="text-4xl font-bold bg-transparent border-none focus:outline-none w-full placeholder-slate-300 pointer-events-auto"
+                       className="text-4xl font-semibold bg-transparent border-none focus:outline-none w-full placeholder-slate-300 pointer-events-auto"
                        placeholder={isEnglish ? 'Slide Title' : 'Titolo Slide'}
                      />
                   </div>}
@@ -2770,7 +2774,7 @@ export default function TeacherDocumentsPage() {
              )}
 
           </div>
-          {mode === 'document' && (
+          {mode === 'document' && (<>
             <DocumentPageWidget
               scrollRef={docScrollRef}
               pageRef={documentPageRef}
@@ -2781,7 +2785,7 @@ export default function TeacherDocumentsPage() {
               onScaleChange={setDocScale}
               isEnglish={isEnglish}
             />
-          )}
+          </>)}
           </div>
           {documentAgentOpen && (mode === 'slides' || mode === 'document') && (
             <>
@@ -2806,6 +2810,7 @@ export default function TeacherDocumentsPage() {
                 getDocumentStats={getDocumentAssistStats}
                 onApplyOperations={applyDocumentAssistOperations}
                 getWritingContext={getDocumentWritingContext}
+                getAnalysisText={getDocumentAnalysisText}
                 onApply={applyDocumentAgentProposal}
                 onPatchImage={(blockId, url) => setDocument((current) => ({
                   ...current,
@@ -2825,7 +2830,7 @@ export default function TeacherDocumentsPage() {
           {layersPanelOpen && mode === 'slides' && (
             <div className="flex w-[260px] shrink-0 flex-col border-l border-slate-200 bg-white">
               <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">{isEnglish ? 'Layers' : 'Livelli'}</span>
+                <span className="text-xs font-semibold text-slate-500">{isEnglish ? 'Layers' : 'Livelli'}</span>
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setLayersPanelOpen(false)}><X className="h-3.5 w-3.5" /></Button>
               </div>
               <div className="flex-1 overflow-y-auto">
@@ -2845,8 +2850,8 @@ export default function TeacherDocumentsPage() {
             <div className="flex max-h-[78vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                 <div>
-                  <p className="m-0 text-xs font-bold uppercase tracking-widest text-indigo-500">{isEnglish ? 'Version control' : 'Controllo versioni'}</p>
-                  <h3 className="m-0 mt-1 text-lg font-bold text-slate-900">{document.title}</h3>
+                  <p className="m-0 text-xs font-semibold text-indigo-500">{isEnglish ? 'Version control' : 'Controllo versioni'}</p>
+                  <h3 className="m-0 mt-1 text-lg font-semibold text-slate-900">{document.title}</h3>
                 </div>
                 <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setShowVersionPanel(false)}><X className="h-4 w-4" /></Button>
               </div>
@@ -2865,7 +2870,7 @@ export default function TeacherDocumentsPage() {
                   <div className="space-y-2">
                     {documentVersions.map((version, index) => (
                       <div key={version.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 hover:border-indigo-200 hover:bg-indigo-50/30">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">v{documentVersions.length - index}</div>
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">v{documentVersions.length - index}</div>
                         <div className="min-w-0 flex-1">
                           <p className="m-0 truncate text-sm font-semibold text-slate-800">{version.label || (isEnglish ? 'Saved version' : 'Versione salvata')}</p>
                           <p className="m-0 mt-0.5 text-xs text-slate-400">{formatDocumentDateTime(version.createdAt)}</p>

@@ -57,7 +57,7 @@ export function FloatingWindow({ title, subtitle, onClose, children, initial = {
         onPointerCancel={onUp}
       >
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-slate-800">{title}</p>
+          <p className="truncate text-sm font-semibold text-slate-800">{title}</p>
           {subtitle && <p className="truncate text-[11px] text-slate-400">{subtitle}</p>}
         </div>
         <button

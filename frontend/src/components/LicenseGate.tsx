@@ -18,7 +18,7 @@ export function LicenseGate() {
   return <div role="alertdialog" aria-modal="true" aria-labelledby="license-expired-title" className="fixed inset-0 z-[500] flex items-center justify-center bg-[var(--ds-surface)] p-6 text-[var(--text-primary)]">
     <div className="max-w-md space-y-4 text-center">
       <LockKeyhole className="mx-auto h-10 w-10 text-[var(--text-secondary)]" />
-      <h1 id="license-expired-title" className="text-2xl font-bold">{tl('La licenza è scaduta')}</h1>
+      <h1 id="license-expired-title" className="text-2xl font-semibold">{tl('La licenza è scaduta')}</h1>
       <p className="text-sm leading-6 text-[var(--text-secondary)]">
         {data.source === 'school' ? tl('La licenza del tuo istituto è scaduta') : tl('La tua licenza è scaduta')}{date ? tl(' il {0}', date) : ''}.{' '}
         {tl('I tuoi contenuti sono al sicuro. Contatta l’amministratore della piattaforma per rinnovarla e riprendere da dove avevi lasciato.')}

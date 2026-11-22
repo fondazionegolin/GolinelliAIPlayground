@@ -91,12 +91,12 @@ export function FormulaEditor({ latex, src, onChange, onClose, onGraph, onAssist
         <p className="mt-1 text-[11px] text-amber-600">{tl("Non riconosco questa scrittura: usa i simboli sopra oppure scrivi in LaTeX (es. \\frac{a}{b}).")}</p>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {canGraph && <button type="button" onClick={onGraph} className="rounded-md bg-[#1a1a2e] px-2.5 py-1 text-xs font-bold text-white hover:opacity-90">{tl("Disegna il grafico")}</button>}
+        {canGraph && <button type="button" onClick={onGraph} className="rounded-md bg-[#1a1a2e] px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90">{tl("Disegna il grafico")}</button>}
         {onAssist && actions.map(([label, prompt]) => (
           <button key={label} type="button" disabled={!text.trim()} onClick={() => { onClose(); onAssist(prompt) }}
             className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40">{label}</button>
         ))}
-        <button type="button" onClick={onClose} className="ml-auto rounded-md bg-[#e85c8d] px-3 py-1 text-xs font-bold text-white">{tl("Fatto")}</button>
+        <button type="button" onClick={onClose} className="ml-auto rounded-md bg-[#e85c8d] px-3 py-1 text-xs font-semibold text-white">{tl("Fatto")}</button>
       </div>
     </div>
   )

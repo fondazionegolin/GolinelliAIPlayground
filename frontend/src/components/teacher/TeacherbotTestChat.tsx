@@ -178,7 +178,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack, mode = 'test'
             <Bot className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h2 className="font-bold text-slate-800">{mode === 'test' ? 'Test: ' : ''}{teacherbot?.name}</h2>
+            <h2 className="font-semibold text-slate-800">{mode === 'test' ? 'Test: ' : ''}{teacherbot?.name}</h2>
             <p className="text-xs text-slate-500">{mode === 'test' ? tl("Prova il tuo teacherbot prima di pubblicarlo") : tl("Conversazione privata salvata nel tuo account")}</p>
           </div>
         </div>

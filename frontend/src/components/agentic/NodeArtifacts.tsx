@@ -47,7 +47,7 @@ function ImageModal({ src, title, onClose }: { src: string; title: string; onClo
     <div className="fixed inset-0 z-[1000] flex flex-col bg-slate-950/90" role="dialog" aria-modal="true" aria-label={title}>
       <header className="flex h-14 shrink-0 items-center gap-3 px-4 text-white">
         <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10" aria-label={tl("Chiudi anteprima")}><X className="h-5 w-5" /></button>
-        <p className="min-w-0 flex-1 truncate text-sm font-bold">{title}</p>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</p>
         <a href={src} download="immagine-generata.png" className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10" aria-label={tl("Scarica")}><Download className="h-4 w-4" /></a>
       </header>
       <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-6" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
@@ -74,11 +74,11 @@ export function ArtifactPreviews({ artifacts, nodeLabel }: { artifacts: NodeArti
     {artifacts.images.map(({ port, src }) => (
       <button key={port} type="button" onClick={() => setImage(src)} title={tl("Apri l'immagine")} className="group relative block w-full overflow-hidden rounded-lg bg-slate-100">
         <img src={src} alt={`${nodeLabel} · ${port}`} className="max-h-48 w-full object-contain transition-transform group-hover:scale-[1.02]" />
-        <span className="absolute bottom-1 right-1 flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-0.5 text-[8px] font-bold text-white"><ExternalLink className="h-2.5 w-2.5" /> {tl("Ingrandisci")}</span>
+        <span className="absolute bottom-1 right-1 flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-0.5 text-[8px] font-semibold text-white"><ExternalLink className="h-2.5 w-2.5" /> {tl("Ingrandisci")}</span>
       </button>
     ))}
     {artifacts.driveIds.map(({ port, id }) => (
-      <button key={id} type="button" onClick={() => void openDrive(id)} disabled={loadingId === id} className="flex w-full items-center gap-2 rounded-lg bg-slate-100 px-2.5 py-2 text-left text-[10px] font-bold text-slate-700 hover:bg-slate-200">
+      <button key={id} type="button" onClick={() => void openDrive(id)} disabled={loadingId === id} className="flex w-full items-center gap-2 rounded-lg bg-slate-100 px-2.5 py-2 text-left text-[10px] font-semibold text-slate-700 hover:bg-slate-200">
         {loadingId === id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
         <span className="flex-1 truncate">{tl("Anteprima ·")} {port === 'item' || port === 'item_id' || port === 'drive_item_id' ? tl("file nel drive") : port}</span>
         <ExternalLink className="h-3 w-3 text-slate-400" />

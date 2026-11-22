@@ -172,7 +172,7 @@ function SensorCard({
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
         {icon}
         <span className="truncate">{label}</span>
       </div>
@@ -198,8 +198,8 @@ function SensorDashboard({ values, live }: { values: Record<string, string>; liv
     <div className="flex min-h-0 flex-[1.4] flex-col overflow-hidden bg-white">
       <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-4 py-2">
         <Activity className={`h-3.5 w-3.5 ${live ? 'text-emerald-500' : 'text-slate-300'}`} />
-        <span className="text-xs font-bold text-slate-700">{tl("Sensori di bordo")}</span>
-        <span className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${live ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+        <span className="text-xs font-semibold text-slate-700">{tl("Sensori di bordo")}</span>
+        <span className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${live ? 'bg-emerald-100 text-emerald-700': 'bg-slate-100 text-slate-500'}`}>
           {live ? 'realtime' : tl("in attesa")}
         </span>
       </div>
@@ -216,28 +216,28 @@ function SensorDashboard({ values, live }: { values: Record<string, string>; liv
           <div className="grid grid-cols-2 gap-2.5">
             {has(values, 'temp') && (
               <SensorCard icon={<Thermometer className="h-3.5 w-3.5 text-orange-500" />} label={tl("Temperatura")}>
-                <p className="mt-1 font-mono text-2xl font-bold text-slate-900">{temp}<span className="ml-0.5 text-sm font-semibold text-slate-400">°C</span></p>
+                <p className="mt-1 font-mono text-2xl font-semibold text-slate-900">{temp}<span className="ml-0.5 text-sm font-semibold text-slate-400">°C</span></p>
                 <SensorBar ratio={(temp - 0) / 40} color="#f97316" />
               </SensorCard>
             )}
 
             {has(values, 'light', 'luce') && (
               <SensorCard icon={<Sun className="h-3.5 w-3.5 text-amber-500" />} label={tl("Luce")}>
-                <p className="mt-1 font-mono text-2xl font-bold text-slate-900">{light}<span className="ml-0.5 text-sm font-semibold text-slate-400">/255</span></p>
+                <p className="mt-1 font-mono text-2xl font-semibold text-slate-900">{light}<span className="ml-0.5 text-sm font-semibold text-slate-400">/255</span></p>
                 <SensorBar ratio={light / 255} color="#f59e0b" />
               </SensorCard>
             )}
 
             {has(values, 'compass') && (
               <SensorCard icon={<Compass className="h-3.5 w-3.5 text-sky-500" />} label={tl("Bussola")}>
-                <p className="mt-1 font-mono text-2xl font-bold text-slate-900">{compass}<span className="ml-0.5 text-sm font-semibold text-slate-400">°</span></p>
+                <p className="mt-1 font-mono text-2xl font-semibold text-slate-900">{compass}<span className="ml-0.5 text-sm font-semibold text-slate-400">°</span></p>
                 <SensorBar ratio={compass / 360} color="#0ea5e9" />
               </SensorCard>
             )}
 
             {has(values, 'sound') && (
               <SensorCard icon={<Mic className="h-3.5 w-3.5 text-rose-500" />} label={tl("Microfono")}>
-                <p className="mt-1 font-mono text-2xl font-bold text-slate-900">{sound}<span className="ml-0.5 text-sm font-semibold text-slate-400">/255</span></p>
+                <p className="mt-1 font-mono text-2xl font-semibold text-slate-900">{sound}<span className="ml-0.5 text-sm font-semibold text-slate-400">/255</span></p>
                 <SensorBar ratio={sound / 255} color="#f43f5e" />
               </SensorCard>
             )}
@@ -247,7 +247,7 @@ function SensorDashboard({ values, live }: { values: Record<string, string>; liv
                 <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-center">
                   {([['X', accx], ['Y', accy], ['Z', accz]] as const).map(([axis, value]) => (
                     <div key={axis} className="rounded-lg bg-slate-50 px-1 py-1.5">
-                      <p className="text-[9px] font-bold uppercase text-slate-400">{axis}</p>
+                      <p className="text-[9px] font-semibold text-slate-400">{axis}</p>
                       <p className="font-mono text-sm font-semibold text-slate-900">{value}</p>
                     </div>
                   ))}
@@ -259,7 +259,7 @@ function SensorDashboard({ values, live }: { values: Record<string, string>; liv
               <SensorCard icon={<CircleDot className="h-3.5 w-3.5 text-emerald-500" />} label={tl("Pulsanti")}>
                 <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-center">
                   {([['A', buttonA], ['B', buttonB]] as const).map(([name, pressed]) => (
-                    <div key={name} className={`rounded-lg px-1 py-1.5 text-sm font-bold transition ${pressed ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
+                    <div key={name} className={`rounded-lg px-1 py-1.5 text-sm font-semibold transition ${pressed ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
                       {name}
                     </div>
                   ))}
@@ -273,7 +273,7 @@ function SensorDashboard({ values, live }: { values: Record<string, string>; liv
               .slice(0, 6)
               .map(([key, value]) => (
                 <SensorCard key={key} icon={<Activity className="h-3.5 w-3.5 text-slate-400" />} label={key}>
-                  <p className="mt-1 truncate font-mono text-lg font-bold text-slate-900">{value}</p>
+                  <p className="mt-1 truncate font-mono text-lg font-semibold text-slate-900">{value}</p>
                 </SensorCard>
               ))}
           </div>
@@ -452,8 +452,8 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
       {/* Toolbar unica: identità scheda, stato e azioni */}
       <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-[var(--border-subtle)] bg-white px-3 py-2">
         <Cpu className="h-4 w-4 text-[var(--logo-blue-strong)]" />
-        <span className="text-xs font-bold text-[var(--text-primary)]">micro:bit</span>
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[var(--text-secondary)]">
+        <span className="text-xs font-semibold text-[var(--text-primary)]">micro:bit</span>
+        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--text-secondary)]">
           <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
           {statusLabel}
         </span>

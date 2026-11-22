@@ -73,7 +73,7 @@ export function MobileSessionsSheet({ open, currentSessionId, onClose, onSelect,
         <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-300" aria-hidden="true" />
         <div className="flex items-start gap-3 px-5 pb-3 pt-3">
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-black text-slate-950">{tl("Sessioni disponibili")}</h2>
+            <h2 className="text-lg font-semibold text-slate-950">{tl("Sessioni disponibili")}</h2>
             <p className="text-xs text-slate-500">{tl("Scegli la sessione su cui lavorare.")}</p>
           </div>
           <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
@@ -85,12 +85,12 @@ export function MobileSessionsSheet({ open, currentSessionId, onClose, onSelect,
           ) : isError ? (
             <div className="py-8 text-center">
               <p className="text-sm text-slate-500">{tl("Non riesco a caricare le sessioni.")}</p>
-              <button type="button" onClick={() => void refetch()} className="mt-3 rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700">{tl("Riprova")}</button>
+              <button type="button" onClick={() => void refetch()} className="mt-3 rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">{tl("Riprova")}</button>
             </div>
           ) : sessions.length === 0 ? (
             <div className="px-4 py-10 text-center">
               <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100"><Users className="h-7 w-7 text-slate-400" /></div>
-              <p className="text-sm font-bold text-slate-700">{tl("Nessuna sessione attiva")}</p>
+              <p className="text-sm font-semibold text-slate-700">{tl("Nessuna sessione attiva")}</p>
               <p className="mt-1 text-xs text-slate-400">{tl("Avvia una sessione da una delle tue classi per iniziare.")}</p>
             </div>
           ) : (
@@ -102,11 +102,11 @@ export function MobileSessionsSheet({ open, currentSessionId, onClose, onSelect,
                     <button type="button" onClick={() => onSelect(session)} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3.5 text-left">
                       <span className={`h-3 w-3 shrink-0 rounded-full ${selected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[15px] font-bold text-slate-900">{session.name}</span>
+                        <span className="block truncate text-[15px] font-semibold text-slate-900">{session.name}</span>
                         <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-slate-500">
                           <span className="truncate">{session.className}</span>
                           {session.studentCount > 0 && <span className="shrink-0">· {session.studentCount} {tl("studenti")}</span>}
-                          {session.joinCode && <span className="shrink-0 rounded-md bg-white/70 px-1.5 py-0.5 font-mono text-[10px] font-black tracking-widest text-slate-600">{session.joinCode}</span>}
+                          {session.joinCode && <span className="shrink-0 rounded-md bg-white/70 px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-widest text-slate-600">{session.joinCode}</span>}
                         </span>
                       </span>
                       {selected && <Check className="h-4 w-4 shrink-0 text-slate-700" />}
@@ -122,7 +122,7 @@ export function MobileSessionsSheet({ open, currentSessionId, onClose, onSelect,
         </div>
 
         <div className="shrink-0 border-t border-slate-100 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <button type="button" onClick={onCreate} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-100 px-4 py-3.5 text-sm font-black text-slate-700 active:bg-slate-200">
+          <button type="button" onClick={onCreate} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-100 px-4 py-3.5 text-sm font-semibold text-slate-700 active:bg-slate-200">
             <Plus className="h-4 w-4" />{tl("Tutte le sessioni e le classi")}
           </button>
         </div>

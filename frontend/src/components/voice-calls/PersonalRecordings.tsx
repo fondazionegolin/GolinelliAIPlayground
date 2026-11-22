@@ -31,13 +31,85 @@ const CONSENT = () => tl(
   "Avviare la registrazione?\n\nConferma di aver informato le persone che verranno registrate e di rispettare le regole della scuola sulla registrazione (anche per gli studenti minorenni). Audio e trascrizione restano privati."
 )
 
+
+const BARS = 40
+
+/** Live frequency spectrum of what is being recorded (voice band, log-spaced): proves the microphone really works. */
+function Spectrum({ streams }: { streams: MediaStream[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [silent, setSilent] = useState(false)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !streams.length) return
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioCtx) return
+    const context: AudioContext = new AudioCtx()
+    const analyser = context.createAnalyser()
+    analyser.fftSize = 2048
+    analyser.smoothingTimeConstant = 0.7
+    const sources = streams.filter((s) => s.getAudioTracks().length).map((s) => context.createMediaStreamSource(s))
+    sources.forEach((source) => source.connect(analyser)) // not connected to the speakers: no feedback
+    void context.resume().catch(() => undefined)
+    const data = new Uint8Array(analyser.frequencyBinCount)
+    const hz = context.sampleRate / analyser.fftSize
+    const peaks = new Array(BARS).fill(0)
+    let frame = 0
+    let quietSince = performance.now()
+    let wasSilent = false
+    const draw = () => {
+      frame = requestAnimationFrame(draw)
+      analyser.getByteFrequencyData(data)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      const ratio = window.devicePixelRatio || 1
+      const w = canvas.clientWidth, h = canvas.clientHeight
+      if (canvas.width !== w * ratio || canvas.height !== h * ratio) { canvas.width = w * ratio; canvas.height = h * ratio }
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+      ctx.clearRect(0, 0, w, h)
+      const low = 80, high = 8000
+      const gap = 2, bw = (w - gap * (BARS - 1)) / BARS
+      let loud = 0
+      for (let i = 0; i < BARS; i++) {
+        const f0 = low * Math.pow(high / low, i / BARS), f1 = low * Math.pow(high / low, (i + 1) / BARS)
+        const a = Math.max(0, Math.floor(f0 / hz)), b = Math.max(a + 1, Math.ceil(f1 / hz))
+        let peak = 0
+        for (let k = a; k < b && k < data.length; k++) peak = Math.max(peak, data[k])
+        const level = peak / 255
+        loud = Math.max(loud, level)
+        peaks[i] = Math.max(level, peaks[i] - 0.012)
+        const bh = Math.max(2, level * (h - 4))
+        const x = i * (bw + gap)
+        ctx.fillStyle = level > 0.85 ? '#ef4444' : level > 0.6 ? '#f59e0b' : '#10b981'
+        ctx.globalAlpha = 0.9
+        ctx.beginPath(); ctx.roundRect(x, h - bh, bw, bh, 2); ctx.fill()
+        ctx.globalAlpha = 0.5
+        ctx.fillRect(x, h - Math.max(2, peaks[i] * (h - 4)) - 2, bw, 1.5)
+      }
+      ctx.globalAlpha = 1
+      if (loud > 0.12) quietSince = performance.now()
+      const nowSilent = performance.now() - quietSince > 4000
+      if (nowSilent !== wasSilent) { wasSilent = nowSilent; setSilent(nowSilent) }
+    }
+    draw()
+    return () => { cancelAnimationFrame(frame); sources.forEach((s) => s.disconnect()); void context.close().catch(() => undefined) }
+  }, [streams])
+  return (
+    <div className="w-full space-y-1">
+      <canvas ref={canvasRef} className="h-14 w-full rounded-xl bg-[var(--ds-well)]" aria-label={tl("Spettro delle frequenze del segnale registrato")} />
+      <p className={`text-[11px] font-semibold ${silent ? 'text-amber-600' : 'text-emerald-600'}`}>
+        {silent ? tl("Nessun segnale da qualche secondo: controlla che il microfono sia attivo e vicino") : tl("Segnale audio rilevato: il microfono funziona")}
+      </p>
+    </div>
+  )
+}
+
 let announcedId: string | null = null
 
 /** Small red «rec» icon for the navbar. Opens a popover to start/stop; recordings live on their own page. Teachers only. */
 export function NavbarRecordButton() {
   const navigate = useNavigate()
   const { toast } = useToast()
-  const { status, source, startedAt, error, lastClosed, start, stop, clearError } = usePersonalRecording()
+  const { status, source, liveStreams, startedAt, error, lastClosed, start, stop, clearError } = usePersonalRecording()
   const [open, setOpen] = useState(false)
   const [choice, setChoice] = useState<RecordingSource>('mic')
   const [language, setLanguage] = useState('')
@@ -110,7 +182,7 @@ export function NavbarRecordButton() {
         <span className={`flex h-4 w-4 items-center justify-center rounded-full border-2 border-red-500 ${recording ? 'animate-pulse' : ''}`}>
           <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
         </span>
-        {recording && <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 rounded-full bg-red-600 px-1 text-[8px] font-black leading-3 text-white tabular-nums">{clock}</span>}
+        {recording && <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 rounded-full bg-red-600 px-1 text-[8px] font-semibold leading-3 text-white tabular-nums">{clock}</span>}
       </IconButton>
       {open && position && createPortal(
         <div ref={panelRef} role="dialog" aria-label={tl("Registra audio")}
@@ -118,8 +190,9 @@ export function NavbarRecordButton() {
           style={{ top: position.top, left: position.left, width: position.width }}>
           {recording ? (
             <div className="flex flex-col items-center gap-2 text-center">
-              <span className="flex items-center gap-2 text-sm font-bold text-red-600"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-600" />{tl("Registrazione in corso")}</span>
-              <span className="text-4xl font-black tabular-nums">{clock}</span>
+              <span className="flex items-center gap-2 text-sm font-semibold text-red-600"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-600" />{tl("Registrazione in corso")}</span>
+              <span className="text-4xl font-semibold tabular-nums">{clock}</span>
+              <Spectrum streams={liveStreams} />
               <span className="text-xs text-[var(--text-secondary)]">
                 {source === 'mic+system' ? tl("Microfono + audio di sistema") : tl("Solo microfono")}. {tl("Continua anche se cambi pagina. Su telefono tieni schermo e pagina aperti.")}
               </span>
@@ -130,7 +203,7 @@ export function NavbarRecordButton() {
             </div>
           ) : (
             <>
-              <h3 className="text-sm font-black">{tl("Registra audio")}</h3>
+              <h3 className="text-sm font-semibold">{tl("Registra audio")}</h3>
               <div role="radiogroup" aria-label={tl("Sorgente audio")} className="space-y-1.5">
                 {options.map((option) => (
                   <button key={option.value} type="button" role="radio" aria-checked={choice === option.value} disabled={busy || option.off}
@@ -138,14 +211,14 @@ export function NavbarRecordButton() {
                     className={`flex w-full items-start gap-3 rounded-2xl p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${choice === option.value ? 'ds-selected' : 'bg-[var(--ds-surface-muted)] hover:bg-[var(--ds-control-hover)]'}`}>
                     <option.icon className="mt-0.5 h-4 w-4 shrink-0" />
                     <span className="min-w-0">
-                      <span className="block text-sm font-bold">{option.label}</span>
+                      <span className="block text-sm font-semibold">{option.label}</span>
                       <span className="block text-xs text-[var(--text-secondary)]">{option.hint}</span>
                     </span>
                   </button>
                 ))}
               </div>
               <div className="space-y-2 rounded-2xl bg-[var(--ds-surface-muted)] p-3">
-                <label className="grid gap-1 text-xs font-bold">{tl("Traduci anche in")}
+                <label className="grid gap-1 text-xs font-semibold">{tl("Traduci anche in")}
                   <Select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={busy} aria-label={tl("Lingua di traduzione")}>
                     <option value="">{tl("Nessuna traduzione")}</option>
                     {(catalogue?.languages ?? []).map((l) => <option key={l.code} value={l.code}>{l.name} · {l.native}</option>)}
@@ -171,7 +244,7 @@ export function NavbarRecordButton() {
               <button type="button" className="shrink-0 underline" onClick={clearError}>{tl("Chiudi")}</button>
             </p>
           )}
-          <button type="button" onClick={goToRecordings} className="flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-sm font-bold transition-colors hover:bg-[var(--ds-control-hover)]">
+          <button type="button" onClick={goToRecordings} className="flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--ds-control-hover)]">
             {tl("Le tue registrazioni")}<ChevronRight className="h-4 w-4 text-[var(--text-secondary)]" />
           </button>
         </div>,

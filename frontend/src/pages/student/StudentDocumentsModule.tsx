@@ -25,16 +25,17 @@ import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
 import DocumentPageWidget from '@/components/documents/DocumentPageWidget'
+import DocumentOutline from '@/components/documents/DocumentOutline'
 import { DocumentRuler } from '@/components/documents/DocumentRuler'
 import { DocumentPageDecorations } from '@/components/documents/DocumentPageDecorations'
 import { DocumentHeaderFooterDialog } from '@/components/documents/DocumentHeaderFooterDialog'
 import { DEFAULT_HEADER_FOOTER, readHeaderFooter, type HeaderFooterConfig } from '@/lib/documentHeaderFooter'
 import { applyFormatOperations, type FormatOperation, type FormatRange } from '@/lib/documentFormatOps'
-import { applyWriteProposal, buildPlanStats, buildWritingContext, type WriteProposal } from '@/lib/documentWriting'
+import { applyWriteProposal, buildAnalysisText, buildPlanStats, buildWritingContext, type WriteProposal } from '@/lib/documentWriting'
 import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
 import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
 import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
-import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderPageSetupMenu, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
+import { DocumentEditorHeader, HeaderExportMenu, HeaderAssistantButton, HeaderIconButton, HeaderPageSetupMenu, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
 import { collectDocumentColors } from '@/components/ui/ColorPicker'
 import PresentationStudio from '@/components/presentation/PresentationStudio'
 import PresentationDeckTools from '@/components/presentation/PresentationDeckTools'
@@ -42,7 +43,7 @@ import { useResourcePresence } from '@/hooks/useResourcePresence'
 import PresenceAvatars from '@/components/PresenceAvatars'
 import SlideStyleDialog from '@/components/presentation/SlideStyleDialog'
 import { withImage, withSlideBlocks, type DeckTheme, type RenderedDeck, type StudioSlide } from '@/lib/presentationStudio'
-import { DEFAULT_PAGE_SETUP, pageDimensions, readDocumentAgentPreference, readPageSetup, saveDocumentAgentPreference, withPageBreaks, type PageSetup } from '@/lib/documentPage'
+import { DEFAULT_PAGE_SETUP, documentRow, documentRulingBackground, documentUsableHeight, pageDimensions, readDocumentAgentPreference, readPageSetup, saveDocumentAgentPreference, withPageBreaks, type PageSetup } from '@/lib/documentPage'
 import { isNativeUndoTarget, useUndoHistory } from '@/hooks/useUndoHistory'
 import { tl } from '@/i18n/tl'
 import { DOCUMENT_TARGETS, takeHandoff } from '@/lib/platformHandoff'
@@ -293,6 +294,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
   const [pageSetup, setPageSetup] = useState<PageSetup>(DEFAULT_PAGE_SETUP)
   const docPage = pageDimensions(pageSetup)
+  // Baseline grid: one row = the document line spacing; each sheet holds a whole number of rows.
+  const docRow = documentRow(pageSetup)
   const [documentPageCount, setDocumentPageCount] = useState(1)
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
@@ -493,6 +496,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   })
   const getDocumentAssistStats = (target: DocumentAssistContext) => editor ? buildPlanStats(editor, document.title, assistTarget(target), assistRange(target)) : {}
   const getDocumentWritingContext = (target: DocumentAssistContext) => editor ? buildWritingContext(editor, document.title, assistTarget(target)) : {}
+  const getDocumentAnalysisText = (target: DocumentAssistContext) => editor ? buildAnalysisText(editor, assistTarget(target)) : ''
   const applyDocumentAssistOperations = (operations: FormatOperation[], target: DocumentAssistContext) =>
     editor ? applyFormatOperations(editor, operations, assistRange(target)).lines : []
 
@@ -1514,7 +1518,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       setShowSubmitModal(false)
       setSubmitted(true)
       toast({
-        title: tl("Documento inviato!"),
+        title: tl("Documento inviato"),
         description: t('documents.sent_body'),
         className: "bg-green-500 text-white"
       })
@@ -1614,8 +1618,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               <div className="mx-auto max-w-3xl text-center">
                 <div className={headerCollapsed ? 'hidden' : 'grid grid-rows-[1fr]'}>
                   <div className="overflow-hidden">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">{tl("Documenti")}</p>
-                    <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('documents.title_my_documents')}</h1>
+                    <p className="text-[11px] font-semibold text-emerald-700">{tl("Documenti")}</p>
+                    <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{t('documents.title_my_documents')}</h1>
                     <p className="mx-auto mt-3 hidden max-w-2xl text-sm leading-6 text-slate-600 md:block">
                       {readOnlyCatalog
                         ? (isEnglishUi ? 'Teacher materials and submitted work, in read-only mode' : 'Materiali del docente e consegne, in sola lettura')
@@ -1640,7 +1644,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm"><FileText className="h-5 w-5" /></span>
                       <span className="min-w-0 pt-0.5">
-                        <span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'New document' : 'Nuovo documento'}</span>
+                        <span className="block text-[13px] font-semibold leading-5 text-slate-950">{isEnglishUi ? 'New document' : 'Nuovo documento'}</span>
                         <span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglishUi ? 'Write and format.' : 'Scrivi e impagina.'}</span>
                       </span>
                     </button>
@@ -1651,13 +1655,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-violet-700 shadow-sm"><MonitorPlay className="h-5 w-5" /></span>
                       <span className="min-w-0 pt-0.5">
-                        <span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'New presentation' : 'Nuova presentazione'}</span>
+                        <span className="block text-[13px] font-semibold leading-5 text-slate-950">{isEnglishUi ? 'New presentation' : 'Nuova presentazione'}</span>
                         <span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglishUi ? 'Create slides.' : 'Crea slide.'}</span>
                       </span>
                     </button>
                     <button type="button" onClick={createNewSheet} className="group flex min-h-[7.5rem] flex-col justify-between gap-3 rounded-2xl border border-cyan-200/80 bg-cyan-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-5 w-5" /></span>
-                      <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglishUi ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
+                      <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-semibold leading-5 text-slate-950">{isEnglishUi ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglishUi ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
                     </button>
                     <button
                       type="button"
@@ -1666,7 +1670,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       className="group flex min-h-[7.5rem] flex-col justify-between gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60 md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm">{documentImporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}</span>
-                      <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">PDF · PPT · DOC · XLS · CSV</span></span>
+                      <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-semibold leading-5 text-slate-950">{isEnglishUi ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">PDF · PPT · DOC · XLS · CSV</span></span>
                     </button>
                   </div>
                   </div>
@@ -1696,7 +1700,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <div className="w-20 h-20 rounded-xl border border-emerald-200 bg-emerald-100 flex items-center justify-center mb-5 shadow-sm">
                     <FileText className="h-10 w-10 text-emerald-800" />
                   </div>
-                  <h3 className="text-lg font-black text-slate-950 mb-1">{isEnglishUi ? 'No documents yet' : 'Nessun documento'}</h3>
+                  <h3 className="text-lg font-semibold text-slate-950 mb-1">{isEnglishUi ? 'No documents yet' : 'Nessun documento'}</h3>
                   <p className={`text-sm text-slate-500 ${readOnlyCatalog ? '' : 'mb-6'}`}>{readOnlyCatalog ? (isEnglishUi ? 'Teacher materials will appear here.' : 'I materiali condivisi dal docente appariranno qui.') : (isEnglishUi ? 'Create a document or a slide presentation to get started.' : 'Crea un documento oppure una presentazione per iniziare.')}</p>
                   {!readOnlyCatalog && <Button tone="neutral" surface="solid" onClick={() => setShowNewModal(true)}>
                     <Plus className="h-4 w-4 mr-2" />
@@ -1709,8 +1713,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               {filteredDrafts.length > 0 && (
                 <section>
                   <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-600">{t('documents.my_drafts')}</h2>
-                    <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">{filteredDrafts.length}</span>
+                    <h2 className="text-[11px] font-semibold text-slate-600">{t('documents.my_drafts')}</h2>
+                    <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">{filteredDrafts.length}</span>
                   </div>
                   <div className={isCatalogGrid ? 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5' : 'flex flex-col gap-2'}>
                     {filteredDrafts.map(doc => (
@@ -1723,12 +1727,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         {!readOnlyCatalog && <DuplicateDocumentButton title={doc.title} onDuplicate={() => editAsCopy(doc, false)}
                           className="absolute left-3 top-3 transition-opacity focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" />}
                         {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
-                        {!isCatalogGrid && <span className={`col-start-3 row-span-2 row-start-1 self-center rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>}
-                        <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
+                        {!isCatalogGrid && <span className={`col-start-3 row-span-2 row-start-1 self-center rounded-full border px-2.5 py-1 text-[10px] font-semibold shadow-sm ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>}
+                        <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-semibold text-slate-950`}>{doc.title}</p>
                         <p className={`${isCatalogGrid ? 'mobile-document-meta px-1.5 pb-1.5' : 'col-start-2 row-start-2 self-start'} text-[10px] font-medium text-slate-500`}>{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
-                          className={`${isCatalogGrid ? 'absolute right-3 top-3 flex h-10 w-10 items-center justify-center bg-white/90 shadow-sm md:opacity-0 md:group-hover:opacity-100' : 'col-start-4 row-span-2 row-start-1 opacity-70'} rounded-lg p-1 text-slate-400 transition-all hover:bg-red-50 hover:text-red-600`}
+                          className={`${isCatalogGrid ? 'absolute right-3 top-3 flex h-10 w-10 items-center justify-center bg-white/90 shadow-sm md:opacity-0 md:group-hover:opacity-100' : 'col-start-4 row-span-2 row-start-1 opacity-70'} rounded-lg p-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1741,10 +1745,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               {filteredSubmitted.length > 0 && (
                 <section>
                   <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-600">
+                    <h2 className="text-[11px] font-semibold text-slate-600">
                       {isEnglishUi ? 'Submitted work' : 'Le mie consegne'}
                     </h2>
-                    <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-800">{filteredSubmitted.length}</span>
+                    <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">{filteredSubmitted.length}</span>
                   </div>
                   <div className={isCatalogGrid ? 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5' : 'flex flex-col gap-2'}>
                     {filteredSubmitted.map(doc => {
@@ -1759,12 +1763,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         {!readOnlyCatalog && <DuplicateDocumentButton title={doc.title} onDuplicate={() => editAsCopy(doc, false)}
                           className="absolute left-3 top-3 transition-opacity focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" />}
                           {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${hasCorrection ? 'border border-amber-300 bg-amber-200 text-amber-900' : docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
-                          <span className={`${isCatalogGrid ? 'absolute right-3 top-3 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : docBadge(doc.type)}`}>
+                          <span className={`${isCatalogGrid ? 'absolute right-3 top-3 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-semibold ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : docBadge(doc.type)}`}>
                             {hasCorrection ? (isEnglishUi ? 'Corrections' : 'Correzioni') : docLabel(doc.type)}
                           </span>
-                          <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
+                          <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-semibold text-slate-950`}>{doc.title}</p>
                           <p className={`${isCatalogGrid ? 'mobile-document-meta px-1.5' : 'col-start-2 row-start-2 self-start'} text-[10px] font-medium text-slate-500`}>{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                          <div className={`${isCatalogGrid ? 'mobile-document-meta mx-1 mb-1 mt-2 inline-flex' : 'col-start-3 row-span-2 row-start-1 hidden self-center sm:inline-flex'} items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : 'border-slate-200 bg-white/80 text-slate-600'}`}>
+                          <div className={`${isCatalogGrid ? 'mobile-document-meta mx-1 mb-1 mt-2 inline-flex' : 'col-start-3 row-span-2 row-start-1 hidden self-center sm:inline-flex'} items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : 'border-slate-200 bg-white/80 text-slate-600'}`}>
                             {hasCorrection ? <Sparkles className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
                             {hasCorrection ? (isEnglishUi ? 'Review requested' : 'Da revisionare') : (isEnglishUi ? 'Submitted' : 'Consegnato')}
                           </div>
@@ -1786,10 +1790,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         {!readOnlyCatalog && <DuplicateDocumentButton title={doc.title} onDuplicate={() => editAsCopy(doc, false)}
                           className="absolute left-3 top-3 transition-opacity focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" />}
                     {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
-                    <span className={`${isCatalogGrid ? 'absolute right-3 top-3 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
-                    <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
+                    <span className={`${isCatalogGrid ? 'absolute right-3 top-3 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-semibold ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
+                    <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-semibold text-slate-950`}>{doc.title}</p>
                     <p className={`${isCatalogGrid ? 'mobile-document-meta px-1.5' : 'col-start-2 row-start-2 self-start truncate'} text-[10px] font-medium text-slate-500`}>{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                    <div className={`${isCatalogGrid ? 'mobile-document-meta mx-1 mb-1 mt-2 inline-flex' : 'col-start-3 row-span-2 row-start-1 hidden self-center sm:inline-flex'} items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800`}>
+                    <div className={`${isCatalogGrid ? 'mobile-document-meta mx-1 mb-1 mt-2 inline-flex' : 'col-start-3 row-span-2 row-start-1 hidden self-center sm:inline-flex'} items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800`}>
                       <BookOpen className="h-3 w-3" />
                       {t('documents.read_only')}
                     </div>
@@ -1797,7 +1801,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 )
                 return (
                   <section>
-                    <h2 className="mb-3 text-[11px] font-black uppercase tracking-[0.18em] text-slate-600">{t('documents.teacher_materials')}</h2>
+                    <h2 className="mb-3 text-[11px] font-semibold text-slate-600">{t('documents.teacher_materials')}</h2>
                     <div className={isCatalogGrid ? 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5' : 'flex flex-col gap-2'}>
                       {filteredLessons.map(doc => <LessonCard key={doc.id} doc={doc} />)}
                     </div>
@@ -1809,7 +1813,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           </div>
           {documentDragActive && !readOnlyCatalog && (
             <div className="pointer-events-none absolute inset-4 z-50 flex items-center justify-center rounded-[28px] border-2 border-dashed border-emerald-500 bg-emerald-50/95 shadow-2xl backdrop-blur-sm">
-              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-emerald-600" /><p className="mt-3 text-lg font-black text-slate-900">{isEnglishUi ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX, CSV</p></div>
+              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-emerald-600" /><p className="mt-3 text-lg font-semibold text-slate-900">{isEnglishUi ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX, CSV</p></div>
             </div>
           )}
         </div>
@@ -1818,19 +1822,19 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         {!readOnlyCatalog && showNewModal && (
           <div className="fixed inset-0 bg-slate-950/60 flex items-center justify-center z-50 p-4">
             <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-2xl">
-              <h3 className="text-lg font-black text-slate-950 mb-2">{t('documents.create_new_title')}</h3>
+              <h3 className="text-lg font-semibold text-slate-950 mb-2">{t('documents.create_new_title')}</h3>
               <p className="text-sm text-slate-600 mb-4">{isEnglishUi ? 'Choose whether to create a new document or a new presentation.' : 'Scegli se creare un nuovo documento o una nuova presentazione.'}</p>
               <div className="flex flex-col gap-2">
-                <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-100 text-emerald-900 hover:border-emerald-300 hover:bg-emerald-200 transition-all text-left shadow-sm" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
+                <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-100 text-emerald-900 hover:border-emerald-300 hover:bg-emerald-200 transition text-left shadow-sm" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
                   <div className="w-9 h-9 rounded-lg border border-emerald-200 bg-white/80 flex items-center justify-center text-emerald-800 flex-shrink-0"><FileText className="h-4 w-4" /></div>
-                  <span className="text-sm font-black">{t('documents.new_document')}</span>
+                  <span className="text-sm font-semibold">{t('documents.new_document')}</span>
                 </button>
-                <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-white text-emerald-900 hover:border-emerald-300 hover:bg-emerald-50 transition-all text-left shadow-sm" onClick={() => { setShowPresentationStudio(true); setShowNewModal(false) }}>
+                <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-white text-emerald-900 hover:border-emerald-300 hover:bg-emerald-50 transition text-left shadow-sm" onClick={() => { setShowPresentationStudio(true); setShowNewModal(false) }}>
                   <div className="w-9 h-9 rounded-lg border border-emerald-200 bg-emerald-100 flex items-center justify-center text-emerald-800 flex-shrink-0"><Monitor className="h-4 w-4" /></div>
-                  <span className="text-sm font-black">{t('documents.new_presentation')}</span>
+                  <span className="text-sm font-semibold">{t('documents.new_presentation')}</span>
                 </button>
-                <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 transition-all text-left shadow-sm" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
-                  <div className="w-9 h-9 rounded-lg border border-cyan-200 bg-white flex items-center justify-center text-cyan-800 flex-shrink-0"><FileSpreadsheet className="h-4 w-4" /></div><span className="text-sm font-black">{isEnglishUi ? 'Tables' : 'Tabelle'}</span>
+                <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 transition text-left shadow-sm" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
+                  <div className="w-9 h-9 rounded-lg border border-cyan-200 bg-white flex items-center justify-center text-cyan-800 flex-shrink-0"><FileSpreadsheet className="h-4 w-4" /></div><span className="text-sm font-semibold">{isEnglishUi ? 'Tables' : 'Tabelle'}</span>
                 </button>
               </div>
               <div className="flex justify-end mt-4">
@@ -1857,8 +1861,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
             <ChevronLeft className="h-5 w-5" />
           </button>
           <div className="min-w-0 flex-1 px-1">
-            <h2 className="truncate text-sm font-black text-slate-950">{document.title}</h2>
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-sky-700">{isEnglishUi ? 'Read only' : 'Sola lettura'}</p>
+            <h2 className="truncate text-sm font-semibold text-slate-950">{document.title}</h2>
+            <p className="text-[10px] font-semibold text-sky-700">{isEnglishUi ? 'Read only' : 'Sola lettura'}</p>
           </div>
           {mode === 'slides' && document.slides.length > 1 && (
             <>
@@ -1871,7 +1875,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="hidden min-w-9 text-center text-[11px] font-black tabular-nums text-slate-500 md:inline">{currentSlideIndex + 1}/{document.slides.length}</span>
+              <span className="hidden min-w-9 text-center text-[11px] font-semibold tabular-nums text-slate-500 md:inline">{currentSlideIndex + 1}/{document.slides.length}</span>
               <button
                 type="button"
                 onClick={() => setCurrentSlideIndex((index) => Math.min(document.slides.length - 1, index + 1))}
@@ -1895,7 +1899,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               : <InteractiveHtmlFrame srcDoc={document.textContent || ''} className="h-full min-h-[70dvh] w-full rounded-2xl border-0 bg-white shadow-sm" title={document.title} />
           )}
           {mode === 'document' && (
-            <article className="mx-auto min-h-full w-full max-w-3xl rounded-2xl bg-white px-5 py-7 text-[16px] leading-7 text-slate-800 shadow-sm [&_h1]:mb-5 [&_h1]:text-3xl [&_h1]:font-black [&_h2]:mb-4 [&_h2]:text-2xl [&_h2]:font-black [&_h3]:mb-3 [&_h3]:text-xl [&_h3]:font-bold [&_img]:h-auto [&_img]:max-w-full [&_li]:my-1 [&_ol]:my-4 [&_ol]:pl-6 [&_p]:mb-4 [&_table]:w-full [&_table]:overflow-x-auto [&_ul]:my-4 [&_ul]:pl-6" dangerouslySetInnerHTML={{ __html: document.textContent || '' }} />
+            <article className="mx-auto min-h-full w-full max-w-3xl rounded-2xl bg-white px-5 py-7 text-[16px] leading-7 text-slate-800 shadow-sm [&_h1]:mb-5 [&_h1]:text-3xl [&_h1]:font-semibold [&_h2]:mb-4 [&_h2]:text-2xl [&_h2]:font-semibold [&_h3]:mb-3 [&_h3]:text-xl [&_h3]:font-semibold [&_img]:h-auto [&_img]:max-w-full [&_li]:my-1 [&_ol]:my-4 [&_ol]:pl-6 [&_p]:mb-4 [&_table]:w-full [&_table]:overflow-x-auto [&_ul]:my-4 [&_ul]:pl-6" dangerouslySetInnerHTML={{ __html: document.textContent || '' }} />
           )}
           {mode === 'slides' && (
             <>
@@ -1903,13 +1907,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               {document.slides.map((slide, index) => (
                 <section key={slide.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                   <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Slide {index + 1}</span>
-                    <span className="max-w-[70%] truncate text-xs font-bold text-slate-700">{slide.title}</span>
+                    <span className="text-[10px] font-semibold text-indigo-700">Slide {index + 1}</span>
+                    <span className="max-w-[70%] truncate text-xs font-semibold text-slate-700">{slide.title}</span>
                   </div>
                   <div className="flex justify-center overflow-hidden bg-slate-100 p-2">
                     <div className="theme-keep relative origin-top bg-white" style={{ width: slideDimensions.width * mobileSlideScale, height: slideDimensions.height * mobileSlideScale }}>
                       <div className="theme-keep relative origin-top-left bg-white" style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${mobileSlideScale})` }}>
-                        {!slide.blocks.some(block => block.type === 'text' || block.type === 'image') && <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{slide.title}</h3>}
+                        {!slide.blocks.some(block => block.type === 'text' || block.type === 'image') && <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-semibold text-slate-900">{slide.title}</h3>}
                         <SlideEditor blocks={slide.blocks} backgroundColor={slide.backgroundColor} onChange={() => {}} selectedBlockId={null} onSelectBlock={() => {}} scale={mobileSlideScale} readOnly slideWidth={slideDimensions.width} slideHeight={slideDimensions.height} />
                       </div>
                     </div>
@@ -1925,7 +1929,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${scale})` }}
                 >
                   {!currentSlide.blocks.some(block => block.type === 'text' || block.type === 'image') && (
-                    <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{currentSlide.title}</h3>
+                    <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-semibold text-slate-900">{currentSlide.title}</h3>
                   )}
                   <SlideEditor
                     blocks={currentSlide.blocks}
@@ -1998,12 +2002,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           badges={(
             <>
               {isReadOnlyLesson && (
-                <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
+                <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">
                   {isEnglishUi ? 'Lesson · read only' : 'Lezione · sola lettura'}
                 </span>
               )}
               {activeSubmittedDocument && (
-                <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${activeSubmittedDocument.correction?.status === 'pending' ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>
+                <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${activeSubmittedDocument.correction?.status === 'pending' ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>
                   {activeSubmittedDocument.correction?.status === 'pending'
                     ? (isEnglishUi ? 'Teacher corrections' : 'Correzioni del docente')
                     : (isEnglishUi ? 'Submitted · read only' : 'Consegna · sola lettura')}
@@ -2077,13 +2081,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               {(mode === 'slides' || mode === 'document') && !isEditorReadOnly && (
                 <>
                   <HeaderToolDivider />
-                  <HeaderIconButton
-                    label={isEnglishUi ? 'Document assistant' : 'Assistente documento'}
-                    onClick={() => setPresentationChatOpen(v => !v)}
-                    active={presentationChatOpen}
-                  >
-                    <Sparkles className="h-4 w-4" />
-                  </HeaderIconButton>
+                  <HeaderAssistantButton open={presentationChatOpen} onClick={() => setPresentationChatOpen(v => !v)} label={isEnglishUi ? 'Assistant' : 'Assistente'} />
                 </>
               )}
             </>
@@ -2112,7 +2110,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 <Sparkles className="h-4 w-4" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-black text-amber-950">
+                <p className="text-sm font-semibold text-amber-950">
                   {isCorrectionPreview
                     ? (isEnglishUi ? 'Correction preview' : 'Anteprima delle correzioni')
                     : (isEnglishUi ? 'Teacher corrections available' : 'Correzioni del docente disponibili')}
@@ -2128,7 +2126,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               type="button"
               onClick={(event) => { event.stopPropagation(); void acceptActiveCorrection() }}
               disabled={isAcceptingCorrection}
-              className="shrink-0 border border-amber-400 bg-amber-700 font-black text-white hover:bg-amber-800"
+              className="shrink-0 border border-amber-400 bg-amber-700 font-semibold text-white hover:bg-amber-800"
             >
               <CheckCircle className="mr-2 h-4 w-4" />
               {isAcceptingCorrection
@@ -2156,6 +2154,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
             slideHistory={mode === 'slides' ? slideHistory : undefined}
             editor={editor}
             showRuledLines={showRuledLines}
+            lineSpacing={pageSetup.lineSpacing}
+            onLineSpacingChange={(lineSpacing) => setPageSetup((previous) => ({ ...previous, lineSpacing }))}
             onToggleRuledLines={() => setShowRuledLines(v => !v)}
             scale={scale}
             setScale={setScale}
@@ -2189,14 +2189,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
 
         {mode === 'slides' && selectedBlock && !isEditorReadOnly && (
           <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4 text-xs text-slate-700">
-            <span className="font-black uppercase tracking-wide text-slate-500">{isEnglishUi ? 'Layer' : 'Livello'}</span>
+            <span className="font-semibold text-slate-500">{isEnglishUi ? 'Layer' : 'Livello'}</span>
             <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => moveSelectedBlockLayer('back')}>
               {isEnglishUi ? 'Back' : 'Dietro'}
             </Button>
             <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => moveSelectedBlockLayer('backward')}>
               {isEnglishUi ? 'Down' : 'Giù'}
             </Button>
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-bold">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold">
               {(selectedBlock.zIndex ?? currentSlide.blocks.findIndex(block => block.id === selectedBlock.id)) + 1} / {currentSlide.blocks.length}
             </span>
             <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => moveSelectedBlockLayer('forward')}>
@@ -2211,15 +2211,15 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         <div className="flex-1 flex overflow-hidden">
 
           {/* LEFT SIDEBAR: Documents & Slides */}
-          <div className={`${mode === 'slides' && !isEditorReadOnly ? 'w-64' : 'w-0'} flex shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-all duration-200`}>
+          <div className={`${mode === 'slides' && !isEditorReadOnly ? 'w-64' : 'w-0'} flex shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition duration-200`}>
 
             {/* Slide Navigation (Only in Slide Mode) */}
             {mode === 'slides' && !isEditorReadOnly && (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                  <div className="p-3 border-b flex justify-between items-center bg-white">
                    <div>
-                     <span className="font-black text-[10px] uppercase tracking-widest text-slate-600">{isEnglishUi ? 'Pages / Slides' : 'Pagine / Slide'}</span>
-                     {selectedSlideIds.length > 1 && <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-black text-indigo-700">{selectedSlideIds.length}</span>}
+                     <span className="font-semibold text-[10px] text-slate-600">{isEnglishUi ? 'Pages / Slides' : 'Pagine / Slide'}</span>
+                     {selectedSlideIds.length > 1 && <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{selectedSlideIds.length}</span>}
                      <p className="mt-1 text-[9px] font-medium text-slate-400">{isEnglishUi ? 'Ctrl/⌘ or Shift to select multiple' : 'Ctrl/⌘ o Shift per selezionare più slide'}</p>
                    </div>
                    <Button size="icon" variant="ghost" className="h-7 w-7 rounded-lg bg-slate-900 text-white hover:bg-slate-800" onClick={addSlide}>
@@ -2255,8 +2255,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                          ? 'bg-indigo-50 text-indigo-950 border-indigo-300 shadow-sm ring-1 ring-indigo-100'
                          : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-400'}`}
                      >
-                       <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Slide {idx + 1}</div>
-                       <div className="pr-12 text-sm truncate font-bold text-slate-800">{slide.title}</div>
+                       <div className="text-[10px] font-semibold text-slate-400 mb-1">Slide {idx + 1}</div>
+                       <div className="pr-12 text-sm truncate font-semibold text-slate-800">{slide.title}</div>
                        <button
                          onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
@@ -2291,8 +2291,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               {mode === 'slides' && !isEditorReadOnly && (
                 <section>
                   <div className="mb-3 flex items-center justify-between px-1">
-                    <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-600">Template</h3>
-                    <span className="text-[10px] font-bold bg-indigo-700 text-white px-1.5 py-0.5 rounded-full">{presentationTemplates.length}</span>
+                    <h3 className="font-semibold text-[10px] text-slate-600">Template</h3>
+                    <span className="text-[10px] font-semibold bg-indigo-700 text-white px-1.5 py-0.5 rounded-full">{presentationTemplates.length}</span>
                   </div>
                   <div className="space-y-2">
                     {presentationTemplates.length === 0 ? (
@@ -2304,7 +2304,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         key={template.id}
                         type="button"
                         onClick={() => applyPresentationTemplate(template.id)}
-                        className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-slate-800 hover:border-indigo-200 hover:bg-indigo-50"
+                        className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-800 hover:border-indigo-200 hover:bg-indigo-50"
                       >
                         <Layers className="h-4 w-4 text-indigo-600" />
                         <span className="min-w-0 flex-1 truncate">{template.name}</span>
@@ -2317,8 +2317,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               {/* Drafts Section */}
               <section>
                 <div className="flex items-center justify-between mb-3 px-1">
-                  <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-600">{t('documents.my_drafts')}</h3>
-                  <span className="text-[10px] font-bold bg-slate-900 text-white px-1.5 py-0.5 rounded-full">{draftDocuments.length}</span>
+                  <h3 className="font-semibold text-[10px] text-slate-600">{t('documents.my_drafts')}</h3>
+                  <span className="text-[10px] font-semibold bg-slate-900 text-white px-1.5 py-0.5 rounded-full">{draftDocuments.length}</span>
                 </div>
                 
                 <div className="space-y-2">
@@ -2332,7 +2332,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       key={doc.id}
                       onClick={() => void loadDraft(doc)}
                       className={`
-                        group flex flex-col p-3 rounded-lg transition-all border cursor-pointer backdrop-blur-md
+                        group flex flex-col p-3 rounded-lg transition border cursor-pointer backdrop-blur-md
                         ${draftId === doc.id && !isReadOnlyLesson
                           ? 'bg-slate-950 border-slate-950 shadow-md text-white'
                           : 'bg-white border-slate-200 hover:bg-white hover:border-slate-400'}
@@ -2351,13 +2351,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                            <FileText className="h-4 w-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-bold truncate ${draftId === doc.id && !isReadOnlyLesson ? 'text-white' : 'text-slate-800'}`}>
+                          <p className={`text-sm font-semibold truncate ${draftId === doc.id && !isReadOnlyLesson ? 'text-white' : 'text-slate-800'}`}>
                             {doc.title}
                           </p>
                         </div>
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
+                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition"
                           title={t('documents.delete_draft')}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -2365,12 +2365,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       </div>
                       
                       <div className="flex items-center justify-between mt-auto">
-                        <div className={`flex items-center gap-1.5 text-[10px] font-bold ${draftId === doc.id && !isReadOnlyLesson ? 'text-white/70' : 'text-slate-500'}`}>
+                        <div className={`flex items-center gap-1.5 text-[10px] font-semibold ${draftId === doc.id && !isReadOnlyLesson ? 'text-white/70' : 'text-slate-500'}`}>
                           <Clock className="h-3 w-3" />
                           {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
                         </div>
                         <div className="flex items-center gap-1.5">
-                           <span className={`text-[9px] font-black uppercase tracking-tighter ${draftId === doc.id && !isReadOnlyLesson ? 'text-white/60' : 'text-slate-400'}`}>{t('documents.personal')}</span>
+                           <span className={`text-[9px] font-semibold tracking-tighter ${draftId === doc.id && !isReadOnlyLesson ? 'text-white/60': 'text-slate-400'}`}>{t('documents.personal')}</span>
                         </div>
                       </div>
                     </div>
@@ -2381,8 +2381,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               {/* Submitted documents and teacher corrections */}
               <section>
                 <div className="mb-3 flex items-center justify-between px-1">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-600">{isEnglishUi ? 'Submitted work' : 'Le mie consegne'}</h3>
-                  <span className="rounded-full bg-amber-700 px-1.5 py-0.5 text-[10px] font-bold text-white">{submittedDocuments.length}</span>
+                  <h3 className="text-[10px] font-semibold text-slate-600">{isEnglishUi ? 'Submitted work' : 'Le mie consegne'}</h3>
+                  <span className="rounded-full bg-amber-700 px-1.5 py-0.5 text-[10px] font-semibold text-white">{submittedDocuments.length}</span>
                 </div>
                 <div className="space-y-2">
                   {submittedDocuments.length === 0 && (
@@ -2398,16 +2398,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         key={doc.id}
                         type="button"
                         onClick={() => setDocumentToOpen({ document: doc, onEdit: () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
-                        className={`flex w-full flex-col rounded-lg border p-3 text-left transition-all ${isActive ? 'border-amber-500 bg-amber-500 text-white shadow-md' : hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100' : 'border-slate-200 bg-white hover:border-slate-400'}`}
+                        className={`flex w-full flex-col rounded-lg border p-3 text-left transition ${isActive ? 'border-amber-500 bg-amber-500 text-white shadow-md' : hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100' : 'border-slate-200 bg-white hover:border-slate-400'}`}
                       >
                         <div className="flex w-full items-center gap-3">
                           <div className={`rounded-xl p-2 ${isActive ? 'bg-white/20 text-white' : hasCorrection ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>
                             {doc.type === 'presentation' ? <MonitorPlay className="h-4 w-4" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-4 w-4" /> : doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                           </div>
-                          <span className="min-w-0 flex-1 truncate text-sm font-bold">{doc.title}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-semibold">{doc.title}</span>
                           {hasCorrection && <Sparkles className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-amber-700'}`} />}
                         </div>
-                        <span className={`mt-2 text-[10px] font-black uppercase tracking-wide ${isActive ? 'text-white/80' : hasCorrection ? 'text-amber-800' : 'text-slate-400'}`}>
+                        <span className={`mt-2 text-[10px] font-semibold ${isActive ? 'text-white/80': hasCorrection ? 'text-amber-800': 'text-slate-400'}`}>
                           {hasCorrection ? (isEnglishUi ? 'Corrections available' : 'Correzioni disponibili') : (isEnglishUi ? 'Submitted' : 'Consegnato')}
                         </span>
                       </button>
@@ -2419,8 +2419,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               {/* Lessons Section */}
               <section>
                 <div className="flex items-center justify-between mb-3 px-1">
-                  <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-600">{t('documents.shared_materials')}</h3>
-                  <span className="text-[10px] font-bold bg-emerald-700 text-white px-1.5 py-0.5 rounded-full">{lessonDocuments.length}</span>
+                  <h3 className="font-semibold text-[10px] text-slate-600">{t('documents.shared_materials')}</h3>
+                  <span className="text-[10px] font-semibold bg-emerald-700 text-white px-1.5 py-0.5 rounded-full">{lessonDocuments.length}</span>
                 </div>
 
                 <div className="space-y-2">
@@ -2435,13 +2435,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     return lessonDocuments.map((doc) => (
                       <>
                         {doc.udaFolder && !seen.has(doc.udaFolder) && (() => { seen.add(doc.udaFolder!); return (
-                          <p key={`folder-${doc.udaFolder}`} className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mt-3 mb-1 px-1">📁 {doc.udaFolder}</p>
+                          <p key={`folder-${doc.udaFolder}`} className="text-[10px] font-semibold text-indigo-400 mt-3 mb-1 px-1">📁 {doc.udaFolder}</p>
                         ) })()}
                     <div
                       key={doc.id}
                       onClick={() => setDocumentToOpen({ document: doc, onEdit: readOnlyCatalog ? undefined : () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
                       className={`
-                        group flex flex-col p-3 rounded-lg transition-all border cursor-pointer backdrop-blur-md
+                        group flex flex-col p-3 rounded-lg transition border cursor-pointer backdrop-blur-md
                         ${activeLessonTaskId === doc.taskId
                           ? 'bg-emerald-700 border-emerald-700 shadow-md text-white'
                           : 'bg-white border-slate-200 hover:bg-white hover:border-slate-400'}
@@ -2464,7 +2464,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                            <BookOpen className="h-4 w-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-bold truncate ${activeLessonTaskId === doc.taskId ? 'text-white' : 'text-slate-800'}`}>
+                          <p className={`text-sm font-semibold truncate ${activeLessonTaskId === doc.taskId ? 'text-white' : 'text-slate-800'}`}>
                             {doc.title}
                           </p>
                           <p className={`text-[10px] font-medium flex items-center gap-1 ${activeLessonTaskId === doc.taskId ? 'text-white/75' : 'text-slate-500'}`}>
@@ -2475,12 +2475,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       </div>
                       
                       <div className="flex items-center justify-between mt-auto">
-                        <div className={`flex items-center gap-1.5 text-[10px] font-bold ${activeLessonTaskId === doc.taskId ? 'text-white/70' : 'text-slate-500'}`}>
+                        <div className={`flex items-center gap-1.5 text-[10px] font-semibold ${activeLessonTaskId === doc.taskId ? 'text-white/70' : 'text-slate-500'}`}>
                           <Calendar className="h-3 w-3" />
                           {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
                         </div>
                         <div className="flex items-center gap-1.5">
-                           <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${activeLessonTaskId === doc.taskId ? 'bg-white/15 text-white' : 'bg-emerald-700 text-white'}`}>
+                           <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold tracking-tighter ${activeLessonTaskId === doc.taskId ? 'bg-white/15 text-white': 'bg-emerald-700 text-white'}`}>
                              <Share2 className="h-2 w-2" />
                              {isEnglishUi ? 'Shared' : 'Condiviso'}
                            </div>
@@ -2498,11 +2498,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
             {submitted && (
               <div className="hidden">
                 <CheckCircle className="h-4 w-4 text-emerald-600" />
-                <span className="text-xs font-bold text-emerald-700 uppercase tracking-tight">{t('documents.sent_status')}</span>
+                <span className="text-xs font-semibold text-emerald-700 tracking-tight">{t('documents.sent_status')}</span>
               </div>
             )}
           </div>
 
+          {mode === 'document' && <DocumentOutline editor={editor} scrollRef={docScrollRef} />}
           {/* Main Area */}
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           {mode === 'document' && (
@@ -2557,12 +2558,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
              {mode === 'document' && (
                <div
                  ref={documentPageRef}
-                 className={`document-sheet ${showRuledLines ? 'document-ruled ' : ''}theme-keep mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden`}
+                 className={`document-sheet ${showRuledLines ? 'document-ruled ' : ''}theme-keep mb-6 print:shadow-none flex flex-col relative transition overflow-hidden`}
                  style={{
                    width: docPage.width,
                    minHeight: docPage.height * documentPageCount + DOC_PAGE_GAP * Math.max(0, documentPageCount - 1),
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
+                   ['--doc-row' as string]: `${docRow}px`,
                    backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${docPage.height}px, #e5e7eb ${docPage.height}px, #e5e7eb ${docPage.height + DOC_PAGE_GAP}px)`,
                    boxShadow: '0 10px 30px rgba(23, 23, 23, 0.12)',
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
@@ -2597,10 +2599,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       className="pointer-events-none absolute z-0"
                       style={{
                         top: pageIndex * (docPage.height + DOC_PAGE_GAP) + docMargins.vertical,
-                        height: docPage.height - docMargins.vertical * 2,
+                        height: documentUsableHeight(docPage.height, docMargins.vertical, docMargins.vertical, docRow),
                         left: docMargins.horizontal,
                         right: docMargins.horizontal,
-                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(163, 163, 163, 0.35) 21px, rgba(163, 163, 163, 0.35) 22px, transparent 22px, transparent 28px)',
+                        backgroundImage: documentRulingBackground(docRow),
                       }}
                     />
                   ))}
@@ -2621,13 +2623,15 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       onEditorReady={setEditor}
                       readOnly={isEditorReadOnly}
                       enableSelectionAssist={false}
-                      contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px] [&_.ProseMirror]:leading-7 [&_.ProseMirror_p]:m-0 [&_.ProseMirror_h1]:m-0 [&_.ProseMirror_h2]:m-0 [&_.ProseMirror_h3]:m-0 [&_.ProseMirror_ul]:my-0 [&_.ProseMirror_ol]:my-0"
+                      contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px]"
                       aiPanelAnchor={aiPanelAnchor}
                       pagination={{
                         pageHeight: docPage.height,
                         pageGap: DOC_PAGE_GAP,
                         marginTop: docMargins.vertical,
                         marginBottom: docMargins.vertical,
+                        row: docRow,
+                        layoutKey: String(docMargins.horizontal),
                         onPageCountChange: setDocumentPageCount,
                       }}
                       onMissingSelectionForAI={() => {
@@ -2645,11 +2649,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
              {mode === 'slides' && (
                <>
                <div className="flex w-full flex-col gap-2 border-b border-slate-200 bg-slate-50 p-3 md:hidden">
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{tl("Slide della presentazione")}</p>
+                 <p className="text-[10px] font-semibold text-slate-500">{tl("Slide della presentazione")}</p>
                  {document.slides.map((slide, index) => (
                    <button key={slide.id} type="button" onClick={() => { setCurrentSlideIndex(index); setSelectedBlockId(null) }} className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-left ${currentSlideIndex === index ? 'border-indigo-300 bg-indigo-50 text-indigo-950' : 'border-slate-200 bg-white text-slate-700'}`}>
-                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black">{index + 1}</span>
-                     <span className="truncate text-xs font-bold">{slide.title || `Slide ${index + 1}`}</span>
+                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold">{index + 1}</span>
+                     <span className="truncate text-xs font-semibold">{slide.title || `Slide ${index + 1}`}</span>
                    </button>
                  ))}
                </div>
@@ -2679,7 +2683,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                          setDocument(d => ({ ...d, slides: newSlides }))
                        }}
                        disabled={isEditorReadOnly}
-                       className="text-4xl font-bold bg-transparent border-none focus:outline-none w-full placeholder-slate-300 pointer-events-auto"
+                       className="text-4xl font-semibold bg-transparent border-none focus:outline-none w-full placeholder-slate-300 pointer-events-auto"
                        placeholder={t('documents.slide_title_placeholder')}
                      />
                   </div>}
@@ -2748,7 +2752,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
              )}
 
           </div>
-          {mode === 'document' && (
+          {mode === 'document' && (<>
             <DocumentPageWidget
               scrollRef={docScrollRef}
               pageRef={documentPageRef}
@@ -2759,7 +2763,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               onScaleChange={setDocScale}
               isEnglish={isEnglishUi}
             />
-          )}
+          </>)}
           </div>
           {presentationChatOpen && !isEditorReadOnly && (mode === 'slides' || mode === 'document') && (
             <DocumentAgentChat
@@ -2777,6 +2781,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               getDocumentStats={getDocumentAssistStats}
               onApplyOperations={applyDocumentAssistOperations}
               getWritingContext={getDocumentWritingContext}
+                getAnalysisText={getDocumentAnalysisText}
               onApply={applyDocumentAgentProposal}
               onPatchImage={(blockId, url) => setDocument((current) => ({
                 ...current,
@@ -2795,7 +2800,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           {layersPanelOpen && mode === 'slides' && !isEditorReadOnly && (
             <div className="flex w-[260px] shrink-0 flex-col border-l border-slate-200 bg-white">
               <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">{isEnglishUi ? 'Layers' : 'Livelli'}</span>
+                <span className="text-xs font-semibold text-slate-500">{isEnglishUi ? 'Layers' : 'Livelli'}</span>
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setLayersPanelOpen(false)}><X className="h-3.5 w-3.5" /></Button>
               </div>
               <div className="flex-1 overflow-y-auto">
@@ -2815,7 +2820,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl border border-emerald-200 p-6 w-full max-w-md mx-4 shadow-[var(--shadow-xl)]">
-              <h3 className="text-lg font-black text-slate-950 mb-2">{t('documents.create_new_title')}</h3>
+              <h3 className="text-lg font-semibold text-slate-950 mb-2">{t('documents.create_new_title')}</h3>
               <p className="text-sm text-slate-600 mb-4">
                 {isEnglishUi ? 'Choose whether to create a new document or a new presentation.' : 'Scegli se creare un nuovo documento o una nuova presentazione.'}
               </p>
@@ -2823,7 +2828,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 <Button
                   tone="neutral"
                   surface="solid"
-                  className="w-full justify-center rounded-lg border border-emerald-200 bg-emerald-100 font-black text-emerald-900 hover:bg-emerald-200"
+                  className="w-full justify-center rounded-lg border border-emerald-200 bg-emerald-100 font-semibold text-emerald-900 hover:bg-emerald-200"
                   onClick={() => {
                     createNewDocument()
                     setShowNewModal(false)
@@ -2835,7 +2840,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 <Button
                   tone="neutral"
                   surface="solid"
-                  className="w-full justify-center rounded-lg border border-emerald-200 bg-white font-black text-emerald-900 hover:bg-emerald-50"
+                  className="w-full justify-center rounded-lg border border-emerald-200 bg-white font-semibold text-emerald-900 hover:bg-emerald-50"
                   onClick={() => {
                     setShowPresentationStudio(true)
                     setShowNewModal(false)
@@ -2844,7 +2849,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <Monitor className="h-4 w-4 mr-2" />
                   {t('documents.new_presentation')}
                 </Button>
-                <Button className="w-full justify-center rounded-lg border border-cyan-200 bg-cyan-50 font-black text-cyan-900 hover:bg-cyan-100" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
+                <Button className="w-full justify-center rounded-lg border border-cyan-200 bg-cyan-50 font-semibold text-cyan-900 hover:bg-cyan-100" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
                   <FileSpreadsheet className="h-4 w-4 mr-2" />{isEnglishUi ? 'Tables' : 'Tabelle'}
                 </Button>
               </div>
@@ -2859,7 +2864,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         {showSubmitModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl border border-emerald-200 p-6 w-full max-w-md mx-4 shadow-xl">
-            <h3 className="text-lg font-black text-slate-950 mb-2">{t('documents.send_to_teacher_title')}</h3>
+            <h3 className="text-lg font-semibold text-slate-950 mb-2">{t('documents.send_to_teacher_title')}</h3>
             <p className="text-sm text-slate-600 mb-4">
               {t('documents.send_to_teacher_body', {
                 type: mode === 'slides'
@@ -2886,7 +2891,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 surface="solid"
                 onClick={handleSubmit}
                 disabled={isSubmitting}
-                className="rounded-lg border border-emerald-200 bg-emerald-100 font-black text-emerald-900 hover:bg-emerald-200"
+                className="rounded-lg border border-emerald-200 bg-emerald-100 font-semibold text-emerald-900 hover:bg-emerald-200"
               >
                 {isSubmitting ? t('documents.sending') : t('documents.confirm_send')}
               </Button>

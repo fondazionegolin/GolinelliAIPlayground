@@ -54,7 +54,7 @@ export default function TeacherRequestPage() {
         <Card className="w-full max-w-md">
           <CardContent className="pt-6 text-center">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">{t('teacher_request.success_title')}</h2>
+            <h2 className="text-xl font-semibold mb-2">{t('teacher_request.success_title')}</h2>
             <p className="text-muted-foreground mb-6">{t('teacher_request.success_body')}</p>
             <Button onClick={() => navigate('/login')}>{t('teacher_request.back_login')}</Button>
           </CardContent>
@@ -72,7 +72,7 @@ export default function TeacherRequestPage() {
               <GraduationCap className="h-10 w-10 text-white" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">{t('teacher_request.title')}</h1>
+          <h1 className="text-3xl font-semibold text-gray-900">{t('teacher_request.title')}</h1>
           <p className="text-gray-600 mt-2">{t('teacher_request.subtitle')}</p>
         </div>
 

@@ -313,7 +313,7 @@ export default function VideoStudioEditorPage() {
     <div className="flex h-full min-h-0 flex-col text-[var(--text-primary)]">
       <header className="ds-frame-header flex shrink-0 flex-wrap items-center gap-x-2 gap-y-2 px-3 py-2">
         <IconButton tone="neutral" surface="ghost" size="sm" onClick={() => navigate('/teacher/video-studio')} title={tl("Tutti i video")}><ArrowLeft /></IconButton>
-        <Input value={form.title} onChange={(e) => patchForm({ title: e.target.value })} density="compact" className="w-[200px] shrink-0 font-bold" aria-label={tl("Titolo del video")} />
+        <Input value={form.title} onChange={(e) => patchForm({ title: e.target.value })} density="compact" className="w-[200px] shrink-0 font-semibold" aria-label={tl("Titolo del video")} />
         {hasScript && !showSource && (
           <>
             <SearchableSelect className="w-[210px] shrink-0" menuClassName="left-0 right-auto w-[30rem] max-w-[90vw]" value={videoModel} disabled={busy} label={tl("Modello video")}
@@ -440,7 +440,7 @@ function AddClipDialog({ shots, selectedId, credits: cost, pending, onClose, onS
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4" onPointerDown={(e) => { if (e.target === e.currentTarget && !pending) onClose() }}>
       <div role="dialog" aria-modal="true" aria-label={tl("Nuova clip")} className="ds-popover w-full max-w-lg space-y-3 rounded-[var(--card-radius)] p-4">
-        <h2 className="text-base font-bold">{tl("Nuova clip")}</h2>
+        <h2 className="text-base font-semibold">{tl("Nuova clip")}</h2>
         <p className="text-xs text-[var(--text-secondary)]">{tl("Descrivi cosa deve mostrare. L'AI la integra nella sceneggiatura, poi genera solo immagine, clip e voce di questo pezzo: il resto del video resta com'è.")}</p>
         <Textarea autoFocus density="roomy" resize="none" rows={5} value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={pending}
           placeholder={tl("Es. «Mazzini parla ai giovani riuniti in una piazza di Marsiglia»")} />
@@ -488,7 +488,7 @@ function ClipCard({ shot, busy, isLocal, imageCredits, clipCredits, onChange, on
   )
   return (
     <aside className="ui-card flex min-h-[420px] flex-col gap-3 overflow-hidden p-3 lg:min-h-0">
-      <Input density="compact" className="shrink-0 font-bold" value={shot.title} onChange={(e) => onChange({ title: e.target.value })} aria-label={tl("Titolo clip")} />
+      <Input density="compact" className="shrink-0 font-semibold" value={shot.title} onChange={(e) => onChange({ title: e.target.value })} aria-label={tl("Titolo clip")} />
       {field(tl("Testo della voce"), shot.narration, 'narration', 3, tl("Cosa dice la voce in questa clip…"))}
       {!upload && field(tl("Immagine di partenza"), shot.visual, 'visual', 4)}
       {!upload && field(tl("Movimento"), shot.motion, 'motion', 2)}
@@ -558,7 +558,7 @@ function Composer({ form, config, hasScript, onChange, onPickFile, generating, c
       <div className="ui-card mx-auto flex max-w-3xl flex-col items-center justify-center gap-5 p-8 text-center">
         <Loader2 className="h-8 w-8 animate-spin text-[var(--app-accent)]" />
         <div>
-          <p className="text-base font-bold">{tl("Sto scrivendo la sceneggiatura…")}</p>
+          <p className="text-base font-semibold">{tl("Sto scrivendo la sceneggiatura…")}</p>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">{tl("Cast, linguaggio visivo e clip: servono circa 30–60 secondi.")}</p>
         </div>
       </div>
@@ -568,7 +568,7 @@ function Composer({ form, config, hasScript, onChange, onPickFile, generating, c
     <div className="ui-card mx-auto w-full max-w-3xl space-y-4 p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-black tracking-tight">{tl("Cosa vuoi generare?")}</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{tl("Cosa vuoi generare?")}</h2>
         </div>
         {hasScript && <Button tone="neutral" surface="ghost" density="compact" onClick={onClose}>{tl("Chiudi")}</Button>}
       </div>

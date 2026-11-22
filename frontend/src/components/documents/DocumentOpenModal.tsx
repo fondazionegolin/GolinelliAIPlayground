@@ -111,8 +111,8 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
             {typeIcon}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-base font-black text-slate-950">{document.title}</p>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{typeLabel}</p>
+            <p className="truncate text-base font-semibold text-slate-950">{document.title}</p>
+            <p className="text-xs font-semibold text-slate-400">{typeLabel}</p>
           </div>
           {viewing && onEdit && <Button size="sm" onClick={() => void edit()}><Pencil className="mr-2 h-4 w-4" />{editLabel || (isEnglish ? 'Edit' : 'Modifica')}</Button>}
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label={isEnglish ? 'Close' : 'Chiudi'}><X className="h-5 w-5" /></button>
@@ -127,7 +127,7 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
                   <DocumentThumbnail contentJson={currentSlideJson} type="presentation" title={document.title} className="aspect-video w-full shadow-xl" showTypeBadge={false} />
                   <div className="flex items-center gap-3 rounded-full bg-white px-2 py-1 shadow">
                     <button className="rounded-full p-2 hover:bg-slate-100 disabled:opacity-30" disabled={slideIndex === 0} onClick={() => setSlideIndex(index => index - 1)}><ChevronLeft className="h-5 w-5" /></button>
-                    <span className="min-w-20 text-center text-sm font-bold text-slate-700">{slideIndex + 1} / {content.slides.length}</span>
+                    <span className="min-w-20 text-center text-sm font-semibold text-slate-700">{slideIndex + 1} / {content.slides.length}</span>
                     <button className="rounded-full p-2 hover:bg-slate-100 disabled:opacity-30" disabled={slideIndex === content.slides.length - 1} onClick={() => setSlideIndex(index => index + 1)}><ChevronRight className="h-5 w-5" /></button>
                   </div>
                 </div>

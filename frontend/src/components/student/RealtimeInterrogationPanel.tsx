@@ -190,7 +190,7 @@ function Segmented({
               key={opt.value}
               type="button"
               onClick={() => onChange(opt.value)}
-              className={`rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                 active
                   ? 'border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-text)] shadow-sm'
                   : 'border border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
@@ -208,7 +208,7 @@ function Segmented({
 function SuspectAvatar({ name, url, size, accent }: { name: string; url: string | null; size: number; accent: string }) {
   return (
     <span
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full font-black text-white ring-2 ring-white/70"
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-white ring-2 ring-white/70"
       style={{ width: size, height: size, backgroundColor: accent, fontSize: size * 0.42 }}
     >
       {url ? <img src={url} alt={name} className="h-full w-full object-cover" /> : (name.trim().slice(0, 1).toUpperCase() || '?')}
@@ -710,7 +710,7 @@ export default function RealtimeInterrogationPanel({
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-sm font-bold text-slate-900">
+            <h3 className="truncate text-sm font-semibold text-slate-900">
               {isInquiry
                 ? (phase === 'live' && inquiry?.multi && activeSuspect
                     ? `${activeSuspect.name}${activeSuspect.role ? ` · ${activeSuspect.role}` : ''}`
@@ -774,7 +774,7 @@ export default function RealtimeInterrogationPanel({
                 onChange={(e) => setTopic(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void start() }}
                 placeholder={isEnglish ? 'e.g. The French Revolution' : 'es. La Rivoluzione Francese'}
-                className="w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-3 text-sm text-slate-800 outline-none transition-all focus:bg-white"
+                className="w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-3 text-sm text-slate-800 outline-none transition focus:bg-white"
                 style={{ boxShadow: `0 0 0 0 ${accent.accent}` }}
                 onFocus={(e) => { e.currentTarget.style.boxShadow = `0 0 0 3px ${accent.soft}`; e.currentTarget.style.borderColor = accent.accent }}
                 onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '' }}
@@ -782,7 +782,7 @@ export default function RealtimeInterrogationPanel({
             )}
             {isInquiry && inquiry?.multi && (
               <div className="w-full max-w-3xl">
-                <p className="mb-3 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                <p className="mb-3 text-xs font-semibold text-[var(--text-muted)]">
                   {isEnglish ? 'Who do you want to question?' : 'Chi vuoi interrogare?'}
                 </p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -794,10 +794,10 @@ export default function RealtimeInterrogationPanel({
                       className="group flex flex-col items-center gap-2 rounded-2xl border border-[color:var(--border-subtle)] p-4 text-center transition hover:-translate-y-0.5 hover:shadow-md"
                     >
                       <SuspectAvatar name={sp.name} url={sp.avatar_url} size={72} accent={accent.accent} />
-                      <span className="text-sm font-bold text-[var(--text-primary)]">{sp.name}</span>
+                      <span className="text-sm font-semibold text-[var(--text-primary)]">{sp.name}</span>
                       <span className="text-[11px] leading-4 text-[var(--text-muted)]">{sp.role}</span>
                       {sp.clues_found > 0 && (
-                        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ backgroundColor: accent.soft, color: accent.text }}>
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: accent.soft, color: accent.text }}>
                           {sp.clues_found} {isEnglish ? 'clues' : 'indizi'}
                         </span>
                       )}
@@ -847,7 +847,7 @@ export default function RealtimeInterrogationPanel({
               type="button"
               onClick={() => void start()}
               hidden={isInquiry && !!inquiry?.multi}
-              className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold text-white transition-transform hover:-translate-y-0.5 data-[h=true]:hidden"
+              className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5 data-[h=true]:hidden"
               data-h={isInquiry && !!inquiry?.multi}
               style={{ backgroundColor: accent.accent, boxShadow: `0 12px 28px ${accent.soft}` }}
             >
@@ -901,7 +901,7 @@ export default function RealtimeInterrogationPanel({
                         title={isEnglish ? `Question ${sp.name}` : `Interroga ${sp.name}`}
                       >
                         <SuspectAvatar name={sp.name} url={sp.avatar_url} size={32} accent={accent.accent} />
-                        <span className="text-xs font-bold leading-tight text-[var(--text-primary)]">
+                        <span className="text-xs font-semibold leading-tight text-[var(--text-primary)]">
                           {sp.name}
                           {sp.clues_found > 0 && <span className="ml-1.5 rounded-full px-1.5 text-[10px]" style={{ backgroundColor: accent.accent, color: '#fff' }}>{sp.clues_found}</span>}
                         </span>
@@ -954,7 +954,7 @@ export default function RealtimeInterrogationPanel({
                 <button
                   type="button"
                   onClick={toggleTalk}
-                  className="relative flex h-14 w-14 shrink-0 select-none items-center justify-center rounded-full text-white transition-all"
+                  className="relative flex h-14 w-14 shrink-0 select-none items-center justify-center rounded-full text-white transition"
                   style={{
                     backgroundColor: turnState === 'recording' ? '#ef4444' : accent.accent,
                     boxShadow: turnState === 'recording' ? '0 0 0 8px rgba(239,68,68,0.18)' : `0 8px 20px ${accent.soft}`,
@@ -991,7 +991,7 @@ export default function RealtimeInterrogationPanel({
                 <button
                   type="button"
                   onClick={stop}
-                  className="hidden shrink-0 items-center gap-2 rounded-full border border-rose-200/80 bg-rose-50/70 px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-100/80 sm:inline-flex"
+                  className="hidden shrink-0 items-center gap-2 rounded-full border border-rose-200/80 bg-rose-50/70 px-4 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-100/80 sm:inline-flex"
                 >
                   <Square className="h-3.5 w-3.5 fill-rose-600" />
                   {isEnglish ? 'End interview' : 'Termina intervista'}
@@ -1003,11 +1003,11 @@ export default function RealtimeInterrogationPanel({
             {inquiry && (
               <aside className="max-h-[42vh] w-full shrink-0 overflow-y-auto border-t border-[color:var(--border-subtle)] p-5 lg:max-h-none lg:w-[400px] lg:border-l lg:border-t-0">
                 <div className="flex items-center justify-between">
-                  <h4 className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+                  <h4 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
                     <Search className="h-4 w-4" style={{ color: accent.text }} />
                     {isEnglish ? 'Investigation notebook' : 'Taccuino investigativo'}
                   </h4>
-                  <span className="rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ backgroundColor: accent.soft, color: accent.text }}>
+                  <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={{ backgroundColor: accent.soft, color: accent.text }}>
                     {inquiry.unlocked_clues.length}/{inquiry.total_clues}
                   </span>
                 </div>
@@ -1023,7 +1023,7 @@ export default function RealtimeInterrogationPanel({
 
                 {inquiry.case_brief && (
                   <div className="mt-4 rounded-xl border border-[color:var(--border-subtle)] p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{isEnglish ? 'The case' : 'Il caso'}</p>
+                    <p className="text-[10px] font-semibold text-[var(--text-muted)]">{isEnglish ? 'The case' : 'Il caso'}</p>
                     <p className="mt-1 text-[13px] leading-5 text-[var(--text-secondary,var(--text-primary))]">{inquiry.case_brief}</p>
                   </div>
                 )}
@@ -1038,10 +1038,10 @@ export default function RealtimeInterrogationPanel({
                         backgroundColor: newClue === c.text ? accent.soft : 'transparent',
                       }}
                     >
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ backgroundColor: accent.accent }}>{i + 1}</span>
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white" style={{ backgroundColor: accent.accent }}>{i + 1}</span>
                       <div className="min-w-0">
                         <p className="text-[13px] font-medium leading-5 text-[var(--text-primary)]">{c.text}</p>
-                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        <p className="mt-1 text-[10px] font-semibold text-[var(--text-muted)]">
                           {inquiry.multi && c.suspect_name ? `${c.suspect_name} · ` : ''}{isEnglish ? 'Clue' : 'Indizio'} · {c.tier === 1 ? (isEnglish ? 'easy' : 'facile') : c.tier === 2 ? (isEnglish ? 'hard-won' : 'sudato') : (isEnglish ? 'key' : 'chiave')}
                         </p>
                       </div>
@@ -1049,7 +1049,7 @@ export default function RealtimeInterrogationPanel({
                   ))}
                   {Array.from({ length: Math.max(0, inquiry.total_clues - inquiry.unlocked_clues.length) }).map((_, i) => (
                     <li key={`locked-${i}`} className="flex items-center gap-3 rounded-xl border border-dashed border-[color:var(--border-subtle)] p-3 opacity-60">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-[color:var(--border-subtle)] text-[11px] font-bold text-[var(--text-muted)]">?</span>
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-[color:var(--border-subtle)] text-[11px] font-semibold text-[var(--text-muted)]">?</span>
                       <p className="text-[12px] italic text-[var(--text-muted)]">{isEnglish ? 'Hidden clue — ask the right questions' : 'Indizio nascosto — fai le domande giuste'}</p>
                     </li>
                   ))}
@@ -1057,7 +1057,7 @@ export default function RealtimeInterrogationPanel({
 
                 {/* Final answer */}
                 <div className="mt-5 rounded-xl border border-[color:var(--border-subtle)] p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{isEnglish ? 'Final question' : 'Domanda finale'}</p>
+                  <p className="text-[10px] font-semibold text-[var(--text-muted)]">{isEnglish ? 'Final question' : 'Domanda finale'}</p>
                   <p className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{inquiry.final_question}</p>
                   {inquiry.multi && inquiry.status === 'active' && (
                     <div className={`mt-3 grid grid-cols-3 gap-2 ${inquiry.can_answer ? '' : 'pointer-events-none opacity-40'}`}>
@@ -1070,7 +1070,7 @@ export default function RealtimeInterrogationPanel({
                           style={{ borderColor: accusedId === sp.id ? accent.accent : 'var(--border-subtle)', backgroundColor: accusedId === sp.id ? accent.soft : 'transparent' }}
                         >
                           <SuspectAvatar name={sp.name} url={sp.avatar_url} size={40} accent={accent.accent} />
-                          <span className="text-[11px] font-bold leading-tight text-[var(--text-primary)]">{sp.name}</span>
+                          <span className="text-[11px] font-semibold leading-tight text-[var(--text-primary)]">{sp.name}</span>
                         </button>
                       ))}
                     </div>
@@ -1101,7 +1101,7 @@ export default function RealtimeInterrogationPanel({
                             setAnswerBusy(false)
                           }
                         }}
-                        className="mt-2 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+                        className="mt-2 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
                         style={{ backgroundColor: accent.accent }}
                       >
                         {answerBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
@@ -1112,7 +1112,7 @@ export default function RealtimeInterrogationPanel({
                   )}
                   {answerResult && (
                     <div className={`mt-3 rounded-lg px-3 py-2 text-xs leading-5 ${answerResult.correct ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`}>
-                      <p className="font-bold">
+                      <p className="font-semibold">
                         {answerResult.correct ? (isEnglish ? 'Case solved!' : 'Caso risolto!') : (inquiry.status === 'failed' ? (isEnglish ? 'Case closed' : 'Caso chiuso') : (isEnglish ? 'Not quite' : 'Non ci siamo'))} · {answerResult.score}/100
                       </p>
                       <p>{answerResult.feedback}</p>
@@ -1128,7 +1128,7 @@ export default function RealtimeInterrogationPanel({
                     [test] flag={debugInfo.flag ?? 'neutral'} · intent={debugInfo.intent} · trust={debugInfo.trust} · pressure={debugInfo.pressure}
                   </p>
                 )}
-                <button type="button" onClick={stop} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-rose-200/80 bg-rose-50/70 px-4 py-2 text-xs font-bold text-rose-600 sm:hidden">
+                <button type="button" onClick={stop} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-rose-200/80 bg-rose-50/70 px-4 py-2 text-xs font-semibold text-rose-600 sm:hidden">
                   <Square className="h-3.5 w-3.5 fill-rose-600" />{isEnglish ? 'End interview' : 'Termina intervista'}
                 </button>
               </aside>
@@ -1195,7 +1195,7 @@ export default function RealtimeInterrogationPanel({
               <button
                 type="button"
                 onClick={toggleTalk}
-                className="relative flex h-20 w-20 select-none items-center justify-center rounded-full text-white transition-all"
+                className="relative flex h-20 w-20 select-none items-center justify-center rounded-full text-white transition"
                 style={{
                   backgroundColor: turnState === 'recording' ? '#ef4444' : accent.accent,
                   boxShadow: turnState === 'recording'
@@ -1223,7 +1223,7 @@ export default function RealtimeInterrogationPanel({
               <button
                 type="button"
                 onClick={stop}
-                className="mt-1 inline-flex items-center gap-2 rounded-full border border-rose-200/80 bg-rose-50/70 px-4 py-2 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-100/80"
+                className="mt-1 inline-flex items-center gap-2 rounded-full border border-rose-200/80 bg-rose-50/70 px-4 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100/80"
               >
                 <Square className="h-3.5 w-3.5 fill-rose-600" />
                 {isInquiry

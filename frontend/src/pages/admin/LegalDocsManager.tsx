@@ -88,7 +88,7 @@ export function LegalDocsManager() {
   return (
     <div className="admin-panel">
       <div className="admin-panel-head !block">
-        <h2 className="text-sm font-bold text-slate-900">{tl("Documenti in accettazione")}</h2>
+        <h2 className="text-sm font-semibold text-slate-900">{tl("Documenti in accettazione")}</h2>
         <p className="mt-0.5 text-xs text-slate-500">
           {tl("Carica un PDF per sostituire il documento mostrato ai docenti. Ogni nuova versione richiede una nuova accettazione.")}
         </p>

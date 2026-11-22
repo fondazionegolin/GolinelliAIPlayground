@@ -1,6 +1,6 @@
 import { buildBrochureHtml, buildBrochureHtmlFromPayload } from './brochureTemplate'
-import { useState, useCallback, useMemo, useRef } from 'react'
-import { X, Layout, FileText, GripVertical, Share2, Check, Download, Loader2, BarChart2 } from '@/components/icons'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { X, Layout, FileText, GripVertical, Share2, Check, Download, Loader2, BarChart2, Maximize2, Minimize2, ImagePlus } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { InteractiveHtmlFrame } from '@/components/documents/InteractiveHtmlFrame'
@@ -8,6 +8,8 @@ import { chatApi, filesApi } from '@/lib/api'
 import type { ResearchAgent, ResearchRound } from '@/components/teacher/ResearchPanel'
 import { buildReportHtml, parseBrochurePayload, parseDispensaPayload, parseReportPayload } from '@/components/teacher/reportTemplates'
 import { tl } from '@/i18n/tl'
+import { DOC_MARKDOWN_CSS, mdBlock, mdInline, resolveDocImages, withMarkdownFixup, type DocImage } from '@/lib/docMarkdown'
+import DocImagePanel from '@/components/teacher/DocImagePanel'
 
 // Toolbar pills — homogeneous with the main navbar (shared --selection-* tokens).
 const TOOLBAR_PILL = 'ui-control-label inline-flex items-center gap-1 h-7 rounded-[var(--selection-radius)] border px-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] disabled:opacity-50'
@@ -22,6 +24,8 @@ export interface GeneratedDoc {
   /** Deep research only: sources numbered as cited in the markdown, and the trace of the sub-agents' run. */
   sources?: { n: number; url: string; title: string }[]
   run?: { agents: ResearchAgent[]; rounds: ResearchRound[] }
+  /** Teacher images (AI / upload / PDF) referenced from the content as `img:ID`. */
+  images?: DocImage[]
 }
 
 export interface SessionOption {
@@ -36,6 +40,8 @@ interface DocumentCanvasProps {
   onRequestEdit?: (instruction: string) => void
   sessions?: SessionOption[]
   authorName?: string
+  /** Persist edits made inside the canvas (e.g. inserted images). */
+  onDocChange?: (doc: GeneratedDoc) => void
 }
 
 // ─── Dispensa template ──────────────────────────────────────────────────────
@@ -133,6 +139,7 @@ section{margin-bottom:56px;scroll-margin-top:20px}
 .ref-list li{padding:10px 0;border-bottom:1px solid #f1d9e4;color:#3f4657;font-size:14px;line-height:1.6}
 .ref-list li:last-child{border-bottom:none}
 .ref-list li strong{color:#1a1a2e}
+${DOC_MARKDOWN_CSS}
 `
 
 const DISPENSA_JS = `
@@ -214,7 +221,7 @@ function buildDispensaHtmlFromPayload(raw: string, docTitle: string, authorName?
     ? `
       <div class="abstract-box">
         <h3>Obiettivi</h3>
-        <ol>${payload.objectives.map((objective) => `<li>${objective}</li>`).join('')}</ol>
+        <ol>${payload.objectives.map((objective) => `<li>${mdInline(objective)}</li>`).join('')}</ol>
       </div>
     `
     : ''
@@ -231,30 +238,30 @@ function buildDispensaHtmlFromPayload(raw: string, docTitle: string, authorName?
     <section id="${section.id || `s${index + 1}`}">
       <div class="section-header">
         <span class="section-num">${String(index + 1).padStart(2, '0')}</span>
-        <h2>${section.title}</h2>
+        <h2>${mdInline(section.title)}</h2>
       </div>
-      <p>${section.intro}</p>
+      ${mdBlock(section.intro)}
       ${(section.blocks || []).map((block) => {
         const meta = blockMeta[block.kind]
         return `
           <div class="${meta.className}">
             <div class="box-label">${meta.label}</div>
-            <div class="box-title">${block.title}</div>
-            <p>${block.content}</p>
+            <div class="box-title">${mdInline(block.title)}</div>
+            ${mdBlock(block.content)}
           </div>
         `
       }).join('')}
       ${section.table ? `
         <table class="data-table">
-          <thead><tr>${section.table.columns.map((column) => `<th>${column}</th>`).join('')}</tr></thead>
-          <tbody>${section.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody>
+          <thead><tr>${section.table.columns.map((column) => `<th>${mdInline(column)}</th>`).join('')}</tr></thead>
+          <tbody>${section.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${mdInline(cell)}</td>`).join('')}</tr>`).join('')}</tbody>
         </table>
       ` : ''}
-      ${(section.bulletPoints || []).length > 0 ? `<ul>${section.bulletPoints!.map((point) => `<li>${point}</li>`).join('')}</ul>` : ''}
+      ${(section.bulletPoints || []).length > 0 ? `<ul>${section.bulletPoints!.map((point) => `<li>${mdInline(point)}</li>`).join('')}</ul>` : ''}
       ${(section.summaryPoints || []).length > 0 ? `
         <div class="summary-card">
           <div class="summary-title">🎯 Punti chiave</div>
-          <ul>${section.summaryPoints!.map((point) => `<li>${point}</li>`).join('')}</ul>
+          <ul>${section.summaryPoints!.map((point) => `<li>${mdInline(point)}</li>`).join('')}</ul>
         </div>
       ` : ''}
     </section>
@@ -270,9 +277,9 @@ function buildDispensaHtmlFromPayload(raw: string, docTitle: string, authorName?
         ${payload.exercises.map((exercise) => `
           <div class="exercise-box">
             <div class="box-label">✏️ Esercizio</div>
-            <div class="box-title">${exercise.title}</div>
-            <p>${exercise.prompt}</p>
-            ${exercise.solution ? `<details><summary>💡 Soluzione</summary><div class="solution-content">${exercise.solution}</div></details>` : ''}
+            <div class="box-title">${mdInline(exercise.title)}</div>
+            ${mdBlock(exercise.prompt)}
+            ${exercise.solution ? `<details><summary>💡 Soluzione</summary><div class="solution-content">${mdBlock(exercise.solution)}</div></details>` : ''}
           </div>
         `).join('')}
       </section>
@@ -286,7 +293,7 @@ function buildDispensaHtmlFromPayload(raw: string, docTitle: string, authorName?
           <span class="section-num">10</span>
           <h2>Riferimenti</h2>
         </div>
-        <ul class="ref-list">${payload.references.map((reference) => `<li>${reference}</li>`).join('')}</ul>
+        <ul class="ref-list">${payload.references.map((reference) => `<li>${mdInline(reference)}</li>`).join('')}</ul>
       </section>
     `
     : ''
@@ -294,7 +301,7 @@ function buildDispensaHtmlFromPayload(raw: string, docTitle: string, authorName?
   const allSections = `
     <div class="abstract-box">
       <h3>Abstract</h3>
-      <p>${payload.abstract}</p>
+      ${mdBlock(payload.abstract)}
     </div>
     ${objectivesHtml}
     ${sections}
@@ -324,8 +331,26 @@ function extractSections(raw: string): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function DocumentCanvas({ doc, onClose, sessions = [], authorName }: DocumentCanvasProps) {
+export default function DocumentCanvas({ doc, onClose, sessions = [], authorName, onDocChange }: DocumentCanvasProps) {
   const { toast } = useToast()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [showImages, setShowImages] = useState(false)
+
+  // Native Fullscreen API: keeps the iframe mounted (no reload of the interactive page) and ignores transformed ancestors.
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement === rootRef.current)
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await rootRef.current?.requestFullscreen()
+    } catch {
+      toast({ title: tl("Schermo intero non disponibile"), variant: 'destructive' })
+    }
+  }, [toast])
   const previewRef = useRef<HTMLIFrameElement>(null)
   const [exportingPdf, setExportingPdf] = useState(false)
   const [showSource, setShowSource] = useState(false)
@@ -334,7 +359,7 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
   const [sharedSessionIds, setSharedSessionIds] = useState<Set<string>>(new Set())
 
   // Build final renderable HTML
-  const renderedHtml = useMemo(() => {
+  const baseHtml = useMemo(() => {
     const trimmed = doc.content.trim()
     if (/^(?:<!doctype\s+html|<html)/i.test(trimmed)) return trimmed
     if (doc.type === 'html_page') return extractSections(doc.content)
@@ -349,6 +374,12 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
         || buildDispensaHtml(extractSections(doc.content), doc.title || tl("Dispensa"), authorName)
     }
   }, [authorName, doc])
+
+  // Stray markdown is rendered inside the page; image ids are swapped for the stored pictures.
+  const renderedHtml = useMemo(() => {
+    const withMd = doc.type === 'html_page' || doc.type === 'dispensa' ? withMarkdownFixup(baseHtml) : baseHtml
+    return resolveDocImages(withMd, doc.images)
+  }, [baseHtml, doc.images, doc.type])
 
   // Raw content for source view (sections only)
   const sourceContent = useMemo(() => {
@@ -454,7 +485,7 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
   const Icon = isReport ? BarChart2 : (isDispensa ? FileText : Layout)
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 border-l border-slate-200 overflow-hidden">
+    <div ref={rootRef} className="relative flex flex-col h-full bg-slate-50 border-l border-slate-200 overflow-hidden">
       {/* Header */}
       <div
         className="flex items-center gap-2 px-4 py-3 bg-white border-b border-slate-200 shrink-0"
@@ -490,6 +521,16 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
           >
             {showSource ? 'Anteprima' : tl("Sorgente")}
           </button>
+
+          {onDocChange && (doc.type === 'html_page' || doc.type === 'dispensa') && (
+            <button
+              onClick={() => setShowImages(v => !v)}
+              className={`${TOOLBAR_PILL} ${showImages ? TOOLBAR_PILL_ACTIVE : TOOLBAR_PILL_INACTIVE}`}
+              aria-pressed={showImages}
+            >
+              <ImagePlus className="h-3.5 w-3.5" />{tl("Immagini")}{doc.images?.length ? ` · ${doc.images.length}` : ''}
+            </button>
+          )}
 
           {doc.type === 'brochure' && <Button tone="neutral" surface="soft" density="compact" disabled={exportingPdf} onClick={() => void downloadPdf()} aria-label={tl("Scarica PDF")}>
             {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} PDF
@@ -532,9 +573,20 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
             </div>
           )}
 
-          <Button variant="ghost" size="sm" onClick={onClose} className="h-7 w-7 p-0 text-slate-400">
-            <X className="h-4 w-4" />
-          </Button>
+          <button
+            onClick={() => void toggleFullscreen()}
+            className={`${TOOLBAR_PILL} ${TOOLBAR_PILL_INACTIVE} !px-2`}
+            aria-label={fullscreen ? tl("Esci da schermo intero") : tl("Schermo intero")}
+            title={fullscreen ? tl("Esci da schermo intero") : tl("Schermo intero")}
+          >
+            {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          </button>
+
+          {!fullscreen && (
+            <Button variant="ghost" size="sm" onClick={onClose} className="h-7 w-7 p-0 text-slate-400">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -555,6 +607,10 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
           />
         )}
       </div>
+
+      {showImages && onDocChange && (
+        <DocImagePanel doc={doc} onChange={onDocChange} onClose={() => setShowImages(false)} />
+      )}
 
       <div className="px-4 py-2 bg-white border-t border-slate-100 shrink-0">
         <p className="text-[10px] text-slate-400 text-center">

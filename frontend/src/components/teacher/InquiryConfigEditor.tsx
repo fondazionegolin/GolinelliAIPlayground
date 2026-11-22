@@ -44,7 +44,7 @@ const inputCls =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
 
 function Label({ children }: { children: React.ReactNode }) {
-  return <label className="mb-1 block text-xs font-bold uppercase tracking-[0.08em] text-slate-500">{children}</label>
+  return <label className="mb-1 block text-xs font-semibold text-slate-500">{children}</label>
 }
 
 const FLAG_LABEL: Record<InquiryFlag, string> = {
@@ -202,14 +202,14 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
             <select className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700" value={genCount} onChange={(e) => setGenCount(Number(e.target.value))} title={tl("Quanti sospettati generare")}>
               {[2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} sospettati</option>)}
             </select>
-            <button type="button" onClick={generateCast} disabled={generating} className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white disabled:opacity-50">
+            <button type="button" onClick={generateCast} disabled={generating} className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">
               {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
               {generating ? tl("Generazione…") : tl("Genera con AI")}
             </button>
-            <button type="button" onClick={generateAllAvatars} disabled={avatarBusy !== null} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50">
+            <button type="button" onClick={generateAllAvatars} disabled={avatarBusy !== null} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50">
               <ImageIcon className="h-3.5 w-3.5" /> {tl("Avatar per tutti")}
             </button>
-            <button type="button" onClick={addSuspect} disabled={value.suspects.length >= 8} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50">
+            <button type="button" onClick={addSuspect} disabled={value.suspects.length >= 8} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50">
               <Plus className="h-3.5 w-3.5" /> {t('teacherbot.inquiry_add_suspect', 'Aggiungi')}
             </button>
           </div>
@@ -224,10 +224,10 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
             <div key={sp.id} className={`rounded-lg border bg-white p-3 ${sp.is_culprit && multi ? 'border-rose-300' : 'border-slate-200'}`}>
               <div className="flex gap-3">
                 <div className="flex shrink-0 flex-col items-center gap-1.5">
-                  <span className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-violet-700 text-xl font-black text-white ring-2 ring-white">
+                  <span className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-violet-700 text-xl font-semibold text-white ring-2 ring-white">
                     {sp.avatar_url ? <img src={sp.avatar_url} alt={sp.name} className="h-full w-full object-cover" /> : (sp.name.trim().slice(0, 1).toUpperCase() || '?')}
                   </span>
-                  <button type="button" onClick={() => generateOneAvatar(sp)} disabled={avatarBusy !== null || !sp.name.trim()} className="inline-flex items-center gap-1 text-[10px] font-extrabold text-violet-700 disabled:opacity-40">
+                  <button type="button" onClick={() => generateOneAvatar(sp)} disabled={avatarBusy !== null || !sp.name.trim()} className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-700 disabled:opacity-40">
                     {avatarBusy === sp.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
                     {sp.avatar_url ? tl("Rigenera") : 'Avatar'}
                   </button>
@@ -245,7 +245,7 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
                       {VOICES.map((v) => <option key={v} value={v}>{tl("Voce:")} {v}</option>)}
                     </select>
                     {multi && (
-                      <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-slate-700">
+                      <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700">
                         <input type="radio" name="inquiry-culprit" checked={sp.is_culprit} onChange={() => setCulprit(sp.id)} />
                         <Crosshair className="h-3.5 w-3.5 text-rose-500" /> {tl("È il colpevole")}
                       </label>
@@ -276,7 +276,7 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
       <div>
         <div className="mb-2 flex items-center justify-between">
           <Label>{t('teacherbot.inquiry_clues', 'Indizi')}</Label>
-          <button type="button" onClick={addClue} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100">
+          <button type="button" onClick={addClue} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">
             <Plus className="h-3.5 w-3.5" /> {t('teacherbot.inquiry_add_clue', 'Aggiungi')}
           </button>
         </div>
@@ -316,7 +316,7 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
               <span className="text-sm font-semibold text-slate-700">{FLAG_LABEL[flag]}</span>
               <div className="flex items-center gap-2">
                 <input type="range" min={0} max={3} step={1} value={value.flag_intensity[flag] ?? 2} onChange={(e) => set('flag_intensity', { ...value.flag_intensity, [flag]: Number(e.target.value) })} className="w-24" />
-                <span className="w-14 text-right text-xs font-bold text-slate-500">{INTENSITY_LABEL[value.flag_intensity[flag] ?? 2]}</span>
+                <span className="w-14 text-right text-xs font-semibold text-slate-500">{INTENSITY_LABEL[value.flag_intensity[flag] ?? 2]}</span>
               </div>
             </div>
           ))}
@@ -340,7 +340,7 @@ function InquirySessionsReview({ teacherbotId }: { teacherbotId: string }) {
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white">
-      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-between px-3 py-2 text-sm font-bold text-slate-700">
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-between px-3 py-2 text-sm font-semibold text-slate-700">
         {t('teacherbot.inquiry_sessions', 'Interviste svolte e trascrizioni')}
         {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
       </button>

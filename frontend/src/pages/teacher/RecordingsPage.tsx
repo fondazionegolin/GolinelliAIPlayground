@@ -6,7 +6,7 @@ import { tl } from '@/i18n/tl'
 export default function RecordingsPage() {
   return (
     <div className="space-y-4 p-4 sm:p-0">
-      <SectionHeading section="/teacher/sessions" className="text-2xl font-bold text-slate-900" subtitle={<>{tl("Trascrizione, riassunto e strumenti AI delle tue registrazioni")}</>} subtitleClassName="text-sm text-slate-500 mt-0.5">
+      <SectionHeading section="/teacher/sessions" className="text-2xl font-semibold text-slate-900" subtitle={<>{tl("Trascrizione, riassunto e strumenti AI delle tue registrazioni")}</>} subtitleClassName="text-sm text-slate-500 mt-0.5">
         {tl("Registrazioni")}
       </SectionHeading>
       <SessionCallsPanel personal />

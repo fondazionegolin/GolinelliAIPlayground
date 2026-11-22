@@ -101,13 +101,13 @@ export function SidebarRail({
               title={item.title}
               aria-label={item.title}
               aria-current={item.selected ? 'true' : undefined}
-              className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${item.selected
+              className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition ${item.selected
                 ? 'bg-[image:var(--ds-choice-bg)] text-[var(--ds-choice-ink)] shadow-[var(--ds-shadow-1)]'
                 : 'text-slate-500 hover:bg-[var(--ds-control-hover)] hover:text-slate-800'}`}
             >
               {item.icon}
               {marker && (
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--ds-surface-raised)] px-0.5 text-[9px] font-black uppercase text-slate-600 shadow-[var(--ds-shadow-1)]">
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--ds-surface-raised)] px-0.5 text-[9px] font-semibold text-slate-600 shadow-[var(--ds-shadow-1)]">
                   {marker}
                 </span>
               )}

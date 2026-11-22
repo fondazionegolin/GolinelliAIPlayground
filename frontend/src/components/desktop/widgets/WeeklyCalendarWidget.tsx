@@ -189,7 +189,7 @@ export default function WeeklyCalendarWidget({
         <div className="flex flex-col items-center">
           <div className="text-[12px] font-semibold text-white/50">{formatHeader(monday)}</div>
           {config.session_name && (
-            <div className="text-[11px] text-white/20 uppercase tracking-wider">{config.session_name}</div>
+            <div className="text-[11px] text-white/20">{config.session_name}</div>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -227,14 +227,14 @@ export default function WeeklyCalendarWidget({
               {/* Day header */}
               <div className={`flex items-center justify-between px-1.5 py-1 rounded-t-xl ${isToday ? 'bg-white/10' : ''}`}>
                 <div className="flex flex-col items-center min-w-0">
-                  <span className="text-[10px] text-white/30 uppercase">{DAY_LABELS[i]}</span>
-                  <span className={`text-[13px] font-bold leading-none ${isToday ? 'text-white' : 'text-white/50'}`}>
+                  <span className="text-[10px] text-white/30">{DAY_LABELS[i]}</span>
+                  <span className={`text-[13px] font-semibold leading-none ${isToday ? 'text-white' : 'text-white/50'}`}>
                     {day.getDate()}
                   </span>
                 </div>
                 {userType === 'teacher' && (
                   <button
-                    className="w-5 h-5 rounded flex items-center justify-center bg-white/0 hover:bg-white/20 transition-all opacity-50 hover:opacity-100"
+                    className="w-5 h-5 rounded flex items-center justify-center bg-white/0 hover:bg-white/20 transition opacity-50 hover:opacity-100"
                     onClick={() => openAdd(ymd)}
                     title={tl("Aggiungi evento {0}", formatDayLabel(day))}
                   >

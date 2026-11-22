@@ -139,9 +139,9 @@ export default function AdminSessionsPage() {
                       <td className="min-w-[11rem] px-3 py-3">
                         <div className="flex items-center gap-2">
                           <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--admin-track)]"><span className={`block h-full rounded-full ${s.full ? 'bg-red-600' : s.near_full ? 'bg-amber-500' : 'bg-[var(--admin-accent)]'}`} style={{ width: `${pct}%` }} /></span>
-                          <span className={`whitespace-nowrap font-bold tabular-nums ${s.full ? 'text-red-600' : 'text-slate-700'}`}>{s.online} / {s.limit}</span>
+                          <span className={`whitespace-nowrap font-semibold tabular-nums ${s.full ? 'text-red-600' : 'text-slate-700'}`}>{s.online} / {s.limit}</span>
                         </div>
-                        {s.full && <p className="mt-1 flex items-center gap-1 text-[10px] font-bold text-red-600"><AlertTriangle className="h-3 w-3" /> {tl("Piena: i nuovi studenti vengono rifiutati finché qualcuno esce")}</p>}
+                        {s.full && <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-red-600"><AlertTriangle className="h-3 w-3" /> {tl("Piena: i nuovi studenti vengono rifiutati finché qualcuno esce")}</p>}
                         {s.frozen > 0 && <p className="mt-0.5 text-[10px] text-slate-400">{s.frozen} bloccati</p>}
                         {editing === s.id ? (
                           <div className="mt-1.5 flex items-center gap-1.5">
@@ -198,7 +198,7 @@ export default function AdminSessionsPage() {
                             <span className="min-w-0 flex-1 truncate font-semibold text-slate-700">{item.title} <span className="font-mono text-[10px] font-normal text-slate-400">{item.join_code}</span></span>
                             <span className="text-slate-400">{ROLE_LABEL[item.role]}</span>
                             {item.live_total > 0 && <span className="font-semibold text-slate-800">{item.live_total} live</span>}
-                            <span className={`tabular-nums ${item.online >= item.limit ? 'font-bold text-red-600' : 'text-slate-500'}`}>{item.online}/{item.limit}</span>
+                            <span className={`tabular-nums ${item.online >= item.limit ? 'font-semibold text-red-600' : 'text-slate-500'}`}>{item.online}/{item.limit}</span>
                           </div>
                         ))}
                       </div>

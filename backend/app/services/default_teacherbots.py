@@ -43,4 +43,5 @@ def public_info(bot) -> dict:
             "icon": bot.icon, "color": bot.color, "is_proactive": bot.is_proactive,
             "proactive_message": bot.proactive_message if bot.is_proactive else None,
             "enable_live_voice": bot.enable_live_voice, "enable_inquiry": bot.enable_inquiry,
-            "enable_escape_room": bot.enable_escape_room}
+            "enable_escape_room": bot.enable_escape_room,
+            "enable_math_editor": bot.enable_math_editor}

@@ -80,7 +80,7 @@ export default function CalendarWidget({ config, onConfigChange, readOnly = fals
             onClick={() => day && handleDayClick(day)}
             className={`relative text-center text-sm py-1 rounded-lg transition-colors
               ${!day ? '' : 'hover:bg-white/10'}
-              ${day && isToday(day) ? 'bg-white/20 text-white font-bold' : 'text-white/60'}
+              ${day && isToday(day) ? 'bg-white/20 text-white font-semibold' : 'text-white/60'}
             `}
           >
             {day}

@@ -87,7 +87,7 @@ export function ClassChatDock({
           className={`absolute inset-0 flex flex-col items-center justify-center gap-3 transition-opacity duration-75 ${hover ? 'pointer-events-none opacity-0' : 'opacity-100 delay-75'}`}
         >
           <MessageSquare className="h-4 w-4 text-slate-600" />
-          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 [writing-mode:vertical-rl]">{tl("Chat di classe")}</span>
+          <span className="text-[10px] font-semibold text-slate-500 [writing-mode:vertical-rl]">{tl("Chat di classe")}</span>
         </div>
 
         {/* Expanded face: miniature of the latest messages */}
@@ -95,7 +95,7 @@ export function ClassChatDock({
           className={`absolute right-0 top-0 flex h-[300px] w-[296px] flex-col transition-opacity duration-100 ${hover ? 'opacity-100 delay-75' : 'pointer-events-none opacity-0'}`}
           aria-hidden={!hover}
         >
-          <div className="flex items-center gap-2 px-4 pb-2 pt-3.5 text-xs font-bold text-slate-800">
+          <div className="flex items-center gap-2 px-4 pb-2 pt-3.5 text-xs font-semibold text-slate-800">
             <MessageSquare className="h-3.5 w-3.5 text-slate-600" />
             {tl("Chat di classe")}
           </div>
@@ -115,7 +115,7 @@ export function ClassChatDock({
 
         {unread > 0 && (
           <span
-            className="absolute left-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white shadow-[var(--ds-shadow-1)]"
+            className="absolute left-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white shadow-[var(--ds-shadow-1)]"
             style={{ backgroundColor: accentColor }}
           >
             {unread > 9 ? '9+' : unread}

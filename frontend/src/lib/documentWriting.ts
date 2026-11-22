@@ -68,6 +68,24 @@ export function buildWritingContext(editor: Editor, title: string, target: { kin
   }
 }
 
+/** Full text for the analysis step: the selection, or the whole document (headings marked with #, lists with -). */
+export function buildAnalysisText(editor: Editor, target: { kind: string; from?: number; to?: number }): string {
+  const { doc } = editor.state
+  const range = target.kind === 'selected_text' && typeof target.from === 'number' && typeof target.to === 'number'
+    ? { from: target.from, to: target.to }
+    : { from: 0, to: doc.content.size }
+  const lines: string[] = []
+  doc.nodesBetween(range.from, range.to, (node, pos, parent) => {
+    if (!node.isTextblock) return true
+    const text = doc.textBetween(Math.max(pos + 1, range.from), Math.min(pos + node.nodeSize - 1, range.to), '', ' ')
+    if (!text.trim()) { lines.push('[riga vuota]'); return false }
+    if (node.type.name === 'heading') lines.push(`${'#'.repeat(Number(node.attrs.level) || 1)} ${text}`)
+    else lines.push(parent?.type.name === 'listItem' ? `- ${text}` : text)
+    return false
+  })
+  return lines.join('\n\n').slice(0, 60000)
+}
+
 /** Compact picture of the document for the planner (no full text): structure + where the caret/selection is. */
 export function buildPlanStats(editor: Editor, title: string, target: { kind: string; from?: number; to?: number }, range: FormatRange): Record<string, unknown> {
   const context = buildWritingContext(editor, title, target) as { before: string; after: string; selection: string; outline: unknown[] }

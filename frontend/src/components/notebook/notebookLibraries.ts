@@ -68,7 +68,7 @@ let hands = [];
 let ready = false;
 
 function setup() {
-  createCanvas(640, 480);
+  createCanvas(windowWidth, windowHeight);
   textFont('monospace');
 
   video = createCapture(VIDEO);
@@ -84,11 +84,9 @@ function setup() {
 
 function draw() {
   // Specchia il video (effetto selfie)
-  push();
-  translate(width, 0);
-  scale(-1, 1);
-  image(video, 0, 0, width, height);
-  pop();
+  background(0);
+  // Video e punti usano lo stesso layout (riempie la finestra, speculare): restano allineati a ogni dimensione
+  GolinelliCam.draw(video);
 
   if (!ready) {
     fill(0, 190); noStroke(); rect(0, 0, width, 52);
@@ -105,25 +103,33 @@ function draw() {
     stroke(0, 230, 120); strokeWeight(2); noFill();
     for (let [a, b] of HAND_CONNECTIONS) {
       let pa = kps[a], pb = kps[b];
-      line(width - pa.x, pa.y, width - pb.x, pb.y);
+      const a = GolinelliCam.videoPoint(pa, video), b = GolinelliCam.videoPoint(pb, video);
+      line(a.x, a.y, b.x, b.y);
     }
 
     // Keypoint
     noStroke();
     for (let i = 0; i < kps.length; i++) {
       fill(i === 0 ? color(255, 100, 50) : color(255, 220, 0));
-      circle(width - kps[i].x, kps[i].y, i === 0 ? 14 : 8);
+      const p = GolinelliCam.videoPoint(kps[i], video);
+      circle(p.x, p.y, i === 0 ? 14 : 8);
     }
 
     // Etichetta mano
     fill(255); noStroke(); textSize(12);
-    text(hand.handedness, width - kps[0].x + 10, kps[0].y - 8);
+    const wrist = GolinelliCam.videoPoint(kps[0], video);
+    text(hand.handedness, wrist.x + 10, wrist.y - 8);
   }
 
   // HUD
   noStroke(); fill(0, 180); rect(8, 8, 175, 22, 4);
   fill(255); textSize(11);
   text('Mani rilevate: ' + hands.length, 14, 23);
+}
+
+// La finestra cambia (schermo intero, pannelli): il canvas la segue, video e punti si riallineano da soli
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }`,
       },
       {
@@ -139,7 +145,7 @@ let poses = [];
 let ready = false;
 
 function setup() {
-  createCanvas(640, 480);
+  createCanvas(windowWidth, windowHeight);
   textFont('monospace');
 
   video = createCapture(VIDEO);
@@ -153,11 +159,9 @@ function setup() {
 }
 
 function draw() {
-  push();
-  translate(width, 0);
-  scale(-1, 1);
-  image(video, 0, 0, width, height);
-  pop();
+  background(0);
+  // Video e punti usano lo stesso layout (riempie la finestra, speculare): restano allineati a ogni dimensione
+  GolinelliCam.draw(video);
 
   if (!ready) {
     fill(0, 190); noStroke(); rect(0, 0, width, 52);
@@ -175,7 +179,10 @@ function draw() {
     for (let [a, b] of BODY_CONNECTIONS) {
       let pa = kps[a], pb = kps[b];
       if (pa.confidence > 0.3 && pb.confidence > 0.3)
-        line(width - pa.x, pa.y, width - pb.x, pb.y);
+      {
+        const a = GolinelliCam.videoPoint(pa, video), b = GolinelliCam.videoPoint(pb, video);
+        line(a.x, a.y, b.x, b.y);
+      }
     }
 
     // Keypoint
@@ -183,7 +190,8 @@ function draw() {
     for (let kp of kps) {
       if (kp.confidence > 0.3) {
         fill(kp.confidence > 0.7 ? color(255, 220, 0) : color(255, 150, 0));
-        circle(width - kp.x, kp.y, 10);
+        const p = GolinelliCam.videoPoint(kp, video);
+        circle(p.x, p.y, 10);
       }
     }
   }
@@ -191,6 +199,11 @@ function draw() {
   noStroke(); fill(0, 180); rect(8, 8, 180, 22, 4);
   fill(255); textSize(11);
   text('Pose rilevate: ' + poses.length, 14, 23);
+}
+
+// La finestra cambia (schermo intero, pannelli): il canvas la segue, video e punti si riallineano da soli
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }`,
       },
       {
@@ -205,7 +218,7 @@ let detections = [];
 let ready = false;
 
 function setup() {
-  createCanvas(640, 480);
+  createCanvas(windowWidth, windowHeight);
   textFont('monospace');
 
   video = createCapture(VIDEO);
@@ -221,8 +234,12 @@ function setup() {
   });
 }
 
+// Non speculare: così le etichette si leggono dritte. Video e riquadri usano lo stesso layout.
+const CAM = { mirror: false };
+
 function draw() {
-  image(video, 0, 0, width, height);
+  background(0);
+  const L = GolinelliCam.draw(video, CAM);
 
   if (!ready) {
     fill(0, 190); noStroke(); rect(0, 0, width, 52);
@@ -233,22 +250,29 @@ function draw() {
   }
 
   for (let d of detections) {
-    // Bounding box
+    // Riquadro: angoli convertiti dai pixel del video ai pixel del canvas
+    const a = GolinelliCam.videoPoint({ x: d.x, y: d.y }, video, CAM);
+    const b = GolinelliCam.videoPoint({ x: d.x + d.width, y: d.y + d.height }, video, CAM);
     noFill(); stroke(0, 255, 80); strokeWeight(2);
-    rect(d.x, d.y, d.width, d.height, 4);
+    rect(a.x, a.y, b.x - a.x, b.y - a.y, 4);
 
     // Etichetta con sfondo
     let label = d.label + ' ' + nf(d.confidence * 100, 1, 0) + '%';
     let lw = textWidth(label) + 12;
     fill(0, 255, 80); noStroke();
-    rect(d.x, d.y - 22, lw, 22, 4, 4, 0, 0);
+    rect(a.x, a.y - 22, lw, 22, 4, 4, 0, 0);
     fill(0); textSize(12);
-    text(label, d.x + 6, d.y - 6);
+    text(label, a.x + 6, a.y - 6);
   }
 
   noStroke(); fill(0, 180); rect(8, 8, 220, 22, 4);
   fill(255); textSize(11);
   text('Oggetti: ' + detections.length + '  FPS: ' + round(frameRate()), 14, 23);
+}
+
+// La finestra cambia (schermo intero, pannelli): il canvas la segue, video e punti si riallineano da soli
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }`,
       },
       {
@@ -266,7 +290,7 @@ let mode = 0;
 const MODES = ['Maschera verde', 'Silhouette', 'Effetto neon'];
 
 function setup() {
-  createCanvas(640, 480);
+  createCanvas(windowWidth, windowHeight);
   textFont('monospace');
 
   video = createCapture(VIDEO);
@@ -282,9 +306,12 @@ function setup() {
   });
 }
 
+// Video e maschera usano lo stesso layout (non speculare)
+const CAM = { mirror: false };
+
 function draw() {
   background(30);
-  image(video, 0, 0, width, height);
+  const L = GolinelliCam.draw(video, CAM);
 
   if (!ready) {
     fill(0, 190); noStroke(); rect(0, 0, width, 52);
@@ -300,21 +327,21 @@ function draw() {
   if (mode === 0) {
     // Sovrapponi la maschera con colore verde (dove c'è la persona)
     tint(0, 255, 100, 160);
-    image(segResult.mask, 0, 0, width, height);
+    image(segResult.mask, L.x, L.y, L.w, L.h);
     noTint();
   } else if (mode === 1) {
     // Silhouette: inverti i colori
     tint(255, 220);
-    image(segResult.mask, 0, 0, width, height);
+    image(segResult.mask, L.x, L.y, L.w, L.h);
     noTint();
     blendMode(DIFFERENCE);
-    image(video, 0, 0, width, height);
+    GolinelliCam.draw(video, CAM);
     blendMode(BLEND);
   } else {
     // Effetto neon pulsante
     let pulse = map(sin(frameCount * 0.08), -1, 1, 80, 220);
     tint(pulse, 0, 255, 180);
-    image(segResult.mask, 0, 0, width, height);
+    image(segResult.mask, L.x, L.y, L.w, L.h);
     noTint();
   }
 
@@ -327,6 +354,11 @@ function draw() {
 
 function mousePressed() {
   mode = (mode + 1) % MODES.length;
+}
+
+// La finestra cambia (schermo intero, pannelli): il canvas la segue, video e punti si riallineano da soli
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }`,
       },
       {
@@ -343,7 +375,7 @@ let history = [];
 let ready = false;
 
 function setup() {
-  createCanvas(640, 480);
+  createCanvas(windowWidth, windowHeight);
   textFont('monospace');
 
   video = createCapture(VIDEO);
@@ -366,7 +398,8 @@ function setup() {
 }
 
 function draw() {
-  image(video, 0, 0, width, height);
+  background(0);
+  GolinelliCam.draw(video);
 
   if (!ready) {
     fill(0, 190); noStroke(); rect(0, 0, width, 52);
@@ -396,6 +429,11 @@ function draw() {
     fill(255, map(i, 0, history.length, 255, 60));
     text(history[i].label + ' (' + nf(history[i].conf * 100, 1, 0) + '%)', 14, 24 + i * 22);
   }
+}
+
+// La finestra cambia (schermo intero, pannelli): il canvas la segue, video e punti si riallineano da soli
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }`,
       },
     ],
@@ -734,7 +772,7 @@ let video, hands, camera;
 let results = null;
 
 function setup() {
-  createCanvas(640, 480);
+  createCanvas(windowWidth, windowHeight);
   textFont('monospace');
 
   video = createCapture(VIDEO);
@@ -754,7 +792,8 @@ function setup() {
 
   // Camera di MediaPipe: pesca un frame dal video e lo invia al modello
   camera = new Camera(video.elt, {
-    onFrame: async () => { await hands.send({ image: video.elt }); },
+    // Invia un frame solo quando il video ne ha uno valido
+    onFrame: async () => { if (GolinelliCam.ready(video)) await hands.send({ image: video.elt }); },
     width: 640,
     height: 480,
   });
@@ -762,11 +801,9 @@ function setup() {
 }
 
 function draw() {
-  push();
-  translate(width, 0);
-  scale(-1, 1);
-  image(video, 0, 0, width, height);
-  pop();
+  background(0);
+  // Video e punti usano lo stesso layout (riempie la finestra, speculare): restano allineati a ogni dimensione
+  GolinelliCam.draw(video);
 
   if (!results || !results.multiHandLandmarks) {
     fill(0, 190); noStroke(); rect(0, 0, width, 52);
@@ -780,18 +817,25 @@ function draw() {
     stroke(0, 230, 120); strokeWeight(2); noFill();
     for (let [a, b] of HAND_CONNECTIONS) {
       let pa = kps[a], pb = kps[b];
-      line(width - pa.x * width, pa.y * height, width - pb.x * width, pb.y * height);
+      const a = GolinelliCam.point(pa, video), b = GolinelliCam.point(pb, video);
+      line(a.x, a.y, b.x, b.y);
     }
     noStroke();
     for (let i = 0; i < kps.length; i++) {
       fill(i === 0 ? color(255, 100, 50) : color(255, 220, 0));
-      circle(width - kps[i].x * width, kps[i].y * height, i === 0 ? 14 : 8);
+      const p = GolinelliCam.point(kps[i], video);
+      circle(p.x, p.y, i === 0 ? 14 : 8);
     }
   }
 
   noStroke(); fill(0, 180); rect(8, 8, 220, 22, 4);
   fill(255); textSize(11);
   text('Mani rilevate: ' + results.multiHandLandmarks.length, 14, 23);
+}
+
+// La finestra cambia (schermo intero, pannelli): il canvas la segue, video e punti si riallineano da soli
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }`,
       },
     ],
@@ -823,7 +867,7 @@ let video, faceMesh, camera;
 let faces = []; // lista di visi: ogni viso è un array di punti {x, y, z}
 
 function setup() {
-  createCanvas(640, 480);
+  createCanvas(windowWidth, windowHeight);
   textFont('monospace');
 
   video = createCapture(VIDEO);
@@ -842,16 +886,16 @@ function setup() {
   faceMesh.onResults((res) => { faces = res.multiFaceLandmarks || []; });
 
   camera = new Camera(video.elt, {
-    onFrame: async () => { await faceMesh.send({ image: video.elt }); },
+    onFrame: async () => { if (GolinelliCam.ready(video)) await faceMesh.send({ image: video.elt }); },
     width: 640,
     height: 480,
   });
   camera.start();
 }
 
-// Converte un landmark normalizzato in pixel, specchiando in orizzontale come la webcam
+// Converte un landmark normalizzato (0..1) in pixel del canvas, con lo stesso layout del video
 function toPx(p) {
-  return { x: width - p.x * width, y: p.y * height };
+  return GolinelliCam.point(p, video);
 }
 
 // Disegna un contorno dato dalle connessioni esportate da MediaPipe (coppie di indici)
@@ -864,11 +908,9 @@ function drawConnections(pts, connections, col) {
 }
 
 function draw() {
-  push();
-  translate(width, 0);
-  scale(-1, 1);
-  image(video, 0, 0, width, height);
-  pop();
+  background(0);
+  // Video e punti usano lo stesso layout (riempie la finestra, speculare): restano allineati a ogni dimensione
+  GolinelliCam.draw(video);
 
   if (faces.length === 0) {
     fill(0, 190); noStroke(); rect(0, 0, width, 52);
@@ -893,6 +935,11 @@ function draw() {
     fill(255); textSize(11);
     text('Bocca aperta: ' + (mouthOpen > 0.35 ? 'sì' : 'no') + ' (' + nf(mouthOpen, 1, 2) + ')', 14, 23);
   }
+}
+
+// La finestra cambia (schermo intero, pannelli): il canvas la segue, video e punti si riallineano da soli
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }`,
       },
       {
@@ -904,7 +951,7 @@ let video, faceMesh, camera;
 let face = null;
 
 function setup() {
-  createCanvas(640, 480);
+  createCanvas(windowWidth, windowHeight);
   video = createCapture(VIDEO);
   video.size(640, 480);
   video.hide();
@@ -918,22 +965,20 @@ function setup() {
   });
 
   camera = new Camera(video.elt, {
-    onFrame: async () => { await faceMesh.send({ image: video.elt }); },
+    onFrame: async () => { if (GolinelliCam.ready(video)) await faceMesh.send({ image: video.elt }); },
     width: 640,
     height: 480,
   });
   camera.start();
 }
 
-// landmark normalizzato -> pixel (immagine specchiata)
-function px(p) { return createVector(width - p.x * width, p.y * height); }
+// landmark normalizzato -> pixel del canvas, con lo stesso layout del video
+function px(p) { const q = GolinelliCam.point(p, video); return createVector(q.x, q.y); }
 
 function draw() {
-  push();
-  translate(width, 0);
-  scale(-1, 1);
-  image(video, 0, 0, width, height);
-  pop();
+  background(0);
+  // Video e punti usano lo stesso layout (riempie la finestra, speculare): restano allineati a ogni dimensione
+  GolinelliCam.draw(video);
 
   if (!face) return;
 
@@ -957,6 +1002,11 @@ function draw() {
   // Naso da clown
   noStroke(); fill(230, 30, 50);
   circle(nose.x, nose.y, eyeDist * 0.28);
+}
+
+// La finestra cambia (schermo intero, pannelli): il canvas la segue, video e punti si riallineano da soli
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }`,
       },
     ],

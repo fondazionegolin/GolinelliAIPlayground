@@ -51,9 +51,9 @@ function Markdown({ text, highlighter, highlight }: { text: string; highlighter:
   const wrap = (children: React.ReactNode) => highlightChildren(children, highlighter, highlight)
   return (
     <div className="prose prose-sm max-w-none text-[15px] leading-7 text-[var(--text-primary)] dark:prose-invert
-      prose-headings:mb-2 prose-headings:mt-6 prose-headings:border-l-4 prose-headings:border-violet-500 prose-headings:pl-3 prose-headings:font-bold prose-headings:text-[var(--text-primary)]
+      prose-headings:mb-2 prose-headings:mt-6 prose-headings:border-l-4 prose-headings:border-violet-500 prose-headings:pl-3 prose-headings:font-semibold prose-headings:text-[var(--text-primary)]
       prose-h1:text-lg prose-h2:text-base prose-h3:text-sm first:prose-headings:mt-0
-      prose-strong:font-bold prose-strong:text-violet-700 dark:prose-strong:text-violet-300
+      prose-strong:font-semibold prose-strong:text-violet-700 dark:prose-strong:text-violet-300
       prose-li:my-1.5 prose-ul:my-2 prose-ol:my-2 prose-li:marker:text-violet-500
       prose-blockquote:border-l-4 prose-blockquote:border-teal-500 prose-blockquote:text-[var(--text-secondary)]">
       <ReactMarkdown
@@ -88,7 +88,7 @@ function Block({ icon: Icon, title, color, actions, children }: { icon: typeof B
     <section className="overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--ds-surface)]">
       <header className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2.5" style={{ backgroundColor: `${color}12` }}>
         <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ backgroundColor: `${color}26`, color }}><Icon className="h-4 w-4" /></span>
-        <h3 className="min-w-0 flex-1 truncate text-sm font-bold">{title}</h3>
+        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h3>
         {actions}
       </header>
       <div className="p-4 sm:p-5">{children}</div>
@@ -156,7 +156,7 @@ function TranscriptionSettingsDialog({ open, onOpenChange }: { open: boolean; on
                   })}
                 </Select>
               ) : (
-                <p className="text-sm font-bold">{current?.label ?? value}</p>
+                <p className="text-sm font-semibold">{current?.label ?? value}</p>
               )}
               {current?.note && <p className="text-xs text-[var(--text-secondary)]">{current.note}</p>}
               {data.current.engine === 'local' && (
@@ -348,7 +348,7 @@ export function RecordingDetail({ recording, onClose }: { recording: CallRecordi
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
       {/* Row 1: title and actions */}
       <div className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
-        <h3 className="min-w-0 flex-1 basis-56 truncate text-lg font-bold leading-snug" title={recording.title}>{recording.title}</h3>
+        <h3 className="min-w-0 flex-1 basis-56 truncate text-lg font-semibold leading-snug" title={recording.title}>{recording.title}</h3>
         <div className="flex flex-wrap items-center gap-2">
           {recording.status === 'ready' && (
             <>
@@ -483,7 +483,7 @@ export function RecordingDetail({ recording, onClose }: { recording: CallRecordi
                           <button type="button" aria-expanded={expanded} className="flex min-w-0 flex-1 items-center gap-3 text-left"
                             onClick={() => setOpenResults((prev) => { const next = new Set(prev); if (next.has(a.id) || a.id === lastCreated) { next.delete(a.id); if (a.id === lastCreated) setLastCreated(null) } else next.add(a.id); return next })}>
                             <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--ds-surface-muted)] text-[var(--text-secondary)]"><Icon className="h-4 w-4" /></span>
-                            <span className="truncate text-sm font-bold">{a.title}</span>
+                            <span className="truncate text-sm font-semibold">{a.title}</span>
                             <ChevronDown className={`h-4 w-4 flex-shrink-0 text-[var(--text-secondary)] transition-transform ${expanded ? 'rotate-180' : ''}`} />
                           </button>
                           <ResultActions analysis={a} recordingId={recording.id} sessionBound={sessionBound} />
@@ -509,10 +509,10 @@ function SpeakerStack({ participants, max = 3 }: { participants: CallRecording['
   return (
     <div className="flex -space-x-2">
       {participants.slice(0, max).map((p, i) => (
-        <span key={p.identity} title={`${p.name} · ${clock(p.seconds)}`} className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-[var(--ds-surface)]"
+        <span key={p.identity} title={`${p.name} · ${clock(p.seconds)}`} className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold text-white ring-2 ring-[var(--ds-surface)]"
           style={{ backgroundColor: SPEAKER_COLORS[i % SPEAKER_COLORS.length] }}>{initials(p.name)}</span>
       ))}
-      {participants.length > max && <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ds-surface-muted)] text-[10px] font-bold ring-2 ring-[var(--ds-surface)]">+{participants.length - max}</span>}
+      {participants.length > max && <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ds-surface-muted)] text-[10px] font-semibold ring-2 ring-[var(--ds-surface)]">+{participants.length - max}</span>}
     </div>
   )
 }
@@ -546,12 +546,12 @@ export function CallRow({ recording, onOpen, compact, selected }: { recording: C
         className={`flex w-full items-center rounded-2xl text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--logo-violet)] ${compact ? 'gap-3 px-3 py-2.5' : 'gap-4 px-3 py-3.5 sm:px-4'} ${selected ? 'bg-[color-mix(in_srgb,var(--logo-violet)_12%,var(--mix-base))] shadow-[inset_3px_0_0_var(--logo-violet)]' : 'hover:bg-[var(--ds-surface-muted)]'}`}>
         {started && (
           <span className={`flex flex-shrink-0 flex-col items-center leading-tight ${compact ? 'w-10' : 'w-14'}`} aria-hidden="true">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">{started.toLocaleDateString(undefined, { month: 'short' }).replace('.', '')}</span>
-            <span className={`${compact ? 'text-lg' : 'text-xl'} font-black tabular-nums`}>{started.getDate()}</span>
+            <span className="text-[10px] font-semibold text-[var(--text-secondary)]">{started.toLocaleDateString(undefined, { month: 'short' }).replace('.', '')}</span>
+            <span className={`${compact ? 'text-lg' : 'text-xl'} font-semibold tabular-nums`}>{started.getDate()}</span>
           </span>
         )}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold">{recording.call_title || (recording.session_id ? tl("Chiamata di classe") : recording.title)}</span>
+          <span className="block truncate text-sm font-semibold">{recording.call_title || (recording.session_id ? tl("Chiamata di classe") : recording.title)}</span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--text-secondary)]">
             {started && <span>{started.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>}
             {recording.duration_seconds ? <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{humanDuration(recording.duration_seconds)}</span> : null}
@@ -629,10 +629,10 @@ export function SessionCallsPanel({ sessionId, personal = false }: { sessionId?:
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-4 shadow-[inset_0_-1px_0_var(--ds-frame-divider)] sm:px-6">
           <Video className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-black text-slate-900">{personal ? tl("Le tue registrazioni") : tl("Chiamate registrate")}</h2>
+            <h2 className="text-base font-semibold text-slate-900">{personal ? tl("Le tue registrazioni") : tl("Chiamate registrate")}</h2>
             <p className="text-xs text-slate-500">{personal ? tl("Trascrizione, riassunto e strumenti AI di ogni registrazione.") : tl("Trascrizione con i nomi, riassunto e strumenti AI di ogni chiamata.")}</p>
           </div>
-          <span className="rounded-full bg-[color-mix(in_srgb,var(--logo-violet)_10%,var(--mix-base))] px-2.5 py-1 text-[11px] font-bold text-[var(--logo-violet)]">
+          <span className="rounded-full bg-[color-mix(in_srgb,var(--logo-violet)_10%,var(--mix-base))] px-2.5 py-1 text-[11px] font-semibold text-[var(--logo-violet)]">
             {recordings.length} {personal ? (recordings.length === 1 ? tl("registrazione") : tl("registrazioni")) : recordings.length === 1 ? tl("chiamata") : tl("chiamate")}
           </span>
           <IconButton tone="neutral" surface="ghost" size="sm" title={tl("Modello di trascrizione")} aria-label={tl("Modello di trascrizione")} onClick={() => setSettingsOpen(true)}>
@@ -651,7 +651,7 @@ export function SessionCallsPanel({ sessionId, personal = false }: { sessionId?:
         {isLoading ? <Loader2 className="mx-auto my-10 h-5 w-5 animate-spin text-[var(--text-secondary)]" /> : recordings.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
             <Mic className="h-7 w-7 text-[var(--text-secondary)]" />
-            <p className="text-sm font-bold">{personal ? tl("Nessuna registrazione") : tl("Nessuna chiamata registrata")}</p>
+            <p className="text-sm font-semibold">{personal ? tl("Nessuna registrazione") : tl("Nessuna chiamata registrata")}</p>
             <p className="max-w-sm text-xs text-[var(--text-secondary)]">{personal ? tl("Premi l'icona rossa nella barra in alto per registrare: la trascrizione arriva qui.") : tl("Durante una chiamata premi «Registra»: la trascrizione arriva qui.")}</p>
           </div>
         ) : (

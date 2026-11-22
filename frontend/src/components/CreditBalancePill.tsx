@@ -205,7 +205,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
             <div className="flex items-center gap-3">
               <CreditRing value={remainingRatio} color={ringColor} size={38} />
               <div>
-                <p className="text-sm font-black text-slate-900">{title}</p>
+                <p className="text-sm font-semibold text-slate-900">{title}</p>
                 <p className="mt-0.5 text-xs font-medium text-slate-500">{tl("Aggiornato automaticamente ·")} {percentAvailable}{tl("% del plafond disponibile")}</p>
               </div>
             </div>
@@ -216,15 +216,15 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
                 [tl("Plafond"), typeof cap === 'number' ? formatCreditValue(cap) : tl("Illimitato")],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg bg-slate-50 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
-                  <p className="mt-0.5 text-sm font-black tabular-nums text-slate-900">{value}</p>
+                  <p className="text-[10px] font-semibold text-slate-400">{label}</p>
+                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{value}</p>
                 </div>
               ))}
             </div>
           </div>
           {(balance?.low_balance || balance?.exhausted) && (
             <div className={`border-b px-4 py-3 ${balance?.exhausted ? 'border-red-100 bg-red-50' : 'border-amber-100 bg-amber-50'}`}>
-              <p className={`text-sm font-black ${balance?.exhausted ? 'text-red-700' : 'text-amber-800'}`}>
+              <p className={`text-sm font-semibold ${balance?.exhausted ? 'text-red-700' : 'text-amber-800'}`}>
                 {balance?.exhausted ? tl("Crediti esauriti") : tl("Crediti in esaurimento")}
               </p>
               <p className={`mt-0.5 text-xs ${balance?.exhausted ? 'text-red-700' : 'text-amber-700'}`}>
@@ -234,10 +234,10 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
               </p>
               {audience !== 'student' && (
                 requestSent ? (
-                  <p className="mt-2 text-xs font-bold text-slate-700">{tl("Richiesta inviata — in attesa dell'amministratore.")}</p>
+                  <p className="mt-2 text-xs font-semibold text-slate-700">{tl("Richiesta inviata — in attesa dell'amministratore.")}</p>
                 ) : requestOpen ? (
                   <div className="mt-2 flex flex-wrap items-end gap-2">
-                    <label className="text-[11px] font-bold text-slate-600">
+                    <label className="text-[11px] font-semibold text-slate-600">
                       {tl("Crediti")}
                       <input
                         value={requestCredits}
@@ -246,7 +246,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
                         className="mt-0.5 block h-8 w-24 rounded-lg border border-slate-200 bg-white px-2 text-right text-sm"
                       />
                     </label>
-                    <label className="min-w-40 flex-1 text-[11px] font-bold text-slate-600">
+                    <label className="min-w-40 flex-1 text-[11px] font-semibold text-slate-600">
                       {tl("Motivazione (facoltativa)")}
                       <input
                         value={requestReason}
@@ -258,7 +258,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
                       type="button"
                       onClick={sendRequest}
                       disabled={requestSending}
-                      className="h-8 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-50"
+                      className="h-8 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white disabled:opacity-50"
                     >
                       {requestSending ? tl("Invio…") : tl("Invia richiesta")}
                     </button>
@@ -267,7 +267,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
                   <button
                     type="button"
                     onClick={() => setRequestOpen(true)}
-                    className="mt-2 h-8 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white"
+                    className="mt-2 h-8 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white"
                   >
                     {tl("Richiedi nuovi crediti")}
                   </button>
@@ -277,12 +277,12 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
           )}
           {isPool && (balance?.classes?.length ?? 0) > 0 && (
             <div className="border-b border-slate-100 px-4 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Budget per classe")}</p>
+              <p className="text-[10px] font-semibold text-slate-400">{tl("Budget per classe")}</p>
               <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
                 {balance!.classes!.map((cls) => (
                   <div key={cls.class_id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-xs">
-                    <span className="truncate font-bold text-slate-700">{cls.class_name}</span>
-                    <span className={`ml-2 shrink-0 font-black tabular-nums ${cls.exhausted ? 'text-red-600' : cls.low_balance ? 'text-amber-600' : 'text-slate-900'}`}>
+                    <span className="truncate font-semibold text-slate-700">{cls.class_name}</span>
+                    <span className={`ml-2 shrink-0 font-semibold tabular-nums ${cls.exhausted ? 'text-red-600' : cls.low_balance ? 'text-amber-600' : 'text-slate-900'}`}>
                       {formatCreditValue(cls.credits_remaining ?? 0)} / {formatCreditValue(cls.credits_cap ?? 0)}
                     </span>
                   </div>
@@ -291,7 +291,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
             </div>
           )}
           <div className="border-b border-slate-100 px-4 py-2.5">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-600">{tl("Storico consumi")}</p>
+            <p className="text-xs font-semibold text-slate-600">{tl("Storico consumi")}</p>
           </div>
           <div className="max-h-80 overflow-auto">
             {historyLoading ? (
@@ -300,7 +300,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
               <div className="px-3 py-6 text-center text-sm text-slate-500">{tl("Nessuna chiamata recente")}</div>
             ) : (
               <table className="w-full min-w-[560px] text-left text-xs">
-                <thead className="sticky top-0 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <thead className="sticky top-0 bg-slate-50 text-[10px] font-semibold text-slate-400">
                   <tr>
                     <th className="px-4 py-2">{tl("Data")}</th>
                     <th className="px-3 py-2">{tl("Servizio")}</th>
@@ -313,10 +313,10 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
                   {history.map((item) => (
                     <tr key={item.id} className="hover:bg-slate-50/80">
                       <td className="whitespace-nowrap px-4 py-2.5 font-semibold text-slate-600">{formatWhen(item.timestamp)}</td>
-                      <td className="px-3 py-2.5 font-black text-slate-800">{item.service || tl("Servizi AI")}</td>
+                      <td className="px-3 py-2.5 font-semibold text-slate-800">{item.service || tl("Servizi AI")}</td>
                       {isPool && (
                         <td className="max-w-44 px-3 py-2.5">
-                          <p className="truncate font-bold text-slate-700">{item.student_name || tl("Studente")}</p>
+                          <p className="truncate font-semibold text-slate-700">{item.student_name || tl("Studente")}</p>
                           <p className="truncate text-[11px] text-slate-400">{[item.class_name, item.session_title].filter(Boolean).join(' · ') || tl("Sessione")}</p>
                         </td>
                       )}
@@ -324,7 +324,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
                         <p className="truncate font-semibold text-slate-600">{item.provider || '—'}</p>
                         <p className="truncate text-[11px] text-slate-400">{item.model || '—'}</p>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-right font-black tabular-nums" style={{ color: mainColor }}>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums" style={{ color: mainColor }}>
                         {formatCreditValue(item.cost_credits)}
                       </td>
                     </tr>

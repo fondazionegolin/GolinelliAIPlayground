@@ -81,7 +81,7 @@ const UPLOAD_STEPS = [
   { key: 'chunking', label: tl("Divisione in blocchi semantici…") },
   { key: 'embedding', label: tl("Generazione vettori embedding…") },
   { key: 'indexing', label: tl("Indicizzazione nella knowledge base…") },
-  { key: 'done', label: tl("Documento pronto!") },
+  { key: 'done', label: tl("Documento pronto") },
 ]
 
 const DOC_ICON: Record<string, React.ReactNode> = {
@@ -192,7 +192,7 @@ function RagExplainer({ theme, teacher }: { theme: AccentTheme; teacher?: boolea
     <div className="space-y-2 text-[11px] text-slate-600">
       {steps.map(({ n, title, desc }) => (
         <div key={n} className="flex items-start gap-2">
-          <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold"
+          <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold"
             style={{ color: theme.text }}>{n}</div>
           <p><strong>{title}:</strong> {desc}</p>
         </div>
@@ -232,7 +232,7 @@ function DocumentPanel({
         <BookOpen className="h-4 w-4" style={{ color: theme.text }} />
         <span className="text-sm font-semibold text-slate-800">{tl("Documenti")}</span>
         {docs.length > 0 && (
-          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold" style={{ color: theme.text }}>
+          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: theme.text }}>
             {docs.length}
           </span>
         )}
@@ -259,7 +259,7 @@ function DocumentPanel({
             </p>
           </div>
           <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-200">
-            <div className="h-full rounded-full bg-slate-500 transition-all duration-500"
+            <div className="h-full rounded-full bg-slate-500 transition duration-500"
               style={{ width: `${(uploadStep / (UPLOAD_STEPS.length - 1)) * 100}%` }} />
           </div>
         </div>
@@ -310,13 +310,13 @@ function DocumentPanel({
           const processing = doc.status === 'processing' || doc.status === 'PROCESSING' || doc.status === 'queued' || doc.status === 'QUEUED'
           return (
             <div key={doc.id} onClick={() => onToggleDoc(doc.id)}
-              className="cursor-pointer rounded-lg border px-2 py-1.5 transition-all"
+              className="cursor-pointer rounded-lg border px-2 py-1.5 transition"
               style={{
                 borderColor: isSelected ? hex2rgba(theme.accent, 0.4) : 'rgba(203,213,225,0.6)',
                 backgroundColor: isSelected ? '#fafafa' : 'white',
               }}>
               <div className="flex items-center gap-2">
-                <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-all"
+                <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition"
                   style={isSelected
                     ? { borderColor: 'var(--selection-border)', backgroundImage: 'var(--selection-bg)', color: 'var(--selection-text)' }
                     : { borderColor: '#d4d4d4' }}>
@@ -390,7 +390,7 @@ function DocumentPreviewModal({
         <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-4 py-3">
           {docIcon(doc.doc_type)}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold text-slate-800">{doc.title}</p>
+            <p className="truncate text-sm font-semibold text-slate-800">{doc.title}</p>
             <p className="text-[11px] text-slate-400">
               {chunks.length} blocchi
               {totalHighlights > 0 && <> · <span className="inline-flex items-center gap-1"><Highlighter className="h-3 w-3" />{totalHighlights} {tl("passaggi evidenziati dall’ultima ricerca")}</span></>}
@@ -416,7 +416,7 @@ function DocumentPreviewModal({
             return (
               <div key={c.id}>
                 {c.page && c.page !== prevPage && (
-                  <p className="mb-1 mt-2 border-b border-slate-100 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Pagina")} {c.page}</p>
+                  <p className="mb-1 mt-2 border-b border-slate-100 pb-0.5 text-[10px] font-semibold text-slate-400">{tl("Pagina")} {c.page}</p>
                 )}
                 <div ref={isFocus ? focusRef : attachMark ? firstMarkRef : undefined}
                   className={`whitespace-pre-wrap rounded-lg px-2 py-1 text-[13px] leading-relaxed text-slate-700 ${isFocus ? 'ring-2 ring-amber-300' : ''}`}>
@@ -451,7 +451,7 @@ function CitedContent({
           const isActive = activeCitationIndex === idx
           return (
             <button key={i} onClick={() => chunk && onCitationClick(chunk, idx, sourceChunks)}
-              className="mx-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded px-1.5 text-[11px] font-bold transition-all"
+              className="mx-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded px-1.5 text-[11px] font-semibold transition"
               style={isActive
 	                ? { backgroundColor: 'var(--text-primary)', color: 'var(--surface-base)' }
 	                : chunk
@@ -597,7 +597,7 @@ function ChatPanel({
 
       {/* Input */}
       <div className="shrink-0 pt-3 border-t border-slate-200 mt-3">
-	        <div className={`flex gap-2 items-end rounded-[24px] border bg-white p-1.5 shadow-sm transition-all focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200 ${isLoading ? 'opacity-70' : ''}`}
+	        <div className={`flex gap-2 items-end rounded-[24px] border bg-white p-1.5 shadow-sm transition focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200 ${isLoading ? 'opacity-70' : ''}`}
           style={{ borderColor: isLoading ? '#e5e5e5' : '#d4d4d4' }}
           onFocus={(e) => { if (!isLoading) (e.currentTarget as HTMLDivElement).style.borderColor = theme.accent }}
           onBlur={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#d4d4d4' }}>
@@ -689,7 +689,7 @@ function SourcePanel({
           const scorePct = chunk.score !== undefined ? Math.round(Math.min(1, Math.max(0, chunk.score)) * 100) : null
           return (
             <div key={chunk.id} ref={isHighlighted ? highlightRef : undefined}
-              className="rounded-xl border p-3 transition-all duration-300"
+              className="rounded-xl border p-3 transition duration-300"
               style={isHighlighted
                 ? {
                     borderColor: hex2rgba(theme.accent, 0.5),
@@ -698,7 +698,7 @@ function SourcePanel({
                   }
                 : { borderColor: '#e5e5e5', backgroundColor: 'white' }}>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
+                <span className="text-[10px] font-semibold rounded-full px-2 py-0.5"
 	                  style={{ backgroundColor: 'rgb(var(--c-neutral-100))', color: theme.text }}>
                   {sourceChunks || pendingChunks ? `[[${i + 1}]]` : `#${(chunk.chunk_index ?? i) + 1}`}
                 </span>
@@ -1007,7 +1007,7 @@ export default function StudentRagWorkspace({
       {/* Single toolbar: navigation · session · sources · help */}
       <div className="relative z-20 flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white/95 px-3 py-2 shadow-sm">
         {onBack && (
-          <button type="button" onClick={onBack} className="inline-flex h-9 items-center gap-1 rounded-xl px-2 text-xs font-bold text-slate-700 hover:bg-slate-100" title={tl("Torna a {0}", backLabel)}>
+          <button type="button" onClick={onBack} className="inline-flex h-9 items-center gap-1 rounded-xl px-2 text-xs font-semibold text-slate-700 hover:bg-slate-100" title={tl("Torna a {0}", backLabel)}>
             <ChevronLeft className="h-4 w-4" />
             <span className="hidden sm:inline">{backLabel}</span>
           </button>
@@ -1017,7 +1017,7 @@ export default function StudentRagWorkspace({
         <div className="relative min-w-0 flex-1 sm:max-w-xs" ref={sessionMenuRef}>
           <button
             onClick={() => setSessionMenuOpen((o) => !o)}
-            className="flex h-9 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left transition-all hover:border-slate-300"
+            className="flex h-9 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left transition hover:border-slate-300"
             title={tl("Cronologia e fonti della sessione")}
           >
             <Database className="h-3.5 w-3.5 shrink-0" style={{ color: theme.text }} />
@@ -1053,7 +1053,7 @@ export default function StudentRagWorkspace({
                         <div className="flex items-center gap-1">
                           <span className="truncate text-xs font-semibold text-slate-700">{s.name}</span>
                           {isCurrent && (
-                            <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+                            <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
                               style={{ backgroundColor: 'rgb(var(--c-neutral-100))', color: theme.text }}>{tl("attiva")}</span>
                           )}
                         </div>
@@ -1096,7 +1096,7 @@ export default function StudentRagWorkspace({
           </button>
           {youtubeOpen && (
             <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xl">
-              <p className="mb-1.5 text-[11px] font-bold text-slate-700">{tl("Trascrizione YouTube nel")} {noun}</p>
+              <p className="mb-1.5 text-[11px] font-semibold text-slate-700">{tl("Trascrizione YouTube nel")} {noun}</p>
               <form className="flex gap-2" onSubmit={(e) => {
                 e.preventDefault()
                 if (!youtubeUrl.trim()) return
@@ -1138,7 +1138,7 @@ export default function StudentRagWorkspace({
           style={{ borderColor: theme.accent }}>
           <div className="text-center">
             <Upload className="mx-auto mb-2 h-8 w-8" style={{ color: theme.text }} />
-            <p className="text-sm font-bold text-slate-700">{tl("Rilascia per aggiungere al")} {noun}</p>
+            <p className="text-sm font-semibold text-slate-700">{tl("Rilascia per aggiungere al")} {noun}</p>
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@ import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useOpenParam } from '@/lib/useOpenParam'
 import '@google/model-viewer'
 import { useEffect, useRef, useState } from 'react'
+import { takeHandoff } from '@/lib/platformHandoff'
 import {
   AlertCircle, Box, CheckCircle2, ChevronDown, Download, ImagePlus,
   Loader2, RotateCcw, Share2, Sparkles, Square, Trash2, X,
@@ -101,7 +102,7 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
   const assetKey = student ? `student_3d_assets_${sessionId || 'session'}` : 'teacher_3d_assets'
   const fileRef = useRef<HTMLInputElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [prompt, setPrompt] = useState('')
+  const [prompt, setPrompt] = useState(() => (student ? null : takeHandoff(['models3d_ai']))?.brief.slice(0, 600) ?? '')
   const [reference, setReference] = useState<ReferenceImage | null>(null)
   const [options, setOptions] = useState<MeshyGenerationOptions>(DEFAULT_OPTIONS)
   const [task, setTask] = useState<Task3D | null>(null)
@@ -330,17 +331,17 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
       <div className="mx-auto max-w-6xl px-4 py-5 lg:px-6 lg:py-7">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-600">{tl("AI generativa 3D")}</p>
-            <SectionHeading section="/teacher/ai-3d" className="mt-1 text-2xl font-black tracking-tight text-slate-950" subtitle={<>{tl("Descrivi l’oggetto e, se vuoi, aggiungi un’immagine di riferimento.")}</>} subtitleClassName="mt-1 max-w-2xl text-sm text-slate-500">{tl("Crea un modello con Meshy")}</SectionHeading>
+            <p className="text-[11px] font-semibold text-violet-600">{tl("AI generativa 3D")}</p>
+            <SectionHeading section="/teacher/ai-3d" className="mt-1 text-2xl font-semibold tracking-tight text-slate-950" subtitle={<>{tl("Descrivi l’oggetto e, se vuoi, aggiungi un’immagine di riferimento.")}</>} subtitleClassName="mt-1 max-w-2xl text-sm text-slate-500">{tl("Crea un modello con Meshy")}</SectionHeading>
           </div>
-          <div className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-black text-violet-800">
+          <div className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800">
             {tl("Modello effettivo:")} {actualModel === 'latest' ? 'latest → Meshy 7.1' : actualModel}
           </div>
         </header>
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,.95fr)]">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:p-5">
-            <label htmlFor="meshy-prompt" className="text-sm font-black text-slate-900">
+            <label htmlFor="meshy-prompt" className="text-sm font-semibold text-slate-900">
               {reference ? tl("Descrizione della texture (facoltativa)") : tl("Descrivi il modello")}
             </label>
             <textarea
@@ -360,27 +361,27 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
 
             <div className="mt-4">
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-black text-slate-900">{tl("Immagine di riferimento")} <span className="font-medium text-slate-400">opzionale</span></p>
-                {reference && <button type="button" onClick={() => setReference(null)} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-rose-600"><X className="h-3.5 w-3.5" /> {tl("Rimuovi")}</button>}
+                <p className="text-sm font-semibold text-slate-900">{tl("Immagine di riferimento")} <span className="font-medium text-slate-400">opzionale</span></p>
+                {reference && <button type="button" onClick={() => setReference(null)} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-rose-600"><X className="h-3.5 w-3.5" /> {tl("Rimuovi")}</button>}
               </div>
               <input ref={fileRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={event => event.target.files?.[0] && handleFile(event.target.files[0])} />
               {reference ? (
                 <button type="button" onClick={() => fileRef.current?.click()} className="flex w-full items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-left">
                   <img src={reference.preview} alt="Reference" className="h-20 w-20 rounded-lg object-cover" />
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-black text-slate-900">{reference.name}</span>
+                    <span className="block truncate text-sm font-semibold text-slate-900">{reference.name}</span>
                     <span className="mt-1 block text-xs text-emerald-700">{tl("Image-to-3D · clicca per sostituire")}</span>
                   </span>
                 </button>
               ) : (
-                <button type="button" onClick={() => fileRef.current?.click()} className="flex min-h-24 w-full items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm font-bold text-slate-600 transition hover:border-violet-400 hover:bg-violet-50 hover:text-violet-700">
+                <button type="button" onClick={() => fileRef.current?.click()} className="flex min-h-24 w-full items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm font-semibold text-slate-600 transition hover:border-violet-400 hover:bg-violet-50 hover:text-violet-700">
                   <ImagePlus className="h-5 w-5" /> {tl("Carica JPG o PNG")}
                 </button>
               )}
             </div>
 
             <details className="group mt-4 rounded-xl border border-slate-200 bg-slate-50/70">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-black text-slate-700">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-slate-700">
                 {tl("Opzioni avanzate Meshy")}
                 <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
               </summary>
@@ -430,14 +431,14 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
                 <Check label={tl("Dimensione reale automatica")} checked={options.auto_size} onChange={value => setOption('auto_size', value)} />
                 <Check label={tl("Anteprima trasparente")} checked={options.alpha_thumbnail} onChange={value => setOption('alpha_thumbnail', value)} />
                 <div className="sm:col-span-2">
-                  <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">{tl("Formati di output")}</p>
+                  <p className="mb-2 text-xs font-semibold text-slate-500">{tl("Formati di output")}</p>
                   <div className="flex flex-wrap gap-2">
                     {FORMAT_OPTIONS.map(format => {
                       const active = options.target_formats.includes(format)
                       return <button key={format} type="button" onClick={() => {
                         if (active && options.target_formats.length === 1) return
                         setOption('target_formats', active ? options.target_formats.filter(item => item !== format) : [...options.target_formats, format])
-                      }} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black uppercase ${active ? 'border-violet-300 bg-violet-100 text-violet-800' : 'border-slate-200 bg-white text-slate-500'}`}>{format}</button>
+                      }} className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${active ? 'border-violet-300 bg-violet-100 text-violet-800': 'border-slate-200 bg-white text-slate-500'}`}>{format}</button>
                     })}
                   </div>
                 </div>
@@ -446,7 +447,7 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
 
             {error && <div className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs font-semibold text-slate-500">{tl("Costo Meshy stimato:")} <span className="font-black text-slate-800">{estimatedCredits} {tl("crediti")}</span></p>
+              <p className="text-xs font-semibold text-slate-500">{tl("Costo Meshy stimato:")} <span className="font-semibold text-slate-800">{estimatedCredits} {tl("crediti")}</span></p>
               <Button onClick={generate} disabled={isRunning || (!prompt.trim() && !reference)} tone="accent" surface="solid" density="default">
                 {isRunning ? <Loader2 className="animate-spin" /> : <Sparkles />}{isRunning ? tl("Generazione…") : tl("Genera modello 3D")}
               </Button>
@@ -455,25 +456,25 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
 
           <section className="min-h-[420px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <div><p className="text-sm font-black text-slate-900">{tl("Anteprima")}</p><p className="text-[11px] font-semibold text-slate-400">{selectedModel}</p></div>
-              {(task || viewingAsset) && <button type="button" onClick={resetResult} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500"><RotateCcw className="h-3.5 w-3.5" /> {tl("Pulisci")}</button>}
+              <div><p className="text-sm font-semibold text-slate-900">{tl("Anteprima")}</p><p className="text-[11px] font-semibold text-slate-400">{selectedModel}</p></div>
+              {(task || viewingAsset) && <button type="button" onClick={resetResult} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500"><RotateCcw className="h-3.5 w-3.5" /> {tl("Pulisci")}</button>}
             </div>
             <div className="relative flex min-h-[360px] items-center justify-center" style={STAGE_BACKGROUND}>
-              {!activeGlb && !isRunning && !taskError && <div className="max-w-xs px-8 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm"><Box className="h-7 w-7 text-violet-400" /></div><p className="mt-4 text-sm font-black text-slate-700">{tl("Il modello apparirà qui")}</p><p className="mt-1 text-xs leading-5 text-slate-400">{tl("Puoi continuare a usare la piattaforma: la generazione resta visibile anche nella navbar.")}</p></div>}
+              {!activeGlb && !isRunning && !taskError && <div className="max-w-xs px-8 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm"><Box className="h-7 w-7 text-violet-400" /></div><p className="mt-4 text-sm font-semibold text-slate-700">{tl("Il modello apparirà qui")}</p><p className="mt-1 text-xs leading-5 text-slate-400">{tl("Puoi continuare a usare la piattaforma: la generazione resta visibile anche nella navbar.")}</p></div>}
               {isRunning && (
                 <div className="w-full max-w-sm px-6 text-center">
                   <Loader2 className="mx-auto h-8 w-8 animate-spin text-violet-600" />
-                  <p className="mt-3 text-sm font-black text-slate-800">{tl("Meshy sta creando il modello")}</p>
+                  <p className="mt-3 text-sm font-semibold text-slate-800">{tl("Meshy sta creando il modello")}</p>
                   <div className="relative mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
                     <div className="h-full rounded-full bg-gradient-to-r from-violet-400 to-violet-700 transition-all duration-700" style={{ width: `${Math.max(6, task?.progress || 0)}%` }} />
                     {/* Moving sheen: Meshy can hold one percentage for minutes, the bar must not look frozen. */}
                     <div className="absolute inset-y-0 w-1/3 animate-[meshy-sheen_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/60 to-transparent" />
                   </div>
-                  <p className="mt-2 text-xs font-bold tabular-nums text-slate-500">{task?.progress || 0}% · {elapsedText}</p>
+                  <p className="mt-2 text-xs font-semibold tabular-nums text-slate-500">{task?.progress || 0}% · {elapsedText}</p>
                   <p className="mt-1 text-[11px] leading-4 text-slate-400">{jobInfo?.label || tl("In coda su Meshy…")}</p>
                   <p className="mt-1 text-[11px] leading-4 text-slate-400">{tl("Puoi cambiare pagina: la generazione continua in background.")}</p>
                   {(jobId || task) && (
-                    <button type="button" onClick={() => void stopGeneration()} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100">
+                    <button type="button" onClick={() => void stopGeneration()} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-100">
                       <Square className="h-3 w-3" /> {tl("Interrompi")}
                     </button>
                   )}
@@ -485,7 +486,7 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
                 {/* @ts-expect-error model-viewer is a registered custom element */}
                 <model-viewer src={meshyApi.proxyAssetUrl(activeGlb)} camera-controls auto-rotate environment-image="neutral" shadow-intensity="1.4" shadow-softness="0.6" exposure="1.05" style={{ width: '100%', height: '420px', background: 'transparent' }} />
                 <div className="absolute bottom-3 left-3 flex flex-wrap gap-2">
-                  {Object.entries(activeUrls || { glb: activeGlb }).filter((entry): entry is [string, string] => Boolean(entry[1])).map(([format, url]) => <a key={format} href={url} target="_blank" rel="noreferrer" download className="inline-flex items-center gap-1 rounded-lg bg-white/90 px-2.5 py-1.5 text-xs font-black uppercase text-slate-700 shadow"><Download className="h-3.5 w-3.5" />{format}</a>)}
+                  {Object.entries(activeUrls || { glb: activeGlb }).filter((entry): entry is [string, string] => Boolean(entry[1])).map(([format, url]) => <a key={format} href={url} target="_blank" rel="noreferrer" download className="inline-flex items-center gap-1 rounded-lg bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow"><Download className="h-3.5 w-3.5" />{format}</a>)}
                 </div>
               </>}
             </div>
@@ -493,24 +494,24 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
         </div>
 
         {assets.length > 0 && <section className="mt-7">
-          <div className="mb-3 flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600" /><h2 className="text-base font-black text-slate-900">{tl("I tuoi modelli")}</h2><span className="text-xs font-bold text-slate-400">{assets.length}</span></div>
+          <div className="mb-3 flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600" /><h2 className="text-base font-semibold text-slate-900">{tl("I tuoi modelli")}</h2><span className="text-xs font-semibold text-slate-400">{assets.length}</span></div>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
             {assets.map(asset => <article key={asset.id} onClick={() => setViewingAsset(asset)} className="group cursor-pointer overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
               <div className="aspect-[16/10] bg-slate-100">{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Box className="h-7 w-7 text-slate-300" /></div>}</div>
-              <div className="p-3"><p className="truncate text-sm font-black text-slate-900">{asset.label}</p><p className="mt-0.5 text-[11px] text-slate-400">{new Date(asset.createdAt).toLocaleDateString('it-IT')}</p><div className="mt-3 flex gap-1.5"><button type="button" onClick={event => { event.stopPropagation(); void shareAsset(asset) }} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-bold text-slate-600"><Share2 className="h-3.5 w-3.5" />{tl("Chat")}</button><a href={asset.glbUrl} target="_blank" rel="noreferrer" download onClick={event => event.stopPropagation()} className="inline-flex items-center justify-center rounded-lg bg-violet-100 px-2 text-violet-700"><Download className="h-3.5 w-3.5" /></a><button type="button" onClick={event => { event.stopPropagation(); deleteAsset(asset.id) }} className="inline-flex items-center justify-center rounded-lg bg-rose-50 px-2 text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button></div></div>
+              <div className="p-3"><p className="truncate text-sm font-semibold text-slate-900">{asset.label}</p><p className="mt-0.5 text-[11px] text-slate-400">{new Date(asset.createdAt).toLocaleDateString('it-IT')}</p><div className="mt-3 flex gap-1.5"><button type="button" onClick={event => { event.stopPropagation(); void shareAsset(asset) }} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-semibold text-slate-600"><Share2 className="h-3.5 w-3.5" />{tl("Chat")}</button><a href={asset.glbUrl} target="_blank" rel="noreferrer" download onClick={event => event.stopPropagation()} className="inline-flex items-center justify-center rounded-lg bg-violet-100 px-2 text-violet-700"><Download className="h-3.5 w-3.5" /></a><button type="button" onClick={event => { event.stopPropagation(); deleteAsset(asset.id) }} className="inline-flex items-center justify-center rounded-lg bg-rose-50 px-2 text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button></div></div>
             </article>)}
           </div>
         </section>}
       </div>
-      {toast && <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white shadow-xl">{toast}</div>}
+      {toast && <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-xl">{toast}</div>}
     </div>
   )
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label><span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">{label}</span>{children}</label>
+  return <label><span className="mb-1.5 block text-xs font-semibold text-slate-500">{label}</span>{children}</label>
 }
 
 function Check({ label, checked, disabled = false, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
-  return <label className={`flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 ${disabled ? 'opacity-50' : ''}`}><input type="checkbox" checked={checked} disabled={disabled} onChange={event => onChange(event.target.checked)} className="h-4 w-4 accent-violet-600" />{label}</label>
+  return <label className={`flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 ${disabled ? 'opacity-50' : ''}`}><input type="checkbox" checked={checked} disabled={disabled} onChange={event => onChange(event.target.checked)} className="h-4 w-4 accent-violet-600" />{label}</label>
 }

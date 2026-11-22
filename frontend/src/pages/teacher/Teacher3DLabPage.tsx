@@ -161,8 +161,8 @@ export default function Teacher3DLabPage({ sessionId, view = 'modeler' }: Props 
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
         <SectionIllustration section="/teacher/3d-lab" />
-        <p className="text-sm font-bold text-slate-700">{tl("Il modellatore 3D si usa da computer.")}</p>
-        <Link to="/teacher/ai-3d" className="inline-flex items-center gap-1.5 rounded-full bg-[var(--logo-violet)] px-4 py-2 text-xs font-bold text-white">
+        <p className="text-sm font-semibold text-slate-700">{tl("Il modellatore 3D si usa da computer.")}</p>
+        <Link to="/teacher/ai-3d" className="inline-flex items-center gap-1.5 rounded-full bg-[var(--logo-violet)] px-4 py-2 text-xs font-semibold text-white">
           <Sparkles className="h-3.5 w-3.5" /> {tl("Apri AI 3D")}
         </Link>
       </div>
@@ -354,7 +354,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
     if (!sessionId) { showToast(tl("Nessuna sessione attiva")); return }
     try {
       await meshyApi.shareToChat({ session_id: sessionId, label: a.label, thumbnail_url: a.thumbnailUrl, glb_url: a.glbUrl })
-      showToast(tl("Condiviso in chat!"))
+      showToast(tl("Condiviso in chat"))
     } catch { showToast(tl("Errore nella condivisione")) }
   }
 
@@ -377,8 +377,8 @@ export function MeshyLab({ sessionId, student = false }: Props) {
         <section className="ds-frame-header">
           <div className="mx-auto max-w-5xl px-4 py-4 lg:px-6 lg:py-8">
             <div className="mx-auto hidden max-w-2xl text-center lg:block">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Lab 3D</p>
-              <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{tl("Dalla parola al modello")}</h2>
+              <p className="text-[11px] font-semibold text-slate-400">Lab 3D</p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{tl("Dalla parola al modello")}</h2>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">
                 {tl("Genera immagini con DALL-E 3, trasforma foto in geometria 3D con Meshy AI, o parti direttamente da una descrizione testuale.")}
               </p>
@@ -403,13 +403,13 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                       <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${ms.iconBg}`}>
                         <m.Icon className={`h-5 w-5 ${ms.icon}`} />
                       </span>
-                      <span className={`hidden rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide lg:inline-flex ${ms.badge}`}>
+                      <span className={`hidden rounded-full px-2.5 py-1 text-[10px] font-semibold lg:inline-flex ${ms.badge}`}>
                         {m.sub}
                       </span>
                     </div>
-                    <p className="mt-auto pt-3 text-sm font-extrabold text-slate-900">{m.label}</p>
+                    <p className="mt-auto pt-3 text-sm font-semibold text-slate-900">{m.label}</p>
                     <p className="mt-1 hidden text-xs leading-5 text-slate-500 lg:block">{m.desc}</p>
-                    <span className="mt-2 inline-flex items-center gap-1 text-xs font-black text-slate-700 lg:hidden">{tl("Apri")} <ArrowRight className="h-3.5 w-3.5" /></span>
+                    <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-slate-700 lg:hidden">{tl("Apri")} <ArrowRight className="h-3.5 w-3.5" /></span>
                   </motion.button>
                 )
               })}
@@ -419,7 +419,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
 
         {/* ── Workspace ── */}
         {(!compactUi || mode) && <div className="mx-auto max-w-5xl px-4 pb-10 pt-4 lg:px-6 lg:pt-6">
-          {compactUi && <button type="button" onClick={() => { reset3d(); setMode(null) }} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-black text-[var(--selection-active-text)]"><ArrowRight className="h-4 w-4 rotate-180" /> {tl("Cambia strumento")}</button>}
+          {compactUi && <button type="button" onClick={() => { reset3d(); setMode(null) }} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-semibold text-[var(--selection-active-text)]"><ArrowRight className="h-4 w-4 rotate-180" /> {tl("Cambia strumento")}</button>}
           <AnimatePresence mode="wait">
             <motion.div
               key={mode}
@@ -454,7 +454,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div>
-                        <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">{tl("Formato")}</p>
+                        <p className="mb-1.5 text-[11px] font-semibold text-slate-500">{tl("Formato")}</p>
                         <select
                           className={`w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 ${s.focusInput}`}
                           value={dalleSize} onChange={e => setDalleSize(e.target.value)} disabled={dalleLoading}
@@ -465,14 +465,14 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                         </select>
                       </div>
                       <div>
-                        <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">{tl("Qualità")}</p>
+                        <p className="mb-1.5 text-[11px] font-semibold text-slate-500">{tl("Qualità")}</p>
                         <TogglePair
                           options={[{ label: 'Standard', value: 'standard' }, { label: 'HD', value: 'hd' }]}
                           value={dalleQuality} onChange={setDalleQuality} disabled={dalleLoading} s={s}
                         />
                       </div>
                       <div>
-                        <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">{tl("Stile")}</p>
+                        <p className="mb-1.5 text-[11px] font-semibold text-slate-500">{tl("Stile")}</p>
                         <TogglePair
                           options={[{ label: tl("Naturale"), value: 'natural' }, { label: tl("Vivido"), value: 'vivid' }]}
                           value={dalleStyle} onChange={setDalleStyle} disabled={dalleLoading} s={s}
@@ -485,7 +485,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                     <button
                       onClick={generateImage}
                       disabled={!dallePrompt.trim() || dalleLoading}
-                      className={`inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-extrabold transition-all disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${s.btnCls}`}
+                      className={`inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${s.btnCls}`}
                     >
                       {dalleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                       {dalleLoading ? tl("Generazione immagine…") : tl("Genera immagine")}
@@ -501,7 +501,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                     >
                       <div className="flex items-center gap-2 mb-4">
                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                        <span className="text-sm font-extrabold text-slate-900">{tl("Immagine generata")}</span>
+                        <span className="text-sm font-semibold text-slate-900">{tl("Immagine generata")}</span>
                       </div>
                       <div className="flex gap-5 flex-wrap">
                         <img src={dalleResult.preview} alt="generated" className="h-56 w-auto rounded-lg border border-slate-200 shadow-sm object-cover" />
@@ -513,14 +513,14 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                           )}
                           <button
                             onClick={useDalleFor3D}
-                            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-extrabold transition-all ${s.btnCls}`}
+                            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${s.btnCls}`}
                           >
                             <ArrowRight className="h-4 w-4" />
                             {tl("Usa per modello 3D")}
                           </button>
                           <a
                             href={dalleResult.preview} download="immagine_ai.png"
-                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all"
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
                           >
                             <Download className="h-3.5 w-3.5" />{tl("Scarica PNG")}
                           </a>
@@ -549,7 +549,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                       <button
                         onClick={() => fileRef.current?.click()}
                         disabled={!!isRunning3d}
-                        className="w-full h-44 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 transition-all disabled:opacity-50"
+                        className="w-full h-44 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 transition disabled:opacity-50"
                       >
                         <Upload className="h-10 w-10" />
                         <span className="text-sm font-semibold">{tl("Carica immagine")}</span>
@@ -595,18 +595,18 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                       <div className="space-y-4 border-t border-slate-100 pt-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">{tl("Topologia mesh")}</p>
+                            <p className="mb-1.5 text-[11px] font-semibold text-slate-500">{tl("Topologia mesh")}</p>
                             <TogglePair
                               options={[{ label: 'Quad', value: 'quad' }, { label: tl("Triangoli"), value: 'triangle' }]}
                               value={topology} onChange={setTopology} disabled={!!isRunning3d} s={s}
                             />
                           </div>
                           <div>
-                            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">{tl("Densità poligoni")}</p>
+                            <p className="mb-1.5 text-[11px] font-semibold text-slate-500">{tl("Densità poligoni")}</p>
                             <div className="flex flex-col gap-1">
                               {POLYCOUNT_OPTS.map(o => (
                                 <button key={o.value} onClick={() => setPolycount(o.value)} disabled={!!isRunning3d}
-                                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold text-left transition-all disabled:opacity-50 ${polycount === o.value ? s.optActive : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold text-left transition disabled:opacity-50 ${polycount === o.value ? s.optActive : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                                   {o.label}
                                 </button>
                               ))}
@@ -618,7 +618,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                             className={`relative w-9 h-5 rounded-full transition-colors ${pbr ? 'bg-emerald-500' : 'bg-slate-300'}`}
                             onClick={() => !isRunning3d && setPbr(v => !v)}
                           >
-                            <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${pbr ? 'left-4' : 'left-0.5'}`} />
+                            <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${pbr ? 'left-4' : 'left-0.5'}`} />
                           </div>
                           <span className="text-sm font-semibold text-slate-700">{tl("Materiali PBR")}</span>
                           <span className="text-xs text-slate-400">{tl("Texture fisicamente accurate")}</span>
@@ -663,7 +663,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
 
                     {showNeg && (
                       <input
-                        className={`w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm outline-none focus:ring-2 ${s.focusInput} transition-all`}
+                        className={`w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm outline-none focus:ring-2 ${s.focusInput} transition`}
                         value={txt3dNeg}
                         onChange={e => setTxt3dNeg(e.target.value)}
                         disabled={!!isRunning3d}
@@ -685,11 +685,11 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2.5">
                       <Loader2 className={`h-4 w-4 animate-spin ${s.icon}`} />
-                      <span className="text-sm font-bold text-slate-800">
+                      <span className="text-sm font-semibold text-slate-800">
                         {task.status === 'PENDING' ? tl("In coda su Meshy AI…") : tl("Generazione modello 3D…")}
                       </span>
                     </div>
-                    <span className={`text-xl font-black ${s.icon}`}>{task.progress}%</span>
+                    <span className={`text-xl font-semibold ${s.icon}`}>{task.progress}%</span>
                   </div>
                   <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
                     <motion.div
@@ -714,7 +714,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                   <div className={`flex items-center justify-between px-5 py-3 border-b border-slate-100 ${S[viewingAsset ? viewingAsset.mode : taskMode].panel}`}>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-                      <span className="text-sm font-extrabold text-slate-900 truncate max-w-xs">
+                      <span className="text-sm font-semibold text-slate-900 truncate max-w-xs">
                         {viewingAsset?.label || (taskMode === 'txt23d' ? txt3dPrompt.trim() : imgSrc?.name) || tl("Modello 3D")}
                       </span>
                     </div>
@@ -728,14 +728,14 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                           thumbnailUrl: task?.thumbnail_url ?? viewingAsset?.thumbnailUrl,
                           createdAt: new Date().toISOString(),
                         })}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white/80 transition-all"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white/80 transition"
                       >
                         <Share2 className="h-3.5 w-3.5" />
                         {sessionId ? tl("Condividi") : tl("Chat non attiva")}
                       </button>
                       {rawGlb && (
                         <a href={rawGlb} download target="_blank" rel="noreferrer"
-                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-extrabold transition-all ${S[viewingAsset ? viewingAsset.mode : taskMode].btnCls}`}>
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${S[viewingAsset ? viewingAsset.mode : taskMode].btnCls}`}>
                           <Download className="h-3.5 w-3.5" />GLB
                         </a>
                       )}
@@ -765,8 +765,8 @@ export function MeshyLab({ sessionId, student = false }: Props) {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   <Box className="h-4 w-4 text-slate-500" />
-                  <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-700">{tl("Modelli generati")}</h3>
-                  <span className="text-xs font-bold text-slate-400">{assets.length}</span>
+                  <h3 className="text-xs font-semibold text-slate-700">{tl("Modelli generati")}</h3>
+                  <span className="text-xs font-semibold text-slate-400">{assets.length}</span>
                 </div>
               </div>
 
@@ -778,7 +778,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                     <motion.div
                       key={a.id}
                       whileHover={{ y: -2 }}
-                      className={`ds-well-tile mobile-card-standard group relative flex flex-col overflow-hidden rounded-[24px] border-0 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg cursor-pointer ${
+                      className={`ds-well-tile mobile-card-standard group relative flex flex-col overflow-hidden rounded-[24px] border-0 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg cursor-pointer ${
                         isViewing
                           ? `${as.selCard}`
                           : `${as.card}`
@@ -787,7 +787,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                     >
                       <button
                         onClick={e => { e.stopPropagation(); deleteAsset(a.id) }}
-                        className="absolute right-2 top-2 rounded-lg p-1 text-slate-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
+                        className="absolute right-2 top-2 rounded-lg p-1 text-slate-400 opacity-0 transition hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -802,9 +802,9 @@ export function MeshyLab({ sessionId, student = false }: Props) {
 
                       <div className="flex flex-col flex-1 p-3 gap-3">
                         <div>
-                          <span className="line-clamp-2 text-sm font-extrabold leading-tight text-slate-950">{a.label}</span>
+                          <span className="line-clamp-2 text-sm font-semibold leading-tight text-slate-950">{a.label}</span>
                           <div className="mt-2 hidden items-center justify-between border-t border-slate-200/70 pt-2 lg:flex">
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${as.badge}`}>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${as.badge}`}>
                               {a.mode === 'txt2img' ? 'DALL-E' : a.mode === 'img23d' ? 'img→3D' : 'txt→3D'}
                             </span>
                             <span className="text-xs text-slate-400">
@@ -825,7 +825,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                           <a
                             href={a.glbUrl} download target="_blank" rel="noreferrer"
                             onClick={e => e.stopPropagation()}
-                            className={`inline-flex items-center justify-center gap-1 flex-1 rounded-lg px-3 py-1.5 text-xs font-extrabold transition-all ${as.btnCls}`}
+                            className={`inline-flex items-center justify-center gap-1 flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${as.btnCls}`}
                           >
                             <Download className="h-3 w-3" />GLB
                           </a>
@@ -847,7 +847,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white shadow-xl z-50"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-xl z-50"
           >
             {toast}
           </motion.div>
@@ -863,7 +863,7 @@ function SectionLabel({ mode, label }: { mode: Mode; label: string }) {
   const s = S[mode]
   return (
     <div className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 ${s.section}`}>
-      <span className="text-xs font-extrabold uppercase tracking-wide">{label}</span>
+      <span className="text-xs font-semibold">{label}</span>
     </div>
   )
 }
@@ -884,7 +884,7 @@ function TogglePair({
           key={o.value}
           onClick={() => onChange(o.value)}
           disabled={disabled}
-          className={`flex-1 rounded-lg border px-2 py-2 text-xs font-semibold transition-all disabled:opacity-50 ${
+          className={`flex-1 rounded-lg border px-2 py-2 text-xs font-semibold transition disabled:opacity-50 ${
             value === o.value ? s.optActive : 'border-slate-200 text-slate-600 hover:bg-slate-50'
           }`}
         >
@@ -910,7 +910,7 @@ function Gen3DButton({
       <button
         onClick={onClick}
         disabled={disabled || isRunning}
-        className={`inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-extrabold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${s.btnCls}`}
+        className={`inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${s.btnCls}`}
       >
         {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
         {isRunning ? tl("Generazione 3D in corso…") : tl("Genera modello 3D")}

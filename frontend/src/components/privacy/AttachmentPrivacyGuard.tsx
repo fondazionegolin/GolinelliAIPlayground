@@ -101,7 +101,7 @@ function Dialog({ pending, onClose }: { pending: Pending; onClose: (files: File[
       <div className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b px-5 py-4">
           <div>
-            <h2 className="text-base font-bold text-gray-900">{tl("Prima di allegare")}</h2>
+            <h2 className="text-base font-semibold text-gray-900">{tl("Prima di allegare")}</h2>
             <p className="text-xs text-gray-500">{tl("Controllo dei dati personali sugli allegati")}</p>
           </div>
           <button type="button" onClick={() => onClose([])} className="text-gray-400 hover:text-gray-700" aria-label={tl("Annulla")}><X className="h-5 w-5" /></button>

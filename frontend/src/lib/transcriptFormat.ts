@@ -49,6 +49,9 @@ export function splitSentences(text: string): string[] {
 
 /** Group sentences in short paragraphs (readable blocks instead of one wall of text). */
 export function paragraphs(text: string, perParagraph = 3): string[] {
+  // Cleaned transcripts already carry their own paragraph breaks (blank lines): keep them.
+  const blocks = text.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean)
+  if (blocks.length > 1) return blocks.flatMap((block) => paragraphs(block, perParagraph * 2))
   const sentences = splitSentences(text)
   const out: string[] = []
   for (let i = 0; i < sentences.length; i += perParagraph) out.push(sentences.slice(i, i + perParagraph).join(' '))

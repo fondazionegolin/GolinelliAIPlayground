@@ -2973,7 +2973,7 @@ async def document_context_assist(
                 allow_web_search=False,
             )
             payload = _extract_json_object(response.content)
-            approach = payload.get("approach") if payload.get("approach") in {"format", "write", "rewrite", "ask"} else "rewrite"
+            approach = payload.get("approach") if payload.get("approach") in {"format", "write", "rewrite", "analyze", "ask"} else "rewrite"
             operations = document_assist.sanitize_operations(payload.get("operations")) if approach == "format" else []
             if approach == "format" and not operations:
                 approach = "rewrite"
@@ -3008,6 +3008,55 @@ async def document_context_assist(
             raise
         except Exception as exc:
             logger.exception("Document assist planning failed")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Document assist failed: {exc}")
+
+    if request.get("mode") == "analyze" and target_kind in {"selected_text", "document"}:
+        # Review step: a structured diagnosis (formatting, structure, content, language) that edits nothing.
+        try:
+            stats = json.dumps(request.get("document_stats") or {}, ensure_ascii=False)[:9000]
+            text = str(request.get("analysis_text") or target.get("text") or "")[:60000]
+            if not text.strip():
+                raise ValueError("Il documento è vuoto: scrivi qualcosa prima di chiedere un'analisi")
+            title = str((request.get("document_context") or {}).get("title") or "")[:200]
+            response = await llm_service.generate(
+                messages=[{"role": "user", "content": (
+                    f"Lingua interfaccia: {language}\nTITOLO: {title or 'senza titolo'}\n"
+                    f"AMBITO: {'solo il testo selezionato' if target_kind == 'selected_text' else 'intero documento'}\n"
+                    f"stat (formattazione e struttura):\n{stats}\n\nRICHIESTA DELL'UTENTE: {prompt}\n\nTESTO (i titoli sono marcati con #):\n{text}"
+                )}],
+                system_prompt=document_assist.ANALYZE_SYSTEM_PROMPT,
+                provider=provider,
+                model=model,
+                temperature=0.2,
+                max_tokens=4000,
+                allow_web_search=False,
+            )
+            analysis = document_assist.sanitize_analysis(_extract_json_object(response.content))
+            if not analysis["summary"] and not any(analysis[key] for key in ("formatting", "structure", "content", "language")):
+                raise ValueError("Non sono riuscito a completare l'analisi: riprova")
+            real_provider = response.provider or provider or settings.DEFAULT_LLM_PROVIDER
+            real_model = response.model or model or settings.DEFAULT_LLM_MODEL
+            cost = credit_service.calculate_cost_for_model(real_provider, real_model, response.prompt_tokens, response.completion_tokens)
+            await safe_track_usage(
+                db, tenant_id, real_provider, real_model, cost,
+                enrich_usage_with_environmental_impact({
+                    "type": "document_context_assist",
+                    "target_kind": target_kind,
+                    "phase": "analyze",
+                    "prompt_tokens": response.prompt_tokens,
+                    "completion_tokens": response.completion_tokens,
+                    "total_tokens": response.prompt_tokens + response.completion_tokens,
+                }, provider=real_provider, model=real_model),
+                teacher_id, class_id, session_id, student_id,
+                context="document_context_assist",
+            )
+            return {"analysis": analysis}
+        except HTTPException:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        except Exception as exc:
+            logger.exception("Document analysis failed")
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Document assist failed: {exc}")
 
     if request.get("mode") == "write" and target_kind in {"selected_text", "document"}:
@@ -3727,6 +3776,29 @@ class HandoffRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=20000)
     conversation_id: Optional[UUID] = None  # teacher chat conversation: the card is stored in it
     recent: List[dict] = Field(default_factory=list)  # [{"role", "content"}]
+    materials: List[dict] = Field(default_factory=list)  # [{"name", "text"}] extracted from attached documents
+
+
+@router.post("/handoff/materials")
+async def extract_handoff_materials(
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    files: List[UploadFile] = File(default=[]),
+):
+    """Text of the documents attached to a chat request, so the destination section can use them as source material."""
+    from app.services.document_processor import document_processor
+    out: list[dict] = []
+    for upload in files[:5]:
+        data = await upload.read(20 * 1024 * 1024 + 1)
+        name = (upload.filename or "Documento")[:255]
+        if len(data) > 20 * 1024 * 1024:
+            continue
+        try:
+            analysis = await document_processor.process(data, name, upload.content_type or "application/octet-stream", analyze_visuals=False, anonymize=True)
+        except Exception:
+            continue
+        if analysis.raw_text.strip():
+            out.append({"name": name, "text": analysis.raw_text[:30000]})
+    return {"materials": out}
 
 
 @router.post("/handoff")
@@ -3742,7 +3814,8 @@ async def plan_platform_handoff(
     """
     from app.services.platform_handoff import plan_handoff
     return await plan_handoff(db, auth, target=request.target, prompt=request.prompt,
-                              conversation_id=request.conversation_id, history=request.recent[-4:])
+                              conversation_id=request.conversation_id, history=request.recent[-6:],
+                              materials=request.materials[:5])
 
 
 @router.post("/generate-image")

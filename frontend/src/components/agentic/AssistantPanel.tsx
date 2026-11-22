@@ -47,15 +47,18 @@ type Props = {
   setLocked: (locked: boolean) => void
   onTitle: (title: string) => void
   onClose: () => void
+  /** Hand-off from the support chat: the description of what to build, already written. */
+  initialIntent?: string
 }
 
 /** Describe-and-build assistant: intake («ho capito bene?») → architect plan → nodes appear on the canvas → static review. */
-export function AssistantPanel({ open, workflowId, style, onHeaderPointerDown, onWorking, nodeCount, selectedId, labelOf, snapshot, restore, reset, applyOp, setLocked, onTitle, onClose }: Props) {
+export function AssistantPanel({ open, workflowId, style, onHeaderPointerDown, onWorking, nodeCount, selectedId, labelOf, snapshot, restore, reset, applyOp, setLocked, onTitle, onClose, initialIntent }: Props) {
   // Empty canvas → first-build mode; canvas with nodes → diff editing (the tab lets the user force a rebuild).
   const [modeChoice, setMode] = useState<'edit' | 'build'>(nodeCount > 0 ? 'edit' : 'build')
   const mode: 'edit' | 'build' = nodeCount > 0 ? modeChoice : 'build'
   const [phase, setPhase] = useState<Phase>('idle')
-  const [intent, setIntent] = useState('')
+  const [intent, setIntent] = useState(initialIntent ?? '')
+  useEffect(() => { if (initialIntent) setIntent(initialIntent) }, [initialIntent])
   const [understanding, setUnderstanding] = useState('')
   const [assumptions, setAssumptions] = useState<string[]>([])
   const [feedback, setFeedback] = useState('')
@@ -303,7 +306,7 @@ export function AssistantPanel({ open, workflowId, style, onHeaderPointerDown, o
   return <aside className="absolute z-[34] flex w-[min(25rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-2xl" style={{ ...style, display: open ? undefined : 'none' }} aria-label={tl("Assistente workflow")} aria-hidden={!open}>
     <header className="flex cursor-grab touch-none items-center gap-2 border-b border-slate-100 bg-violet-50 px-3 py-2.5 active:cursor-grabbing" onPointerDown={(event) => { if (!(event.target as HTMLElement).closest('button')) onHeaderPointerDown(event) }}>
       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-600 text-white"><Sparkles className="h-4 w-4" /></span>
-      <div className="min-w-0 flex-1"><p className="text-xs font-black text-slate-800">{tl("Assistente workflow")}</p><p className="text-[10px] text-slate-500">{mode === 'edit' ? tl("Chiedimi di cambiare il workflow che hai sul Canvas") : tl("Descrivi cosa vuoi fare: lo costruisco io")}</p></div>
+      <div className="min-w-0 flex-1"><p className="text-xs font-semibold text-slate-800">{tl("Assistente workflow")}</p><p className="text-[10px] text-slate-500">{mode === 'edit' ? tl("Chiedimi di cambiare il workflow che hai sul Canvas") : tl("Descrivi cosa vuoi fare: lo costruisco io")}</p></div>
       <button type="button" onClick={startNewChat} disabled={busy} className="rounded-full p-1.5 text-slate-500 hover:bg-white disabled:opacity-40" aria-label={tl("Nuova conversazione")} title={tl("Nuova conversazione")}><MessageSquarePlus className="h-4 w-4" /></button>
       <button type="button" onClick={() => { const next = !historyOpen; setHistoryOpen(next); if (next) void refreshConversations() }} className={`rounded-full p-1.5 text-slate-500 hover:bg-white ${historyOpen ? 'bg-white text-violet-700' : ''}`} aria-label={tl("Storico conversazioni")} aria-pressed={historyOpen} title={tl("Storico conversazioni")}><History className="h-4 w-4" /></button>
       <button type="button" onClick={close} className="rounded-full p-1.5 text-slate-500 hover:bg-white" aria-label={tl("Nascondi assistente")} title={tl("Riduci a icona")}><X className="h-4 w-4" /></button>
@@ -311,11 +314,11 @@ export function AssistantPanel({ open, workflowId, style, onHeaderPointerDown, o
 
     {nodeCount > 0 && <div className="flex gap-1 border-b border-slate-100 px-3 py-2" role="tablist">
       {([['edit', tl("Modifica questo workflow")], ['build', tl("Nuovo workflow")]] as const).map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={mode === value} disabled={busy}
-        onClick={() => setMode(value)} className={`rounded-full px-3 py-1 text-[11px] font-bold ${mode === value ? 'bg-violet-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>{label}</button>)}
+        onClick={() => setMode(value)} className={`rounded-full px-3 py-1 text-[11px] font-semibold ${mode === value ? 'bg-violet-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>{label}</button>)}
     </div>}
 
     {historyOpen ? <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3 text-xs text-slate-700">
-      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{tl("Conversazioni salvate")}</p>
+      <p className="text-[10px] font-semibold text-slate-400">{tl("Conversazioni salvate")}</p>
       {conversations.length === 0 && <p className="rounded-xl bg-slate-50 p-3 text-[11px] text-slate-500">{tl("Nessuna conversazione salvata per questo workflow.")}</p>}
       {conversations.map((item) => <div key={item.id} className={`flex items-center gap-1 rounded-xl border p-2 ${item.id === conversationId ? 'border-violet-300 bg-violet-50' : 'border-slate-200 hover:border-violet-200'}`}>
         <button type="button" onClick={() => void openConversation(item.id)} className="min-w-0 flex-1 text-left"><b className="block truncate text-slate-800">{item.title}</b>
@@ -323,7 +326,7 @@ export function AssistantPanel({ open, workflowId, style, onHeaderPointerDown, o
         <button type="button" onClick={() => void removeConversation(item.id)} className="rounded-full p-1.5 text-slate-400 hover:bg-white hover:text-rose-600" aria-label={tl("Elimina conversazione")}><Trash2 className="h-3.5 w-3.5" /></button></div>)}
     </div> : <div ref={threadRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 text-xs text-slate-700">
       {messages.length === 0 && <div className="space-y-2">
-        <p className="rounded-2xl rounded-tl-sm bg-slate-100 px-3 py-2 text-[12px] leading-5 text-slate-700">{tl("Ciao!")} {mode === 'edit' ? tl("Dimmi cosa vuoi cambiare nel workflow sul Canvas.") : tl("Raccontami cosa vuoi ottenere e costruisco il workflow per te.")} {tl("Ricordo tutta la conversazione e la ritrovi nello storico.")}</p>
+        <p className="rounded-2xl rounded-tl-sm bg-slate-100 px-3 py-2 text-[12px] leading-5 text-slate-700">{tl("Ciao")} {mode === 'edit' ? tl("Dimmi cosa vuoi cambiare nel workflow sul Canvas.") : tl("Raccontami cosa vuoi ottenere e costruisco il workflow per te.")} {tl("Ricordo tutta la conversazione e la ritrovi nello storico.")}</p>
         <div className="flex flex-col gap-1.5">{(mode === 'edit' ? EDIT_EXAMPLES : EXAMPLES).map((example) => <button key={example} type="button" onClick={() => { setComposer(example); composerRef.current?.focus() }} className="rounded-lg border border-dashed border-slate-200 px-2.5 py-1.5 text-left text-[11px] text-slate-500 hover:border-violet-300 hover:text-violet-700">{example}</button>)}</div></div>}
       {messages.map((item) => <div key={item.id} className={`flex ${item.role === 'user' ? 'justify-end' : 'justify-start'}`}>
         <p className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[12px] leading-5 ${item.role === 'user' ? 'rounded-br-sm bg-violet-600 text-white' : 'rounded-bl-sm bg-slate-100 text-slate-800'}`}>{item.text}</p></div>)}
@@ -348,18 +351,18 @@ export function AssistantPanel({ open, workflowId, style, onHeaderPointerDown, o
       {phase === 'intake' && <p className="flex items-center gap-2 text-slate-600"><Loader2 className="h-4 w-4 animate-spin text-violet-600" /> {tl("Sto capendo…")}</p>}
 
       {(phase === 'confirm' || phase === 'planning') && intake && <>
-        <section className="rounded-xl bg-violet-50 p-3"><p className="text-[10px] font-black uppercase tracking-wider text-violet-700">{tl("Ho capito così · puoi correggermi")}</p>
+        <section className="rounded-xl bg-violet-50 p-3"><p className="text-[10px] font-semibold text-violet-700">{tl("Ho capito così · puoi correggermi")}</p>
           <textarea value={understanding} disabled={phase === 'planning'} onChange={(event) => setUnderstanding(event.target.value)} rows={3} maxLength={1000}
             className="mt-1 w-full resize-none rounded-lg border border-violet-100 bg-white p-2 leading-5 text-slate-800 outline-none focus:border-violet-400" /></section>
-        <section><p className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-400">{tl("Scelte che farò (modificabili)")}</p>
+        <section><p className="mb-1 text-[10px] font-semibold text-slate-400">{tl("Scelte che farò (modificabili)")}</p>
           <ul className="space-y-1">{assumptions.map((item, index) => <li key={index} className="flex gap-1">
             <input value={item} disabled={phase === 'planning'} onChange={(event) => setAssumptions((current) => current.map((value, i) => i === index ? event.target.value : value))} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] outline-none focus:border-violet-400" />
             <button type="button" disabled={phase === 'planning'} onClick={() => setAssumptions((current) => current.filter((_, i) => i !== index))} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-rose-600" aria-label={tl("Togli questa scelta")}><Trash2 className="h-3.5 w-3.5" /></button></li>)}</ul>
-          {assumptions.length < 8 && <button type="button" disabled={phase === 'planning'} onClick={() => setAssumptions((current) => [...current, ''])} className="mt-1 flex items-center gap-1 text-[11px] font-bold text-violet-700 hover:underline"><Plus className="h-3 w-3" /> {tl("Aggiungi una scelta")}</button>}</section>
+          {assumptions.length < 8 && <button type="button" disabled={phase === 'planning'} onClick={() => setAssumptions((current) => [...current, ''])} className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-violet-700 hover:underline"><Plus className="h-3 w-3" /> {tl("Aggiungi una scelta")}</button>}</section>
         {intake.questions.map((item) => <section key={item.question} className="rounded-xl border border-slate-200 p-2.5">
-          <p className="font-bold text-slate-800">{item.question}</p>
+          <p className="font-semibold text-slate-800">{item.question}</p>
           <div className="mt-1.5 flex flex-wrap gap-1">{item.suggestions.map((suggestion) => <button key={suggestion} type="button" disabled={phase === 'planning'} onClick={() => setAnswers((current) => ({ ...current, [item.question]: suggestion }))}
-            className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${answers[item.question] === suggestion ? 'border-violet-500 bg-violet-600 text-white' : 'border-slate-200 text-slate-600 hover:border-violet-300'}`}>{suggestion}</button>)}</div>
+            className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${answers[item.question] === suggestion ? 'border-violet-500 bg-violet-600 text-white' : 'border-slate-200 text-slate-600 hover:border-violet-300'}`}>{suggestion}</button>)}</div>
           <input value={answers[item.question] || ''} disabled={phase === 'planning'} onChange={(event) => setAnswers((current) => ({ ...current, [item.question]: event.target.value }))} placeholder={tl("Oppure scrivi la risposta")} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] outline-none focus:border-violet-400" />
         </section>)}
         {phase === 'planning'
@@ -371,9 +374,9 @@ export function AssistantPanel({ open, workflowId, style, onHeaderPointerDown, o
       </>}
 
       {(phase === 'plan' || phase === 'building') && plan && <>
-        <section><p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{tl("Piano ·")} {plan.title}</p>
+        <section><p className="text-[10px] font-semibold text-slate-400">{tl("Piano ·")} {plan.title}</p>
           <ol className="mt-1.5 space-y-1.5">{plan.blueprint.steps.map((step, index) => <li key={step.key} className="flex gap-2 rounded-lg bg-slate-50 p-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-100 text-[10px] font-black text-violet-700">{index + 1}</span>
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-100 text-[10px] font-semibold text-violet-700">{index + 1}</span>
             <span className="min-w-0"><b className="block truncate text-slate-800">{labelOf(step.node)}</b><span className="block text-[11px] leading-4 text-slate-500">{step.purpose || step.node}</span></span></li>)}</ol></section>
         {plan.estimate.credit_nodes.length > 0 && <p className="flex gap-2 rounded-xl bg-amber-50 p-2.5 text-[11px] leading-4 text-amber-800"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{tl("Quando lo avvierai spenderà crediti:")} {plan.estimate.credit_nodes.map((item) => `${labelOf(item.type)}${item.function ? ` (${item.function})` : ''} × ${item.times ?? '?'}`).join(', ')}{tl(". Costruire non esegue nulla.")}</span></p>}
         {[...plan.blueprint.warnings, ...plan.warnings].map((warning) => <p key={warning} className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600">{warning}</p>)}

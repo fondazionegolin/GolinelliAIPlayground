@@ -91,7 +91,7 @@ export default function OggiImparoWidget({
           <div className="w-6 h-6 rounded-lg bg-violet-500/20 flex items-center justify-center flex-shrink-0">
             <Sparkles className="h-3.5 w-3.5 text-violet-400" />
           </div>
-          <span className="text-xs font-bold text-white/80">{tl("Oggi Imparo")}</span>
+          <span className="text-xs font-semibold text-white/80">{tl("Oggi Imparo")}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-white/30 capitalize hidden sm:block">{today}</span>

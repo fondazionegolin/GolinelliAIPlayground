@@ -42,7 +42,7 @@ export default function BoardSprintsDialog({ sprints, autoSprintWeekly, cardCoun
       <div className="ds-popover flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-[var(--ds-radius-card)]" role="dialog" aria-modal="true" aria-labelledby="board-sprints-title">
         <div className="flex items-start justify-between gap-4 px-6 pt-6">
           <div>
-            <h3 id="board-sprints-title" className="flex items-center gap-2 text-lg font-black text-slate-900"><CalendarRange className="h-5 w-5" /> Sprint</h3>
+            <h3 id="board-sprints-title" className="flex items-center gap-2 text-lg font-semibold text-slate-900"><CalendarRange className="h-5 w-5" /> Sprint</h3>
             <p className="mt-1 text-sm text-slate-500">{tl("Dividi il lavoro in iterazioni. Eliminando uno sprint i suoi task tornano senza sprint.")}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}>
@@ -58,7 +58,7 @@ export default function BoardSprintsDialog({ sprints, autoSprintWeekly, cardCoun
           {draft.map((sprint, index) => (
             <div key={sprint.id || `new-${index}`} className="space-y-2 rounded-[var(--ds-radius-control)] bg-slate-50 p-3">
               <div className="flex items-center gap-2">
-                <input value={sprint.name} onChange={(event) => update(index, { name: event.target.value })} maxLength={60} placeholder={`Sprint ${index + 1}`} className={`${inputClass} font-bold`} aria-label={tl("Nome sprint")} />
+                <input value={sprint.name} onChange={(event) => update(index, { name: event.target.value })} maxLength={60} placeholder={`Sprint ${index + 1}`} className={`${inputClass} font-semibold`} aria-label={tl("Nome sprint")} />
                 {sprint.id && cardCounts[sprint.id] ? <span className="shrink-0 text-xs text-slate-400">{cardCounts[sprint.id]} task</span> : null}
                 <button type="button" onClick={() => setDraft((current) => current.filter((_, i) => i !== index))} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label={tl("Elimina {0}", sprint.name)}>
                   <Trash2 className="h-4 w-4" />
@@ -66,11 +66,11 @@ export default function BoardSprintsDialog({ sprints, autoSprintWeekly, cardCoun
               </div>
               <input value={sprint.goal || ''} onChange={(event) => update(index, { goal: event.target.value })} maxLength={300} placeholder={tl("Obiettivo dello sprint")} className={inputClass} aria-label={tl("Obiettivo sprint")} />
               <div className="grid grid-cols-2 gap-2">
-                <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                <label className="text-[10px] font-semibold text-slate-500">
                   {tl("Inizio")}
                   <input type="date" value={sprint.start_date || ''} onChange={(event) => update(index, { start_date: event.target.value || null })} className={`${inputClass} mt-1 font-normal`} />
                 </label>
-                <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                <label className="text-[10px] font-semibold text-slate-500">
                   {tl("Fine")}
                   <input type="date" value={sprint.end_date || ''} min={sprint.start_date || undefined} onChange={(event) => update(index, { end_date: event.target.value || null })} className={`${inputClass} mt-1 font-normal`} />
                 </label>
@@ -81,19 +81,19 @@ export default function BoardSprintsDialog({ sprints, autoSprintWeekly, cardCoun
             <button
               type="button"
               onClick={() => setDraft((current) => [...current, { name: `Sprint ${current.length + 1}`, goal: '', ...nextSprintDates(current[current.length - 1]) }])}
-              className="inline-flex h-9 items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 text-xs font-bold text-slate-600 hover:border-slate-400"
+              className="inline-flex h-9 items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 text-xs font-semibold text-slate-600 hover:border-slate-400"
             >
               <Plus className="h-4 w-4" /> {tl("Nuovo sprint")}
             </button>
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
-          <button type="button" onClick={onClose} className="h-10 rounded-lg px-4 text-sm font-bold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
+          <button type="button" onClick={onClose} className="h-10 rounded-lg px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
           <button
             type="button"
             disabled={pending}
             onClick={() => onSave(draft.map((sprint, index) => ({ ...sprint, name: sprint.name.trim() || `Sprint ${index + 1}` })), automatic)}
-            className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:opacity-40"
+            className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-semibold text-[var(--selection-active-text)] disabled:opacity-40"
           >
             {pending ? tl("Salvataggio…") : tl("Salva sprint")}
           </button>

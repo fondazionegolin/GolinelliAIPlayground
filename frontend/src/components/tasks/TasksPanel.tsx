@@ -98,7 +98,7 @@ const safeName = (title: string, ext: string) =>
 
 const SOFT_BLOCK = 'rounded-[var(--ds-radius-control)] bg-[var(--surface-muted)]'
 const MUTED = 'text-[var(--text-muted)]'
-const META_LABEL = 'text-[10px] font-bold uppercase tracking-wide text-[var(--text-muted)]'
+const META_LABEL = 'text-[10px] font-semibold text-[var(--text-muted)]'
 
 function Bar({ percent, tone = 'blue' }: { percent: number; tone?: 'blue' | 'strong' | 'violet' | 'pink' }) {
   const fill = { blue: 'var(--logo-blue)', strong: 'var(--logo-blue-strong)', violet: 'var(--logo-violet)', pink: 'var(--logo-pink)' }[tone]
@@ -129,11 +129,11 @@ export default function TasksPanel({ sessionId, tasks, studentCount }: TasksPane
   const createTask = useMutation({
     mutationFn: (data: { title: string; description: string; task_type: string; content_json?: string; due_at?: string | null }) =>
       teacherApi.createTask(sessionId, data),
-    onSuccess: () => { refresh(); setShowBuilder(false); toast({ title: tl("Compito creato!") }) },
+    onSuccess: () => { refresh(); setShowBuilder(false); toast({ title: tl("Compito creato") }) },
   })
   const publishTask = useMutation({
     mutationFn: (taskId: string) => teacherApi.updateTask(sessionId, taskId, { new_status: 'published' }),
-    onSuccess: () => { refresh(); toast({ title: tl("Compito pubblicato!") }) },
+    onSuccess: () => { refresh(); toast({ title: tl("Compito pubblicato") }) },
   })
   const deleteTask = useMutation({
     mutationFn: (taskId: string) => teacherApi.deleteTask(sessionId, taskId),
@@ -444,7 +444,7 @@ function StudentDetail({ task, sessionId, row, results }: { task: TaskData; sess
                         <span className="mt-0.5 block text-[var(--logo-blue-strong)]">{tl("Corretta:")} {q.options[q.correct_index]}</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 font-bold">
+                    <td className="px-3 py-2 font-semibold">
                       {cell?.correct === true ? <span className="text-[var(--logo-blue-strong)]">✓</span>
                         : cell?.correct === false ? <span className="text-[var(--logo-pink)]">✗</span>
                         : <span className={MUTED}>—</span>}
@@ -537,7 +537,7 @@ function SummaryTab({ results, analysis, analyzing, onAnalyze }: {
         {stats.map(stat => (
           <div key={stat.label} className="ui-card p-4">
             <p className={META_LABEL}>{stat.label}</p>
-            <p className="mt-1 text-xl font-bold text-[var(--text-primary)]">{stat.value}</p>
+            <p className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{stat.value}</p>
           </div>
         ))}
       </div>
@@ -628,7 +628,7 @@ function SummaryTab({ results, analysis, analyzing, onAnalyze }: {
                   return (
                     <div key={flag.key} className={`flex items-start justify-between gap-3 rounded-[var(--ds-radius-control)] p-3 ${meta.className}`}>
                       <div className="min-w-0">
-                        <p className="text-xs"><span className="font-bold">{flag.name}</span> · {meta.label}</p>
+                        <p className="text-xs"><span className="font-semibold">{flag.name}</span> · {meta.label}</p>
                         <p className="mt-1 text-xs leading-5">{flag.reason}</p>
                         {flag.evidence && <blockquote className="mt-1 pl-2 text-xs italic">“{flag.evidence}”</blockquote>}
                       </div>

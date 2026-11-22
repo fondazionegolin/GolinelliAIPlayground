@@ -3078,7 +3078,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           )}
           {role === 'student' && canEdit && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-green-200 bg-green-50/95 px-4 py-1.5 text-xs text-green-700 shadow-md backdrop-blur-sm">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
               {tl("Modifica abilitata dal docente")}
             </div>
           )}

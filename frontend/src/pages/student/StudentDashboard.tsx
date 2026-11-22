@@ -11,7 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiThemeScope } from '@/stores/uiTheme'
 import { agenticSharingApi, boardsApi, solidModelerApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
-import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, FolderOpen, GitBranch, Wand2 } from '@/components/icons'
+import { Bot, Brain, Award, Calculator, ListChecks, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, FolderOpen, GitBranch, Wand2 } from '@/components/icons'
 import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
@@ -670,7 +670,7 @@ export default function StudentDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
       </div>
     )
@@ -1045,8 +1045,8 @@ function StudentMobileShell({
             <Menu className="h-6 w-6" strokeWidth={2.5} />
           </button>
           <button type="button" onClick={() => handleNavigate(null)} className="hidden min-w-0 flex-1 text-left sm:block">
-            <span className="block truncate text-[9px] font-black uppercase tracking-[0.18em] text-sky-700">{tl("Area studente")}</span>
-            <span className="block truncate text-base font-black leading-tight text-slate-950">{activeTitle}</span>
+            <span className="block truncate text-[9px] font-semibold text-sky-700">{tl("Area studente")}</span>
+            <span className="block truncate text-base font-semibold leading-tight text-slate-950">{activeTitle}</span>
           </button>
           <div className="min-w-0 flex-1 sm:flex-none">
             <button
@@ -1057,8 +1057,8 @@ function StudentMobileShell({
             >
               <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" />
               <span className="min-w-0">
-                <span className="block text-[8px] font-black uppercase leading-none tracking-wider text-emerald-600">Live</span>
-                <span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{sessionInfo.session.title}</span>
+                <span className="block text-[8px] font-semibold leading-none text-emerald-600">Live</span>
+                <span className="mt-0.5 block truncate text-[11px] font-semibold leading-tight">{sessionInfo.session.title}</span>
               </span>
             </button>
           </div>
@@ -1069,14 +1069,14 @@ function StudentMobileShell({
             <button
               type="button"
               onClick={() => setClassChatOpen(true)}
-              className="relative flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-sky-800 active:scale-95"
+              className="relative flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-semibold text-sky-800 active:scale-95"
               title={sessionInfo.student.nickname}
               aria-label={tl("Apri chat di classe · {0}", sessionInfo.student.nickname)}
             >
               <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-sky-700" strokeWidth={1.8} />
               <span className="relative -translate-y-px">{sessionInfo.student.nickname.slice(0, 2).toUpperCase()}</span>
               {classChatUnread > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white ring-2 ring-white">
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-semibold text-white ring-2 ring-white">
                   {classChatUnread > 9 ? '9+' : classChatUnread}
                 </span>
               )}
@@ -1119,13 +1119,13 @@ function StudentMobileShell({
                       <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${isActive ? 'bg-white/15' : 'bg-white text-sky-700 shadow-sm'}`}>
                         <Icon className="h-5 w-5" />
                         {item.key === 'self_assessment' && pendingTasksCount > 0 && (
-                          <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black text-white ring-2 ring-white">
+                          <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-semibold text-white ring-2 ring-white">
                             {pendingTasksCount > 9 ? '9+' : pendingTasksCount}
                           </span>
                         )}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[15px] font-extrabold">{item.label}</span>
+                        <span className="block truncate text-[15px] font-semibold">{item.label}</span>
                         <span className={`block truncate text-xs ${isActive ? 'text-[var(--selection-active-text)]/70' : 'text-slate-500'}`}>{item.detail}</span>
                       </span>
                       <ChevronRight className="h-5 w-5 opacity-40" />
@@ -1137,11 +1137,11 @@ function StudentMobileShell({
                 <button
                   type="button"
                   onClick={() => { setFeedbackOpen(true); setMenuOpen(false) }}
-                  className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-orange-50 font-bold text-orange-600 active:scale-[0.98]"
+                  className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-orange-50 font-semibold text-orange-600 active:scale-[0.98]"
                 >
                   <MessageSquarePlus className="h-5 w-5" /> Feedback
                 </button>
-                <button onClick={onLogout} className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-rose-50 font-bold text-rose-700 active:scale-[0.98]">
+                <button onClick={onLogout} className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-rose-50 font-semibold text-rose-700 active:scale-[0.98]">
                   <LogOut className="h-5 w-5" /> {t('navbar.logout')}
                 </button>
               </div>
@@ -1158,15 +1158,14 @@ function StudentMobileShell({
             {!activeModule ? (
               <div className="mx-auto h-full max-w-screen-sm overflow-y-auto overscroll-contain py-4">
                 <section className="relative overflow-hidden rounded-[30px] bg-slate-950 p-6 text-white shadow-[0_22px_50px_rgba(23,23,23,0.22)]">
-                  <div className="absolute -right-14 -top-16 h-44 w-44 rounded-full bg-sky-400/25 blur-2xl" />
                   <div className="relative">
-                    <div className="mb-8 flex items-center gap-2 text-xs font-bold text-emerald-300">
+                    <div className="mb-8 flex items-center gap-2 text-xs font-semibold text-emerald-300">
                       <Wifi className="h-4 w-4" /> {tl("Sessione connessa")}
                     </div>
-                    <p className="text-sm font-semibold text-white/60">{tl("Ciao,")} {sessionInfo.student.nickname}</p>
-                    <h2 className="mt-1 text-3xl font-black leading-tight tracking-tight">{tl("Cosa facciamo")}<br />{tl("oggi?")}</h2>
+                    <p className="text-sm font-medium text-white/60">{sessionInfo.student.nickname}</p>
+                    <h2 className="mt-1 line-clamp-2 text-3xl font-medium leading-tight tracking-tight">{sessionInfo.session.title}</h2>
                     <button onClick={() => handleNavigate('chatbot')} className="mt-6 flex min-h-[58px] w-full items-center justify-between rounded-[20px] bg-white px-5 text-left text-slate-950 shadow-lg active:scale-[0.98]">
-                      <span className="flex items-center gap-3"><AcademicAiIcon className="h-6 w-6 text-sky-600" /><span className="font-extrabold">{tl("Apri il Tutor AI")}</span></span>
+                      <span className="flex items-center gap-3"><AcademicAiIcon className="h-6 w-6 text-sky-600" /><span className="font-semibold">{tl("Apri il Tutor AI")}</span></span>
                       <ChevronRight className="h-5 w-5" />
                     </button>
                   </div>
@@ -1178,32 +1177,32 @@ function StudentMobileShell({
                       <button
                         key={tile.key}
                         onClick={() => handleNavigate(tile.key)}
-                        className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border border-white/80 bg-white/85 p-4 text-left shadow-[0_12px_30px_rgba(23,23,23,0.08)] backdrop-blur-xl active:scale-[0.98]"
+                        className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border border-white/80 bg-white p-4 text-left shadow-[0_12px_30px_rgba(23,23,23,0.08)] active:scale-[0.98]"
                       >
                         <div className="flex items-start justify-between">
                           <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] ${index === 1 ? 'bg-rose-50 text-rose-600' : 'bg-sky-50 text-sky-700'}`}>
                             <Icon className="h-6 w-6" />
                           </div>
-                          {tile.key === 'self_assessment' && pendingTasksCount > 0 && <span className="rounded-full bg-[#fe004d] px-2.5 py-1 text-xs font-black text-white">{pendingTasksCount}</span>}
+                          {tile.key === 'self_assessment' && pendingTasksCount > 0 && <span className="rounded-full bg-[#fe004d] px-2.5 py-1 text-xs font-semibold text-white">{pendingTasksCount}</span>}
                         </div>
-                        <div className="mt-auto line-clamp-2 text-base font-extrabold leading-tight text-slate-950">{tile.label}</div>
+                        <div className="mt-auto line-clamp-2 text-base font-semibold leading-tight text-slate-950">{tile.label}</div>
                         <div className="mt-1 hidden text-sm font-medium text-slate-500 md:block">{tile.detail}</div>
                       </button>
                     )
                   })}
                   <button onClick={() => handleNavigate('documents')} className="mobile-card-standard relative flex flex-col overflow-hidden rounded-[26px] border border-violet-100 bg-violet-50/90 p-4 text-left active:scale-[0.98]">
                     <span className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-white text-violet-700 shadow-sm"><FileText className="h-6 w-6" /></span>
-                    <span className="mt-auto block text-base font-extrabold text-slate-950">{t('navbar.nav_documents')}</span>
+                    <span className="mt-auto block text-base font-semibold text-slate-950">{t('navbar.nav_documents')}</span>
                   </button>
                 </section>
               </div>
             ) : activeModule === 'live' ? (
               <div className="mx-auto flex h-full max-w-screen-sm items-center justify-center">
-                <div className="w-full rounded-[30px] border border-white/80 bg-white/85 p-7 text-center shadow-xl backdrop-blur-xl">
+                <div className="w-full rounded-[30px] border border-white/80 bg-white p-7 text-center shadow-xl">
                   <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-rose-50 text-rose-600"><Radio className="h-9 w-9" /></div>
-                  <h2 className="mt-6 text-2xl font-black text-slate-950">{tl("Sessione live")}</h2>
+                  <h2 className="mt-6 text-2xl font-semibold text-slate-950">{tl("Sessione live")}</h2>
                   <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-500">{tl("Quando il docente avvia un'attività, comparirà automaticamente qui a schermo intero.")}</p>
-                  <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" /> {tl("In attesa del docente")}</div>
+                  <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> {tl("In attesa del docente")}</div>
                 </div>
               </div>
             ) : (
@@ -1320,18 +1319,19 @@ function HomeView({
 
   // Quick start AI profiles
   const quickStartProfiles = [
-    { key: 'tutor', label: 'Tutor', icon: '📚' },
-    { key: 'quiz', label: tl("Quiz"), icon: '📝' },
-    { key: 'math_coach', label: 'Math', icon: '🔢' },
+    { key: 'tutor', label: 'Tutor', icon: BookOpen },
+    { key: 'quiz', label: tl("Quiz"), icon: ListChecks },
+    { key: 'math_coach', label: 'Math', icon: Calculator },
   ]
 
   if (isMobile) {
     return (
       <div className="space-y-4 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-300">
         {/* Welcome Banner */}
-        <div className="bg-gradient-to-br from-fuchsia-500 via-purple-500 to-violet-600 rounded-2xl p-5 text-white shadow-lg shadow-fuchsia-200/50">
-          <h2 className="text-xl font-bold mb-1">{t('student_dashboard.welcome', { name: sessionInfo.student.nickname })} 👋</h2>
-          <p className="text-fuchsia-100 text-sm opacity-90">
+        <div className="rounded-2xl bg-slate-950 p-5 text-white">
+          <p className="text-sm font-medium text-white/60">{sessionInfo.student.nickname}</p>
+          <h2 className="mt-1 text-xl font-medium">{sessionInfo.session.title}</h2>
+          <p className="mt-1 text-sm text-white/70">
             {t('student_dashboard.welcome_body_mobile')}
           </p>
         </div>
@@ -1342,7 +1342,7 @@ function HomeView({
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => onNavigate('self_assessment')}
-            className="bg-white/60 backdrop-blur-md rounded-xl p-4 border border-orange-500/20 shadow-sm text-left group active:bg-orange-500/10 transition-all"
+            className="bg-white rounded-xl p-4 border border-orange-500/20 shadow-sm text-left group active:bg-orange-500/10 transition"
           >
             <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center mb-3 group-active:bg-orange-500/20 transition-colors">
               <ClipboardList className="h-5 w-5 text-orange-600" />
@@ -1362,7 +1362,7 @@ function HomeView({
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => onNavigate('documents')}
-            className="bg-white/60 backdrop-blur-md rounded-xl p-4 border border-violet-500/20 shadow-sm text-left group active:bg-violet-500/10 transition-all relative"
+            className="bg-white rounded-xl p-4 border border-violet-500/20 shadow-sm text-left group active:bg-violet-500/10 transition relative"
           >
             <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center mb-3 group-active:bg-violet-500/20 transition-colors">
               <FileText className="h-5 w-5 text-violet-600" />
@@ -1378,8 +1378,8 @@ function HomeView({
         {/* Quick Start AI */}
         <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="h-4 w-4 text-indigo-500" />
-            <h3 className="font-semibold text-slate-800 text-sm">Quick Start AI</h3>
+            <AcademicAiIcon className="h-4 w-4 text-slate-500" />
+            <h3 className="font-semibold text-slate-800 text-sm">{tl("Inizia con il tutor")}</h3>
           </div>
           <div className="flex gap-2">
             {quickStartProfiles.map((profile) => (
@@ -1387,10 +1387,10 @@ function HomeView({
                 key={profile.key}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => onNavigate('chatbot')}
-                className="flex-1 py-2.5 px-3 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border border-indigo-100 text-center active:from-indigo-100 active:to-blue-100 transition-colors"
+                className="flex flex-1 flex-col items-center gap-1 rounded-xl bg-slate-100 px-3 py-2.5 text-center transition-colors active:bg-slate-200"
               >
-                <span className="text-lg">{profile.icon}</span>
-                <p className="text-xs font-medium text-indigo-700 mt-0.5">{profile.label}</p>
+                <profile.icon className="h-4 w-4 text-slate-600" />
+                <p className="text-xs font-medium text-slate-700">{profile.label}</p>
               </motion.button>
             ))}
           </div>
@@ -1415,7 +1415,7 @@ function HomeView({
                 key={moduleKey}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => onNavigate(moduleKey)}
-                className={`w-full flex items-center gap-4 p-4 rounded-xl border backdrop-blur-sm bg-white/70 transition-all shadow-sm active:scale-95 active:bg-white/90 ${config.borderClass} text-left`}
+                className={`w-full flex items-center gap-4 p-4 rounded-xl border bg-white transition shadow-sm active:scale-95 active:bg-white/90 ${config.borderClass} text-left`}
               >
                 <div className={`w-11 h-11 rounded-xl ${config.bgClass} flex items-center justify-center ${config.colorClass} flex-shrink-0`}>
                   <Icon className="h-5 w-5" />
@@ -1437,7 +1437,7 @@ function HomeView({
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 w-full p-4 md:p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">{t('student_dashboard.tools_title')}</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">{t('student_dashboard.tools_title')}</h1>
         <p className="text-slate-500 text-sm mt-1">{t('student_dashboard.tools_subtitle')}</p>
       </div>
 
@@ -1458,16 +1458,16 @@ function HomeView({
             <button
               key={moduleKey}
               onClick={() => onNavigate(moduleKey)}
-              className={`group text-left bg-white/80 backdrop-blur-sm rounded-xl border p-6 flex items-start gap-4 hover:shadow-md hover:bg-white transition-all duration-200 ${config.borderClass}`}
+              className={`group text-left bg-white rounded-xl border p-6 flex items-start gap-4 hover:shadow-md hover:bg-white transition duration-200 ${config.borderClass}`}
             >
               <div className={`w-12 h-12 rounded-xl ${config.bgClass} flex items-center justify-center ${config.colorClass} flex-shrink-0`}>
                 <Icon className="h-6 w-6" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className={`font-bold text-base ${config.colorClass} mb-1`}>{config.label}</h3>
+                <h3 className={`font-semibold text-base ${config.colorClass} mb-1`}>{config.label}</h3>
                 <p className="text-slate-500 text-sm leading-relaxed">{config.description}</p>
               </div>
-              <ChevronRight className={`h-5 w-5 mt-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-all ${config.colorClass}`} />
+              <ChevronRight className={`h-5 w-5 mt-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition ${config.colorClass}`} />
             </button>
           )
         })}

@@ -120,7 +120,7 @@ function RingGauge({ value, max, topLabel, bottomLabel, urgent = false, success 
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
-        <div className={`text-[28px] font-black tabular-nums leading-none ${
+        <div className={`text-[28px] font-semibold tabular-nums leading-none ${
           urgent ? 'text-red-600' : success ? 'text-emerald-600' : 'text-slate-800'
         }`}>
           {topLabel}
@@ -153,7 +153,7 @@ function McqBars({ responses, options, correctOption }: {
     <div className="space-y-3">
       {counts.map((item, i) => (
         <div key={i} className="flex items-center gap-3">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 shadow-sm ${
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-semibold flex-shrink-0 shadow-sm ${
             item.isCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'
           }`}>
             {item.label}
@@ -161,7 +161,7 @@ function McqBars({ responses, options, correctOption }: {
           <div className="flex-1">
             <div className="flex justify-between items-center text-sm mb-1.5">
               <span className="text-slate-700 truncate max-w-[190px] font-medium">{item.name}</span>
-              <span className="font-bold text-slate-800 tabular-nums ml-2 flex-shrink-0">
+              <span className="font-semibold text-slate-800 tabular-nums ml-2 flex-shrink-0">
                 {item.value}
                 <span className="text-xs text-slate-400 font-normal ml-1">
                   ({Math.round((item.value / total) * 100)}%)
@@ -170,7 +170,7 @@ function McqBars({ responses, options, correctOption }: {
             </div>
             <div className="h-4 rounded-full bg-slate-100 overflow-hidden shadow-inner">
               <div
-                className="h-full rounded-full transition-all duration-700"
+                className="h-full rounded-full transition duration-700"
                 style={{
                   width: `${Math.max(item.value > 0 ? 4 : 0, (item.value / total) * 100)}%`,
                   backgroundColor: item.color,
@@ -226,11 +226,11 @@ function SlideLeaderboard({ responses, slide }: { responses: ResponseItem[]; sli
           className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border bg-gradient-to-r ${podiumStyle[i] || 'from-white to-slate-50 border-slate-200'}`}
         >
           <span className="text-xl w-8 text-center flex-shrink-0">
-            {i < 3 ? medals[i] : <span className="text-sm font-bold text-slate-500">{i + 1}°</span>}
+            {i < 3 ? medals[i] : <span className="text-sm font-semibold text-slate-500">{i + 1}°</span>}
           </span>
           <span className="font-semibold text-slate-800 flex-1 truncate">{r.student_nickname}</span>
           {hasCorrectAnswer && (
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${isCorrect ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${isCorrect ? 'bg-emerald-100 text-emerald-700': 'bg-rose-50 text-rose-600'}`}>
               {isCorrect ? tl("Corretta") : tl("Errata")}
             </span>
           )}
@@ -283,7 +283,7 @@ function OpinionBubbles({ responses }: { responses: ResponseItem[] }) {
     <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
       {responses.map((r, i) => (
         <div key={i} className="flex gap-3 items-start">
-          <div className={`w-9 h-9 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-sm`}>
+          <div className={`w-9 h-9 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-sm font-semibold flex-shrink-0 shadow-sm`}>
             {(r.student_nickname || '?')[0].toUpperCase()}
           </div>
           <div className="flex-1 bg-slate-50 rounded-2xl rounded-tl-sm px-4 py-3 border border-slate-100">
@@ -318,14 +318,14 @@ function FeedbackBars({ responses }: { responses: ResponseItem[] }) {
             <div className="flex-1">
               <div className="flex justify-between text-sm mb-2">
                 <span className="font-semibold text-slate-700">{label}</span>
-                <span className="font-bold text-slate-800 tabular-nums">
+                <span className="font-semibold text-slate-800 tabular-nums">
                   {counts[key]}
                   <span className="text-xs text-slate-400 font-normal ml-1">({pct}%)</span>
                 </span>
               </div>
               <div className="h-5 rounded-full bg-slate-100 overflow-hidden shadow-inner">
                 <div
-                  className={`h-full rounded-full ${color} transition-all duration-700 shadow-sm`}
+                  className={`h-full rounded-full ${color} transition duration-700 shadow-sm`}
                   style={{ width: `${Math.max(counts[key] > 0 ? 5 : 0, pct)}%` }}
                 />
               </div>
@@ -375,9 +375,9 @@ function SlideChart({ slide, responses, isComplete }: { slide: Slide; responses:
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-amber-500" />
-              <h4 className="text-sm font-bold text-slate-700">{tl("Classifica della slide")}</h4>
+              <h4 className="text-sm font-semibold text-slate-700">{tl("Classifica della slide")}</h4>
             </div>
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">{tl("Slide conclusa")}</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">{tl("Slide conclusa")}</span>
           </div>
           <SlideLeaderboard responses={responses} slide={slide} />
         </motion.div>
@@ -454,7 +454,7 @@ export default function LiveInteractionControlPage() {
       if (data.live_interaction_id !== interactionId) return
       setAnswerCount({ count: data.response_count, total: data.total_students })
       refetchResults()
-      if (data.all_answered) toast({ title: tl("✓ Tutti gli studenti hanno risposto!") })
+      if (data.all_answered) toast({ title: tl("✓ Tutti gli studenti hanno risposto") })
     })
 
     return () => { socket.disconnect(); socketRef.current = null }
@@ -574,7 +574,7 @@ export default function LiveInteractionControlPage() {
         >
           <ArrowLeft className="h-4 w-4" /> {tl("Lista")}
         </button>
-        <SectionHeading section="/teacher/live-interaction" compact className="flex-1 text-xl font-bold text-slate-800 truncate">{interaction.title}</SectionHeading>
+        <SectionHeading section="/teacher/live-interaction" compact className="flex-1 text-xl font-semibold text-slate-800 truncate">{interaction.title}</SectionHeading>
         {isActive && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-sm font-semibold flex-shrink-0">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> LIVE
@@ -599,14 +599,14 @@ export default function LiveInteractionControlPage() {
             <div className="w-24 h-24 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mx-auto mb-6 shadow-inner">
               <Play className="h-12 w-12 text-white" />
             </div>
-            <h2 className="text-3xl font-black mb-3">{tl("Pronto per iniziare?")}</h2>
+            <h2 className="text-3xl font-semibold mb-3">{tl("Pronto per iniziare?")}</h2>
             <p className="text-white/70 mb-8 text-base max-w-sm mx-auto">
               {totalSlides} {totalSlides === 1 ? tl("domanda") : tl("domande")} {tl("· Gli studenti vedranno la prima slide non appena premi Avvia")}
             </p>
             <button
               onClick={() => startMutation.mutate()}
               disabled={startMutation.isPending}
-              className="inline-flex items-center gap-3 bg-white text-indigo-700 font-bold px-10 py-4 rounded-2xl shadow-xl hover:shadow-2xl hover:bg-indigo-50 transition-all duration-200 disabled:opacity-60 text-lg"
+              className="inline-flex items-center gap-3 bg-white text-indigo-700 font-semibold px-10 py-4 rounded-2xl shadow-xl hover:shadow-2xl hover:bg-indigo-50 transition duration-200 disabled:opacity-60 text-lg"
             >
               <Play className="h-6 w-6" />
               {startMutation.isPending ? tl("Avvio in corso...") : tl("Avvia sessione live")}
@@ -632,7 +632,7 @@ export default function LiveInteractionControlPage() {
                 </span>
               </div>
               <div className="px-6 py-5">
-                <p className="text-xl font-bold text-slate-800 leading-snug">
+                <p className="text-xl font-semibold text-slate-800 leading-snug">
                   {currentSlide.question || currentSlide.prompt}
                 </p>
                 {currentSlide.type === 'mcq' && currentSlide.options && (
@@ -643,7 +643,7 @@ export default function LiveInteractionControlPage() {
                           ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                           : 'border-slate-200 bg-slate-50 text-slate-600'
                       }`}>
-                        <span className="font-bold mr-1.5">{String.fromCharCode(65 + i)}.</span>{opt}
+                        <span className="font-semibold mr-1.5">{String.fromCharCode(65 + i)}.</span>{opt}
                       </div>
                     ))}
                   </div>
@@ -663,7 +663,7 @@ export default function LiveInteractionControlPage() {
             {/* Live chart */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-6 py-5">
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-sm font-bold text-slate-700">{tl("Risposte in tempo reale")}</h3>
+                <h3 className="text-sm font-semibold text-slate-700">{tl("Risposte in tempo reale")}</h3>
                 <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> live
                 </span>
@@ -702,7 +702,7 @@ export default function LiveInteractionControlPage() {
                     <Users className="h-3 w-3" /> {tl("Risposte")}
                   </div>
                   {allAnswered && (
-                    <span className="text-xs text-emerald-600 font-bold -mt-1">{tl("Tutti pronti! ✓")}</span>
+                    <span className="text-xs text-emerald-600 font-semibold -mt-1">{tl("Tutti pronti. ✓")}</span>
                   )}
                 </div>
               </div>
@@ -713,7 +713,7 @@ export default function LiveInteractionControlPage() {
               <button
                 onClick={() => { if (isLastSlide) setConfirmEnd(true); else nextMutation.mutate() }}
                 disabled={nextMutation.isPending || endMutation.isPending}
-                className={`w-full flex items-center justify-center gap-2 font-bold py-4 rounded-xl text-white transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed text-base ${
+                className={`w-full flex items-center justify-center gap-2 font-semibold py-4 rounded-xl text-white transition duration-200 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed text-base ${
                   isLastSlide
                     ? 'bg-gradient-to-r from-emerald-500 to-teal-600'
                     : 'bg-gradient-to-r from-indigo-500 to-purple-600'
@@ -725,7 +725,7 @@ export default function LiveInteractionControlPage() {
               <button
                 onClick={() => setConfirmEnd(true)}
                 disabled={endMutation.isPending}
-                className="w-full flex items-center justify-center gap-2 font-medium py-2.5 rounded-xl border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-all duration-200 disabled:opacity-60 text-sm"
+                className="w-full flex items-center justify-center gap-2 font-medium py-2.5 rounded-xl border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition duration-200 disabled:opacity-60 text-sm"
               >
                 <Square className="h-4 w-4" /> {tl("Termina ora")}
               </button>
@@ -748,7 +748,7 @@ export default function LiveInteractionControlPage() {
             <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="h-9 w-9 text-white" />
             </div>
-            <h2 className="text-2xl font-black mb-1">{tl("Sessione completata!")}</h2>
+            <h2 className="text-2xl font-semibold mb-1">{tl("Sessione completata")}</h2>
             <p className="text-white/80 text-sm">
               {results?.results?.length || totalSlides} slide · {totalStudents} {tl("studenti partecipanti")}
             </p>
@@ -761,7 +761,7 @@ export default function LiveInteractionControlPage() {
                 catch { toast({ title: tl("Impossibile scaricare il report"), variant: 'destructive' }) }
                 finally { setDownloadingReport(false) }
               }}
-              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-emerald-700 shadow-sm hover:bg-emerald-50 disabled:opacity-60"
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-700 shadow-sm hover:bg-emerald-50 disabled:opacity-60"
             >
               {downloadingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
               {tl("Scarica report PDF")}
@@ -779,12 +779,12 @@ export default function LiveInteractionControlPage() {
                 <div className={`bg-gradient-to-r ${grad} px-5 py-3.5 flex items-center gap-2`}>
                   <SIcon className="h-4 w-4 text-white/80" />
                   <span className="text-white/90 text-sm font-semibold">{SLIDE_LABEL[type]}</span>
-                  <span className="ml-auto text-white/80 text-sm font-bold">
+                  <span className="ml-auto text-white/80 text-sm font-semibold">
                     {slideResult.responses.length} {slideResult.responses.length === 1 ? tl("risposta") : tl("risposte")}
                   </span>
                 </div>
                 <div className="px-6 py-5">
-                  <p className="font-bold text-slate-800 text-lg mb-5">{slide.question || slide.prompt}</p>
+                  <p className="font-semibold text-slate-800 text-lg mb-5">{slide.question || slide.prompt}</p>
                   <SlideChart slide={slide} responses={slideResult.responses} isComplete />
                 </div>
               </div>

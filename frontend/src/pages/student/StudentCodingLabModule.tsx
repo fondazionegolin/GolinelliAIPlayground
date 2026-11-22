@@ -67,7 +67,7 @@ import { takeHandoff } from '@/lib/platformHandoff'
 function ReasoningMarkdown({ children, dark = false }: { children: string; dark?: boolean }) {
   return (
     <div
-      className={`prose prose-sm max-w-none text-sm leading-relaxed [&_code]:rounded [&_code]:px-1 [&_h1]:mb-1 [&_h1]:mt-2 [&_h1]:text-base [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:text-base [&_h3]:mb-1 [&_h3]:mt-1.5 [&_h3]:text-sm [&_li]:my-0.5 [&_ol]:my-1 [&_ol]:pl-4 [&_p]:my-1 [&_strong]:font-bold [&_ul]:my-1 [&_ul]:pl-4 ${
+      className={`prose prose-sm max-w-none text-sm leading-relaxed [&_code]:rounded [&_code]:px-1 [&_h1]:mb-1 [&_h1]:mt-2 [&_h1]:text-base [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:text-base [&_h3]:mb-1 [&_h3]:mt-1.5 [&_h3]:text-sm [&_li]:my-0.5 [&_ol]:my-1 [&_ol]:pl-4 [&_p]:my-1 [&_strong]:font-semibold [&_ul]:my-1 [&_ul]:pl-4 ${
         dark
           ? 'prose-invert font-code [&_code]:bg-white/10'
           : 'prose-slate [&_code]:bg-black/5'
@@ -204,12 +204,12 @@ function DeepSeekDisclaimer({ consent, onAccept, className = '' }: {
     <div className={`rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 ${className}`}>
       <p className="mb-2 leading-snug">
         {tl("Stai usando un modello")} <strong>DeepSeek</strong>{tl(": i tuoi messaggi vengono inviati ai server di DeepSeek per generare il codice.")}{' '}
-        <a href={consent.source_url} target="_blank" rel="noreferrer" className="font-bold underline">{tl("Leggi l'informativa privacy di DeepSeek")}</a>.
+        <a href={consent.source_url} target="_blank" rel="noreferrer" className="font-semibold underline">{tl("Leggi l'informativa privacy di DeepSeek")}</a>.
       </p>
       <button
         type="button"
         onClick={onAccept}
-        className="rounded-full bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700"
+        className="rounded-full bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700"
       >
         {consent.accept_label}
       </button>
@@ -294,15 +294,23 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const applyingSubjectiveStateRef = useRef(false)
 
   // Agentic hand-off from the chat: the new-project form opens with the brief already written.
-  useEffect(() => {
-    const handoff = takeHandoff(['vibe_lab'])
+  // Kept in a ref and applied after the mount-time reset (`startNewProject`), which would otherwise wipe it.
+  const handoffRef = useRef<ReturnType<typeof takeHandoff>>(null)
+  if (handoffRef.current === null && !(handoffRef as any).taken) {
+    handoffRef.current = takeHandoff(['vibe_lab'])
+    ;(handoffRef as any).taken = true
+  }
+  const applyHandoff = () => {
+    const handoff = handoffRef.current
     if (!handoff) return
     setPrompt(handoff.brief)
     if (handoff.title) setTitle(handoff.title)
     setPromptPanelOpen(true)
     setMobilePane('prompt')
     setSelectedProjectId(null)
-  }, [])
+    setCreatePanelOpen(true)
+    window.setTimeout(() => { handoffRef.current = null }, 3000)
+  }
 
   useEffect(() => {
     const applySyncedDraft = (state: { module_key?: string | null; context?: Record<string, unknown> } | null | undefined) => {
@@ -763,6 +771,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   useEffect(() => {
     setProjects([])
     startNewProject()
+    applyHandoff()
     loadProjects()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
@@ -2088,7 +2097,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             aria-label={tl("Versioni del progetto")}
           >
             <div className="flex shrink-0 items-center justify-between px-4 pt-3">
-              <p className="truncate text-sm font-black text-[var(--text-primary)]">{selectedProject.title}</p>
+              <p className="truncate text-sm font-semibold text-[var(--text-primary)]">{selectedProject.title}</p>
               <button type="button" onClick={() => setVersionsOpen(false)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}><X className="h-4 w-4" /></button>
             </div>
             <SidebarVersioningPanel
@@ -2131,7 +2140,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             <Button type="button" variant="ghost" density="compact" onClick={() => void goToLibrary()} disabled={creating || generating || draftSaving} title={generating ? tl("Attendi la fine della generazione") : tl("Torna ai progetti")}>
               <ArrowLeft className="h-4 w-4" /> {tl("Progetti")}
             </Button>
-            {selectedProject && <span className="min-w-0 flex-1 truncate text-sm font-black text-[var(--text-primary)]">{selectedProject.title}</span>}
+            {selectedProject && <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">{selectedProject.title}</span>}
             {!selectedProject && <span className="flex-1" />}
             {selectedProject && files.length > 0 && isReactProject(files) && (
               <Button type="button" variant="ghost" density="compact" onClick={() => setRefineOpen(true)} disabled={generating || creating || draftSaving}
@@ -2159,7 +2168,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     setMobilePane('workbench')
                   }
                 }}
-                className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-800 outline-none focus:border-sky-400"
+                className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-sky-400"
                 aria-label={tl("Progetto Vibe Lab")}
               >
                 <option value="">{loading ? tl("Caricamento…") : tl("Scegli un progetto")}</option>
@@ -2187,7 +2196,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   role="tab"
                   aria-selected={mobilePane === 'prompt'}
                   onClick={() => setMobilePane('prompt')}
-                  className={`min-h-10 rounded-lg text-xs font-black ${mobilePane === 'prompt' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}
+                  className={`min-h-10 rounded-lg text-xs font-semibold ${mobilePane === 'prompt' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}
                 >
                   Prompt
                 </button>
@@ -2196,7 +2205,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   role="tab"
                   aria-selected={mobilePane === 'workbench'}
                   onClick={() => setMobilePane('workbench')}
-                  className={`min-h-10 rounded-lg text-xs font-black ${mobilePane === 'workbench' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}
+                  className={`min-h-10 rounded-lg text-xs font-semibold ${mobilePane === 'workbench' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}
                 >
                   {tl("Codice e anteprima")}
                 </button>
@@ -2241,12 +2250,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               {createPanelOpen && (
               <div>
                 <div className="mb-8 text-center">
-                  <SectionHeading section="/teacher/coding" as="h2" className="justify-center text-xl font-black text-[var(--text-primary)]" subtitle={<>{tl("Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.")}</>} subtitleClassName="mt-1 hidden text-sm text-[var(--text-muted)] md:block">{tl("Cosa vuoi creare?")}</SectionHeading>
+                  <SectionHeading section="/teacher/coding" as="h2" className="justify-center text-xl font-semibold text-[var(--text-primary)]" subtitle={<>{tl("Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.")}</>} subtitleClassName="mt-1 hidden text-sm text-[var(--text-muted)] md:block">{tl("Cosa vuoi creare?")}</SectionHeading>
                 </div>
                 {selectedProject && (
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-xs font-bold text-slate-700">{tl("Nuovo progetto")}</p>
+                      <p className="text-xs font-semibold text-slate-700">{tl("Nuovo progetto")}</p>
                       <p className="text-xs text-slate-500">{tl("Il progetto corrente resta nello storico.")}</p>
                     </div>
                     <button
@@ -2260,7 +2269,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   </div>
                 )}
                 <div>
-                  <label htmlFor="vibe-project-title" className="mb-2 block text-sm font-bold text-slate-700">{tl("Dai un nome al progetto")}</label>
+                  <label htmlFor="vibe-project-title" className="mb-2 block text-sm font-semibold text-slate-700">{tl("Dai un nome al progetto")}</label>
                   <input
                     id="vibe-project-title"
                     value={title}
@@ -2270,7 +2279,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   />
                 </div>
                 <div className="mt-6">
-                  <label htmlFor="vibe-project-prompt" className="mb-2 block text-sm font-bold text-slate-700">{tl("Descrivi cosa vuoi creare")}</label>
+                  <label htmlFor="vibe-project-prompt" className="mb-2 block text-sm font-semibold text-slate-700">{tl("Descrivi cosa vuoi creare")}</label>
                   <textarea
                     id="vibe-project-prompt"
                     value={prompt}
@@ -2290,7 +2299,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       type="button"
                       onClick={handleStartInterview}
                       disabled={interviewing || creating || !prompt.trim()}
-                      className="ui-cta inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition disabled:opacity-40 md:h-11 md:min-h-0 md:flex-none"
+                      className="ui-cta inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold transition disabled:opacity-40 md:h-11 md:min-h-0 md:flex-none"
                     >
                       {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                       {interviewing ? tl("Apro l'intervista...") : tl("Crea con intervista")}
@@ -2315,7 +2324,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       return (
                         <>
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-bold text-indigo-900">
+                            <p className="text-xs font-semibold text-indigo-900">
                               {confirming ? tl("Ecco cosa sto per fare") : tl("Domanda {0} di {1}", Math.min(chatStep.n, chatStep.max), chatStep.max)}
                             </p>
                             {!confirming && !interviewing && chatTurns.length > 0 && (
@@ -2380,7 +2389,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                                   type="button"
                                   onClick={() => createAndGenerate(chatTurns)}
                                   disabled={creating || generating || interviewing}
-                                  className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] transition disabled:opacity-40"
+                                  className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-semibold text-[var(--selection-active-text)] transition disabled:opacity-40"
                                 >
                                   {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                                   {specBusy ? tl("Scrivo le specifiche…") : tl("Sì, parti")}
@@ -2399,7 +2408,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                                   type="button"
                                   onClick={() => void sendChatAnswer(chatInput)}
                                   disabled={interviewing || creating || !chatInput.trim()}
-                                  className="inline-flex h-9 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white disabled:opacity-40"
+                                  className="inline-flex h-9 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white disabled:opacity-40"
                                 >
                                   {tl("Modifica")}
                                 </button>
@@ -2419,7 +2428,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                                 type="button"
                                 onClick={() => void sendChatAnswer(chatInput)}
                                 disabled={interviewing || creating || !chatInput.trim()}
-                                className="inline-flex h-9 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white disabled:opacity-40"
+                                className="inline-flex h-9 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white disabled:opacity-40"
                               >
                                 {tl("Invia")}
                               </button>
@@ -2435,7 +2444,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
               {projectDetail && (
                 <div className="space-y-2">
-                  <h3 className="text-xs font-black uppercase tracking-wide text-[var(--text-muted)]">{tl("Conversazione")}</h3>
+                  <h3 className="text-xs font-semibold text-[var(--text-muted)]">{tl("Conversazione")}</h3>
                   {projectDetail.messages.length === 0 ? (
                     <p className="rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-400">{tl("Nessun messaggio.")}</p>
                   ) : (
@@ -2449,7 +2458,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   )}
                   {buildPlan && buildPlan.projectId === selectedProjectId && buildPlan.milestones.length > 1 && (
                     <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900">
-                      <p className="font-bold">
+                      <p className="font-semibold">
                         {tl("Progetto a tappe")} · {generating ? tl("in corso") : tl("interrotto")} · {tl("tappa")} {buildPlan.next + 1} {tl("di")} {buildPlan.milestones.length}
                       </p>
                       <ol className="mt-1 list-decimal space-y-0.5 pl-4">
@@ -2458,7 +2467,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                         ))}
                       </ol>
                       {!generating && (
-                        <button type="button" onClick={() => void resumeBuildPlan()} className="mt-2 rounded-full bg-indigo-600 px-3 py-1 font-bold text-white">
+                        <button type="button" onClick={() => void resumeBuildPlan()} className="mt-2 rounded-full bg-indigo-600 px-3 py-1 font-semibold text-white">
                           {tl("Continua dalla tappa")} {buildPlan.next + 1}
                         </button>
                       )}
@@ -2702,9 +2711,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   >
                     <span>{file.path}</span>
                     {file.path === 'description.md' && (
-                      <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase ${
-                        selectedFile?.path === file.path ? 'bg-slate-200 text-slate-700' : 'bg-white/10 text-slate-400'
-                      }`}>
+                      <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+ selectedFile?.path === file.path ? 'bg-slate-200 text-slate-700': 'bg-white/10 text-slate-400'
+ }`}>
                         auto
                       </span>
                     )}
@@ -2795,7 +2804,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     <div className="pointer-events-auto flex w-full max-w-lg items-start gap-2 rounded-2xl bg-white/95 p-3 text-xs text-slate-700 shadow-2xl ring-1 ring-amber-200 backdrop-blur" role="alert">
                       <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" />
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold text-slate-900">{tl("Riconoscimento visivo:")} {visionError.context || tl("errore")}</p>
+                        <p className="font-semibold text-slate-900">{tl("Riconoscimento visivo:")} {visionError.context || tl("errore")}</p>
                         <p className="mt-1 break-words font-mono leading-5">{visionError.error}</p>
                       </div>
                       <button type="button" onClick={() => setVisionError(null)} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-3.5 w-3.5" /></button>
@@ -2806,7 +2815,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   <button
                     type="button"
                     onClick={openPreviewFullscreen}
-                    className="absolute bottom-3 right-3 z-10 inline-flex h-11 items-center gap-1.5 rounded-full bg-slate-900/85 px-4 text-xs font-bold text-white shadow-lg backdrop-blur active:scale-95"
+                    className="absolute bottom-3 right-3 z-10 inline-flex h-11 items-center gap-1.5 rounded-full bg-slate-900/85 px-4 text-xs font-semibold text-white shadow-lg backdrop-blur active:scale-95"
                     aria-label={tl("Apri l’app a schermo intero")}
                   >
                     <Maximize2 className="h-4 w-4" /> {tl("Schermo intero")}
@@ -2833,7 +2842,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             <div className="flex flex-1 items-center justify-center p-6">
               <div className="w-full max-w-sm rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                 <Bot className="mx-auto h-8 w-8 text-slate-400" />
-                <h3 className="mt-3 text-sm font-bold text-slate-800">{tl("Preview non ancora generata")}</h3>
+                <h3 className="mt-3 text-sm font-semibold text-slate-800">{tl("Preview non ancora generata")}</h3>
                 <p className="mt-2 text-xs leading-relaxed text-slate-500">
                   {tl("Scrivi un prompt e genera una mini app. L'anteprima interattiva apparira qui.")}
                 </p>
@@ -2873,7 +2882,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </div>
           ) : (
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <Eye className="h-4 w-4" />
                 {tl("Anteprima")}
               </div>
@@ -2986,7 +2995,7 @@ const CODING_TUTORIAL_STEPS = [
             transition={{ delay: index * 0.12, type: 'spring', stiffness: 260 }}
             className="flex items-center gap-3 rounded-2xl bg-white/10 px-3 py-2.5"
           >
-            <span className={`flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br ${index === 0 ? 'from-fuchsia-400 to-rose-400' : index === 1 ? 'from-sky-400 to-indigo-400' : 'from-emerald-400 to-teal-400'} text-xs font-black text-white`}>
+            <span className={`flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br ${index === 0 ? 'from-fuchsia-400 to-rose-400' : index === 1 ? 'from-sky-400 to-indigo-400' : 'from-emerald-400 to-teal-400'} text-xs font-semibold text-white`}>
               {index + 1}
             </span>
             <span className="text-sm font-semibold text-white/85">{item}</span>
@@ -3020,7 +3029,7 @@ const CODING_TUTORIAL_STEPS = [
             transition={{ delay: index * 0.1 }}
             className="rounded-xl border border-white/10 bg-white/10 p-2.5"
           >
-            <p className="text-xs font-black uppercase tracking-wide text-amber-200">{label}</p>
+            <p className="text-xs font-semibold text-amber-200">{label}</p>
             <p className="mt-0.5 text-sm text-white/75">{text}</p>
           </motion.div>
         ))}
@@ -3069,8 +3078,8 @@ const CODING_TUTORIAL_STEPS = [
     visual: () => (
       <div className="rounded-2xl bg-white/10 p-3">
         <div className="mb-3 flex gap-2">
-          <span className="rounded-lg bg-white/15 px-3 py-1 text-xs font-bold text-white/55">{tl("Codice")}</span>
-          <span className="rounded-lg bg-emerald-400 px-3 py-1 text-xs font-bold text-white">{tl("Anteprima")}</span>
+          <span className="rounded-lg bg-white/15 px-3 py-1 text-xs font-semibold text-white/55">{tl("Codice")}</span>
+          <span className="rounded-lg bg-emerald-400 px-3 py-1 text-xs font-semibold text-white">{tl("Anteprima")}</span>
         </div>
         <motion.div
           animate={{ opacity: [0.75, 1, 0.75] }}
@@ -3100,7 +3109,7 @@ const CODING_TUTORIAL_STEPS = [
         <div className="max-w-[82%] rounded-2xl bg-white/10 px-3 py-2 text-sm text-white/75">
           {tl("Aggiorno componenti, stato e preview.")}
         </div>
-        <div className="rounded-2xl border border-emerald-300/25 bg-emerald-400/15 p-2.5 text-xs font-bold text-emerald-100">
+        <div className="rounded-2xl border border-emerald-300/25 bg-emerald-400/15 p-2.5 text-xs font-semibold text-emerald-100">
           {tl("File Writer: 4/4 file aggiornati")}
         </div>
       </div>
@@ -3160,9 +3169,9 @@ function CodingLabTutorialModal({
             <div className="mb-6">
               <div className="mb-2 flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-sky-300" />
-                <span className="text-xs font-black uppercase tracking-widest text-sky-300">Tutorial Vibe Lab</span>
+                <span className="text-xs font-semibold text-sky-300">Tutorial Vibe Lab</span>
               </div>
-              <h2 className="text-3xl font-black leading-tight text-white">
+              <h2 className="text-3xl font-semibold leading-tight text-white">
                 {tl("Costruisci mini app con metodo")}
               </h2>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-white/55">
@@ -3186,7 +3195,7 @@ function CodingLabTutorialModal({
                     <div className={`mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br ${item.grad} ${selected ? `shadow-lg ${item.glow}` : ''}`}>
                       <Icon className="text-white" style={{ width: 18, height: 18 }} />
                     </div>
-                    <p className={`text-xs font-black ${selected ? 'text-white' : 'text-white/50'}`}>{item.label}</p>
+                    <p className={`text-xs font-semibold ${selected ? 'text-white' : 'text-white/50'}`}>{item.label}</p>
                     {selected && (
                       <motion.div
                         layoutId="coding-tutorial-step"
@@ -3199,7 +3208,7 @@ function CodingLabTutorialModal({
             </div>
 
             <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="mb-3 text-xs font-black uppercase tracking-widest text-white/45">{tl("Prompting efficace")}</p>
+              <p className="mb-3 text-xs font-semibold text-white/45">{tl("Prompting efficace")}</p>
               <div className="grid gap-2">
                 {[tl("Obiettivo"), tl("Pubblico"), tl("Interazioni"), tl("Stile"), tl("Vincoli")].map((item, index) => (
                   <div key={item} className="flex items-center gap-2 text-sm text-white/70">
@@ -3222,11 +3231,11 @@ function CodingLabTutorialModal({
                 className="flex flex-1 flex-col"
               >
                 <div className={`mb-5 inline-flex w-fit items-center gap-2 rounded-full bg-gradient-to-r ${step.grad} px-3 py-1.5`}>
-                  <span className="text-xs font-black text-white">{step.num === 0 ? 'SPLASH' : `STEP ${step.num}`}</span>
+                  <span className="text-xs font-semibold text-white">{step.num === 0 ? 'SPLASH' : `STEP ${step.num}`}</span>
                   <StepIcon className="h-3.5 w-3.5 text-white/85" />
                 </div>
 
-                <h3 className="text-2xl font-black text-white">{step.title}</h3>
+                <h3 className="text-2xl font-semibold text-white">{step.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-white/60">{step.desc}</p>
 
                 <div className="my-6 rounded-3xl border border-white/10 bg-white/5 p-4">
@@ -3251,7 +3260,7 @@ function CodingLabTutorialModal({
                     key={index}
                     type="button"
                     onClick={() => setActive(index)}
-                    className={`h-2 rounded-full transition-all ${index === active ? 'w-8 bg-white' : 'w-2 bg-white/25 hover:bg-white/45'}`}
+                    className={`h-2 rounded-full transition ${index === active ? 'w-8 bg-white' : 'w-2 bg-white/25 hover:bg-white/45'}`}
                     title={tl("Vai allo step {0}", index + 1)}
                   />
                 ))}
@@ -3262,7 +3271,7 @@ function CodingLabTutorialModal({
                   type="button"
                   onClick={prev}
                   disabled={active === 0}
-                  className="inline-flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-bold text-white/65 transition hover:bg-white/10 disabled:opacity-35"
+                  className="inline-flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white/65 transition hover:bg-white/10 disabled:opacity-35"
                 >
                   {tl("Indietro")}
                 </button>
@@ -3270,7 +3279,7 @@ function CodingLabTutorialModal({
                   <button
                     type="button"
                     onClick={onOpenDesignSystem}
-                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-black text-white shadow-lg`}
+                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-semibold text-white shadow-lg`}
                   >
                     {tl("Apri Design System")}
                     <Palette className="h-4 w-4" />
@@ -3279,7 +3288,7 @@ function CodingLabTutorialModal({
                   <button
                     type="button"
                     onClick={onCreateProject}
-                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-black text-white shadow-lg`}
+                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-semibold text-white shadow-lg`}
                   >
                     {tl("Crea progetto")}
                     <Wand2 className="h-4 w-4" />
@@ -3288,7 +3297,7 @@ function CodingLabTutorialModal({
                   <button
                     type="button"
                     onClick={next}
-                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-black text-white shadow-lg`}
+                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-semibold text-white shadow-lg`}
                   >
                     {tl("Continua")}
                     <ArrowRight className="h-4 w-4" />
@@ -3313,7 +3322,7 @@ function PreviewLoadingSplash() {
           <span />
         </div>
         <div>
-          <p className="text-sm font-black text-[var(--text-primary)]">{tl("Caricamento anteprima")}</p>
+          <p className="text-sm font-semibold text-[var(--text-primary)]">{tl("Caricamento anteprima")}</p>
           <p className="mt-1 text-xs font-semibold text-[var(--text-muted)]">{tl("Preparo il sandbox del progetto")}</p>
         </div>
       </div>
@@ -3383,7 +3392,7 @@ function SidebarVersioningPanel({
     <div className={className ?? "hidden h-[34vh] min-h-[240px] max-h-[420px] shrink-0 flex-col border-t border-[color:var(--border-subtle)] bg-[var(--surface-muted)] p-3 text-[13px] lg:flex"}>
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h3 className="text-xs font-black uppercase tracking-wide text-[var(--text-secondary)]">Versioning</h3>
+          <h3 className="text-xs font-semibold text-[var(--text-secondary)]">Versioning</h3>
           <p className="text-xs text-[var(--text-secondary)]">{sortedVersions.length} {tl("versioni ·")} {pendingCommits.length} commit</p>
         </div>
         <Button
@@ -3399,7 +3408,7 @@ function SidebarVersioningPanel({
 
       {isFork && upstreamStatus?.update_available && (
         <div className="mb-2 rounded-lg border border-[color:var(--border-subtle)] bg-[var(--surface-card)] p-2.5 shadow-sm">
-          <p className="text-xs font-bold text-amber-950">{tl("Nuova v")}{upstreamStatus.source_version_number} {tl("del creatore")}</p>
+          <p className="text-xs font-semibold text-amber-950">{tl("Nuova v")}{upstreamStatus.source_version_number} {tl("del creatore")}</p>
           <p className="mt-0.5 text-[11px] text-amber-900/75">
             {upstreamStatus.file_count ?? 0} {tl("file ·")} {upstreamStatus.total_lines ?? 0} righe
           </p>
@@ -3411,7 +3420,7 @@ function SidebarVersioningPanel({
             surface="soft"
             density="compact"
             fullWidth
-            className="mt-2 text-xs font-bold"
+            className="mt-2 text-xs font-semibold"
           >
             {tl("Aggiorna copia")}
           </Button>
@@ -3421,15 +3430,15 @@ function SidebarVersioningPanel({
       {pendingCommits.length > 0 && (
         <div className="mb-3 shrink-0">
           <div className="mb-1 flex items-center justify-between">
-            <h4 className="text-xs font-black uppercase tracking-wide text-[var(--logo-blue-strong)]">Commit</h4>
-            <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">{pendingCommits.length}</span>
+            <h4 className="text-xs font-semibold text-[var(--logo-blue-strong)]">Commit</h4>
+            <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-semibold text-sky-700">{pendingCommits.length}</span>
           </div>
           <div className="max-h-60 space-y-1.5 overflow-y-auto pr-1">
             {pendingCommits.map((commit) => (
               <div key={commit.id} className="rounded-lg border border-[color:var(--border-subtle)] bg-[var(--surface-card)] p-2.5 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="min-w-0 truncate text-xs font-bold text-slate-900">{commit.contributor_name}</p>
-                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase ${commit.status === 'merged' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                  <p className="min-w-0 truncate text-xs font-semibold text-slate-900">{commit.contributor_name}</p>
+                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[8px] font-semibold ${commit.status === 'merged'? 'bg-emerald-100 text-emerald-700': 'bg-amber-100 text-amber-700'}`}>
                     {commit.status}
                   </span>
                 </div>
@@ -3440,7 +3449,7 @@ function SidebarVersioningPanel({
                     onClick={() => onOpenCommit(commit)}
                     variant="outline"
                     density="compact"
-                    className="h-8 flex-1 text-[11px] font-bold"
+                    className="h-8 flex-1 text-[11px] font-semibold"
                   >
                     {tl("Testa")}
                   </Button>
@@ -3449,7 +3458,7 @@ function SidebarVersioningPanel({
                     onClick={() => onMergeCommit(commit.id)}
                     disabled={publishing || commit.status === 'merged'}
                     density="compact"
-                    className="h-8 flex-1 text-[11px] font-bold"
+                    className="h-8 flex-1 text-[11px] font-semibold"
                   >
                     Merge
                   </Button>
@@ -3463,8 +3472,8 @@ function SidebarVersioningPanel({
       {sortedVersions.length > 0 && (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="mb-1 flex items-center justify-between">
-            <h4 className="text-xs font-black uppercase tracking-wide text-[var(--text-secondary)]">{tl("Versioni")}</h4>
-            <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">{sortedVersions.length}</span>
+            <h4 className="text-xs font-semibold text-[var(--text-secondary)]">{tl("Versioni")}</h4>
+            <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold text-slate-600">{sortedVersions.length}</span>
           </div>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
             {sortedVersions.map((version) => (
@@ -3509,8 +3518,8 @@ function CollapsibleVersionRow({
         className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left"
       >
         <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
-        <span className="text-xs font-black text-slate-900">v{version.version_number}</span>
-        {isCurrent && <span className="rounded-full bg-[var(--app-accent,var(--primary))] px-1.5 py-0.5 text-[8px] font-bold text-white">corrente</span>}
+        <span className="text-xs font-semibold text-slate-900">v{version.version_number}</span>
+        {isCurrent && <span className="rounded-full bg-[var(--app-accent,var(--primary))] px-1.5 py-0.5 text-[8px] font-semibold text-white">corrente</span>}
         <span className="ml-auto truncate text-[10px] text-slate-400">{versionFiles.length} {tl("file ·")} {totalLines} righe</span>
       </button>
       {open && (
@@ -3523,7 +3532,7 @@ function CollapsibleVersionRow({
               disabled={versionFiles.length === 0}
               variant="outline"
               density="compact"
-              className="h-8 flex-1 text-[11px] font-bold"
+              className="h-8 flex-1 text-[11px] font-semibold"
             >
               {tl("Apri")}
             </Button>
@@ -3532,7 +3541,7 @@ function CollapsibleVersionRow({
               onClick={onRollback}
               disabled={publishing || isCurrent || versionFiles.length === 0}
               density="compact"
-              className="h-8 flex-1 text-[11px] font-bold"
+              className="h-8 flex-1 text-[11px] font-semibold"
             >
               <RotateCcw className="mr-1 inline h-3 w-3" />
               Rollback
@@ -3604,13 +3613,13 @@ function ProjectFileTree({ files, selectedPath, onSelect, onAddFile, writingPath
           ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-300" aria-label={tl("In scrittura")} />
           : <FileCode2 className="h-3 w-3 shrink-0 opacity-70" />}
         <span className="truncate">{node.name}</span>
-        {node.path === 'description.md' && <span className="ml-auto rounded-full bg-white/10 px-1.5 text-[9px] font-black uppercase text-slate-400">auto</span>}
+        {node.path === 'description.md' && <span className="ml-auto rounded-full bg-white/10 px-1.5 text-[9px] font-semibold text-slate-400">auto</span>}
       </button>
     )
   })
   return (
     <aside className="hidden w-56 shrink-0 flex-col border-r border-white/10 bg-slate-900/60 md:flex">
-      <div className="flex items-center justify-between px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+      <div className="flex items-center justify-between px-3 py-2 text-[10px] font-semibold text-slate-500">
         <span>{tl("File ·")} {files.length}</span>
         <button type="button" onClick={onAddFile} className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white" title={tl("Aggiungi file di contesto (knowledge base di progetto)")}><Plus className="h-3.5 w-3.5" /></button>
       </div>
@@ -3671,7 +3680,7 @@ function VisualReviewCard({ review, onApply, onClose }: {
       <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white/95 p-3 text-xs text-slate-700 shadow-2xl ring-1 ring-slate-200 backdrop-blur" role="status" aria-live="polite">
         <div className="flex items-center gap-2">
           {review.status === 'reviewing' ? <Loader2 className="h-4 w-4 animate-spin text-slate-500" /> : <Eye className="h-4 w-4 text-slate-500" />}
-          <p className="flex-1 font-bold text-slate-900">
+          <p className="flex-1 font-semibold text-slate-900">
             {review.status === 'reviewing' ? tl("Revisione visiva in corso…") : review.status === 'error' ? tl("Revisione visiva non riuscita") : tl("Revisione visiva{0}", review.score ? ` · ${review.score}/10` : '')}
           </p>
           {review.status !== 'reviewing' && <button type="button" onClick={onClose} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-3.5 w-3.5" /></button>}
@@ -3691,7 +3700,7 @@ function VisualReviewCard({ review, onApply, onClose }: {
               </ul>
             ) : <p className="mt-1 text-emerald-700">{tl("Nessun difetto visivo rilevante.")}</p>}
             {issues.length > 0 && (
-              <button type="button" onClick={onApply} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-700">
+              <button type="button" onClick={onApply} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full bg-slate-900 px-3 text-xs font-semibold text-white hover:bg-slate-700">
                 <Wand2 className="h-3.5 w-3.5" /> {tl("Correggi questi difetti")}
               </button>
             )}
@@ -3711,10 +3720,10 @@ function PublicationBanner({ url, onClose }: { url: string; onClose: () => void 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-900">
       <Globe className="h-3.5 w-3.5 shrink-0" />
-      <span className="font-bold">{tl("Pubblicata:")}</span>
+      <span className="font-semibold">{tl("Pubblicata:")}</span>
       <a href={url} target="_blank" rel="noreferrer" className="min-w-0 max-w-[40ch] truncate font-semibold underline">{url}</a>
-      <button type="button" onClick={() => copy('link')} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-bold ring-1 ring-emerald-200 hover:bg-emerald-100">{copied === 'link' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} {tl("Link")}</button>
-      <button type="button" onClick={() => copy('embed')} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-bold ring-1 ring-emerald-200 hover:bg-emerald-100">{copied === 'embed' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} {tl("Codice incorporamento")}</button>
+      <button type="button" onClick={() => copy('link')} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-semibold ring-1 ring-emerald-200 hover:bg-emerald-100">{copied === 'link' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} {tl("Link")}</button>
+      <button type="button" onClick={() => copy('embed')} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-semibold ring-1 ring-emerald-200 hover:bg-emerald-100">{copied === 'embed' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} {tl("Codice incorporamento")}</button>
       <span className="text-emerald-700">{tl("Le funzioni AI dell'app restano disponibili solo dentro Golinelli.ai.")}</span>
       <button type="button" onClick={onClose} className="ml-auto rounded-full p-1 hover:bg-emerald-100" aria-label={tl("Chiudi")}><X className="h-3.5 w-3.5" /></button>
     </div>
@@ -3779,15 +3788,15 @@ function MediaPermissionBanner({ status, onReload, onAllow, hostBlocked, onClose
         <div className="flex items-start gap-2">
           <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" />
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-slate-900">{title}</p>
+            <p className="font-semibold text-slate-900">{title}</p>
             <p className="mt-1 leading-5">{hint}</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {canAskFromHost && (
-                <button type="button" onClick={onAllow} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-emerald-600 px-4 font-bold text-white hover:bg-emerald-500">
+                <button type="button" onClick={onAllow} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-emerald-600 px-4 font-semibold text-white hover:bg-emerald-500">
                   {tl("Consenti")} {device}
                 </button>
               )}
-              <button type="button" onClick={onReload} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-slate-900 px-3 font-bold text-white hover:bg-slate-700">
+              <button type="button" onClick={onReload} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-slate-900 px-3 font-semibold text-white hover:bg-slate-700">
                 <RefreshCw className="h-3.5 w-3.5" /> {tl("Ricarica anteprima")}
               </button>
             </div>
@@ -3816,112 +3825,112 @@ function VerifyStatusPill({ state, attempt, maxAttempts, errors, onRetry, onDism
   const tone = state === 'clean' ? 'bg-emerald-600 text-white' : state === 'failed' ? 'bg-amber-500 text-white' : state === 'fixing' ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-2">
-      <div className={`pointer-events-auto flex max-w-[92%] items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold shadow-lg ${tone}`} role="status" aria-live="polite" title={errors.map(describeRuntimeError).join('\n')}>
-        {state === 'observing' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("Verifico l’app in esecuzione…")}</>}
-        {state === 'fixing' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("Correggo gli errori trovati (tentativo")} {Math.max(1, attempt)}/{maxAttempts})…</>}
-        {state === 'clean' && <><Check className="h-3.5 w-3.5" /> {tl("Anteprima avviata senza errori rilevati")}</>}
-        {state === 'unverified' && <span>{tl('Anteprima non verificata: avvio non confermato.')}</span>}
-        {state === 'failed' && (
-          <>
-            <X className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{tl("Restano")} {errors.length} errori: {errors[0] ? describeRuntimeError(errors[0]) : ''}</span>
-            <button type="button" onClick={onRetry} className="shrink-0 rounded-full bg-white/25 px-2 py-0.5 font-bold hover:bg-white/40">{tl("Riprova")}</button>
-            <button type="button" onClick={onDismiss} className="shrink-0 rounded-full p-0.5 hover:bg-white/25" aria-label={tl("Chiudi")}><X className="h-3 w-3" /></button>
-          </>
-        )}
-      </div>
-    </div>
-  )
+      <div className={`pointer-events-auto flex max-w-[92%] items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold shadow-lg ${tone}`} role="status"aria-live="polite"title={errors.map(describeRuntimeError).join('\n')}>
+ {state === 'observing'&& <><Loader2 className="h-3.5 w-3.5 animate-spin"/> {tl("Verifico l’app in esecuzione…")}</>}
+ {state === 'fixing'&& <><Loader2 className="h-3.5 w-3.5 animate-spin"/> {tl("Correggo gli errori trovati (tentativo")} {Math.max(1, attempt)}/{maxAttempts})…</>}
+ {state === 'clean'&& <><Check className="h-3.5 w-3.5"/> {tl("Anteprima avviata senza errori rilevati")}</>}
+ {state === 'unverified'&& <span>{tl('Anteprima non verificata: avvio non confermato.')}</span>}
+ {state === 'failed'&& (
+ <>
+ <X className="h-3.5 w-3.5 shrink-0"/>
+ <span className="truncate">{tl("Restano")} {errors.length} errori: {errors[0] ? describeRuntimeError(errors[0]) : ''}</span>
+ <button type="button"onClick={onRetry} className="shrink-0 rounded-full bg-white/25 px-2 py-0.5 font-semibold hover:bg-white/40">{tl("Riprova")}</button>
+ <button type="button"onClick={onDismiss} className="shrink-0 rounded-full p-0.5 hover:bg-white/25"aria-label={tl("Chiudi")}><X className="h-3 w-3"/></button>
+ </>
+ )}
+ </div>
+ </div>
+ )
 }
 
 function LiveGenerationPanel({
-  status,
-  reasoning,
-  thinking = '',
-  quality = null,
-  plan,
-  files,
-  mode,
-  onStop,
+ status,
+ reasoning,
+ thinking = '',
+ quality = null,
+ plan,
+ files,
+ mode,
+ onStop,
 }: {
-  status: string
-  reasoning: string
-  thinking?: string
-  quality?: LiveQuality | null
-  plan: { path: string; purpose: string }[]
-  files: LiveFile[]
-  mode: 'build' | 'fix' | 'refine'
-  onStop: () => void
+ status: string
+ reasoning: string
+ thinking?: string
+ quality?: LiveQuality | null
+ plan: { path: string; purpose: string }[]
+ files: LiveFile[]
+ mode: 'build'| 'fix'| 'refine'
+ onStop: () => void
 }) {
-  const reasoningRef = useRef<HTMLDivElement>(null)
-  const thinkingRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    reasoningRef.current?.scrollTo({ top: reasoningRef.current.scrollHeight })
-  }, [reasoning])
-  useEffect(() => {
-    thinkingRef.current?.scrollTo({ top: thinkingRef.current.scrollHeight })
-  }, [thinking])
+ const reasoningRef = useRef<HTMLDivElement>(null)
+ const thinkingRef = useRef<HTMLDivElement>(null)
+ useEffect(() => {
+ reasoningRef.current?.scrollTo({ top: reasoningRef.current.scrollHeight })
+ }, [reasoning])
+ useEffect(() => {
+ thinkingRef.current?.scrollTo({ top: thinkingRef.current.scrollHeight })
+ }, [thinking])
 
-  const doneCount = files.filter((file) => file.status === 'done').length
-  const writingCount = files.filter((file) => file.status === 'writing').length
+ const doneCount = files.filter((file) => file.status === 'done').length
+ const writingCount = files.filter((file) => file.status === 'writing').length
 
-  return (
-    <div className="space-y-2">
-      <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold leading-5 text-indigo-900" role="status" aria-live="polite">
-        <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" />
-        <span className="min-w-0 flex-1">{status || tl("Avvio della generazione…")}</span>
-        <button type="button" onClick={onStop} className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50">Stop</button>
-      </div>
-      <div className="rounded-2xl border border-amber-300/55 bg-amber-50/85 p-3 shadow-sm ring-1 ring-amber-100/80">
-        <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-800">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          {mode === 'refine' ? tl("Revisore") : mode === 'fix' ? tl("Verificatore") : reasoning || thinking ? tl("Architetto") : tl("Sto progettando la struttura...")}
-        </div>
-        {thinking && !reasoning && (
-          <div ref={thinkingRef} className="mb-2 max-h-28 overflow-y-auto whitespace-pre-wrap rounded-xl border border-amber-200/80 bg-white/[0.6] p-2.5 font-mono text-[11px] leading-4 text-slate-600" aria-label={tl("Ragionamento dell'architetto")}>
-            {thinking}
-          </div>
-        )}
-        {reasoning && (
-          <div ref={reasoningRef} className="h-48 overflow-y-auto rounded-xl border border-amber-200/80 bg-white/[0.82] p-3 text-slate-800">
-            <ReasoningMarkdown>{reasoning}</ReasoningMarkdown>
-          </div>
-        )}
-      </div>
+ return (
+ <div className="space-y-2">
+ <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold leading-5 text-indigo-900"role="status"aria-live="polite">
+ <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin"/>
+ <span className="min-w-0 flex-1">{status || tl("Avvio della generazione…")}</span>
+ <button type="button"onClick={onStop} className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50">Stop</button>
+ </div>
+ <div className="rounded-2xl border border-amber-300/55 bg-amber-50/85 p-3 shadow-sm ring-1 ring-amber-100/80">
+ <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-amber-800">
+ <Loader2 className="h-3.5 w-3.5 animate-spin"/>
+ {mode === 'refine'? tl("Revisore") : mode === 'fix'? tl("Verificatore") : reasoning || thinking ? tl("Architetto") : tl("Sto progettando la struttura...")}
+ </div>
+ {thinking && !reasoning && (
+ <div ref={thinkingRef} className="mb-2 max-h-28 overflow-y-auto whitespace-pre-wrap rounded-xl border border-amber-200/80 bg-white/[0.6] p-2.5 font-mono text-[11px] leading-4 text-slate-600"aria-label={tl("Ragionamento dell'architetto")}>
+ {thinking}
+ </div>
+ )}
+ {reasoning && (
+ <div ref={reasoningRef} className="h-48 overflow-y-auto rounded-xl border border-amber-200/80 bg-white/[0.82] p-3 text-slate-800">
+ <ReasoningMarkdown>{reasoning}</ReasoningMarkdown>
+ </div>
+ )}
+ </div>
 
-      {quality && (
-        <div className="rounded-2xl border border-emerald-300/60 bg-emerald-50/90 p-3 shadow-sm ring-1 ring-emerald-100/80" role="status" aria-live="polite">
-          <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wide text-emerald-800">
-            <span>{tl("Controllo qualità")} · {tl("giro")} {quality.round}/{quality.rounds}</span>
-            <span className="text-base">{quality.overall}<span className="text-[10px] font-bold">/100</span></span>
-          </div>
-          <div className="flex gap-3">
-            {quality.screenshot && <img src={quality.screenshot} alt="" className="hidden h-24 w-32 shrink-0 rounded-lg object-cover object-top ring-1 ring-emerald-200 sm:block" />}
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
-                {quality.counts.blocker + quality.counts.major > 0
-                  ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-700">{quality.counts.blocker + quality.counts.major} {tl("gravi")}</span>
-                  : <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">{tl("nessun difetto grave")}</span>}
-                {quality.counts.minor > 0 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{quality.counts.minor} {tl("lievi")}</span>}
-                {quality.visual != null && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-violet-700">{tl("aspetto")} {quality.visual}</span>}
-                {quality.css && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">CSS {quality.css}</span>}
-              </div>
-              {quality.verdict && <p className="text-[11px] leading-snug text-slate-700">{quality.verdict}</p>}
-              <ul className="space-y-0.5 text-[11px] leading-snug text-slate-600">
-                {quality.defects.slice(0, 4).map((defect, index) => (
-                  <li key={index} className="flex gap-1.5"><span className={defect.severity === 'minor' ? 'text-slate-400' : 'text-rose-500'}>●</span><span className="min-w-0 break-words">{defect.message}</span></li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
+ {quality && (
+ <div className="rounded-2xl border border-emerald-300/60 bg-emerald-50/90 p-3 shadow-sm ring-1 ring-emerald-100/80"role="status"aria-live="polite">
+ <div className="mb-2 flex items-center justify-between text-xs font-semibold text-emerald-800">
+ <span>{tl("Controllo qualità")} · {tl("giro")} {quality.round}/{quality.rounds}</span>
+ <span className="text-base">{quality.overall}<span className="text-[10px] font-semibold">/100</span></span>
+ </div>
+ <div className="flex gap-3">
+ {quality.screenshot && <img src={quality.screenshot} alt=""className="hidden h-24 w-32 shrink-0 rounded-lg object-cover object-top ring-1 ring-emerald-200 sm:block"/>}
+ <div className="min-w-0 flex-1 space-y-1.5">
+ <div className="flex flex-wrap gap-1.5 text-[10px] font-semibold">
+ {quality.counts.blocker + quality.counts.major > 0
+ ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-700">{quality.counts.blocker + quality.counts.major} {tl("gravi")}</span>
+ : <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">{tl("nessun difetto grave")}</span>}
+ {quality.counts.minor > 0 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{quality.counts.minor} {tl("lievi")}</span>}
+ {quality.visual != null && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-violet-700">{tl("aspetto")} {quality.visual}</span>}
+ {quality.css && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">CSS {quality.css}</span>}
+ </div>
+ {quality.verdict && <p className="text-[11px] leading-snug text-slate-700">{quality.verdict}</p>}
+ <ul className="space-y-0.5 text-[11px] leading-snug text-slate-600">
+ {quality.defects.slice(0, 4).map((defect, index) => (
+ <li key={index} className="flex gap-1.5"><span className={defect.severity === 'minor'? 'text-slate-400': 'text-rose-500'}>●</span><span className="min-w-0 break-words">{defect.message}</span></li>
+ ))}
+ </ul>
+ </div>
+ </div>
+ </div>
+ )}
 
-      {files.length > 0 && (
-        <div className="rounded-2xl border border-sky-300/60 bg-sky-50/90 p-3 shadow-sm ring-1 ring-sky-100/80">
-          <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wide text-sky-700">
-            <span>{mode === 'fix' ? tl("Correzioni") : tl("Piano di lavoro")}</span>
-            <span>{writingCount > 0 ? `${writingCount} ${tl("in scrittura")} · ` : ''}{doneCount}/{files.length} {tl("file")}</span>
+ {files.length > 0 && (
+ <div className="rounded-2xl border border-sky-300/60 bg-sky-50/90 p-3 shadow-sm ring-1 ring-sky-100/80">
+ <div className="mb-2 flex items-center justify-between text-xs font-semibold text-sky-700">
+ <span>{mode === 'fix'? tl("Correzioni") : tl("Piano di lavoro")}</span>
+ <span>{writingCount > 0 ?`${writingCount} ${tl("in scrittura")} · ` : ''}{doneCount}/{files.length} {tl("file")}</span>
           </div>
           <div className="h-36 space-y-1 overflow-y-auto rounded-xl border border-sky-200/75 bg-white/[0.82] p-2 font-code">
             {files.map((file) => {
@@ -3937,7 +3946,7 @@ function LiveGenerationPanel({
                     <span className="block truncate">{file.path}</span>
                     {purpose && <span className="block truncate font-sans text-[11px] text-slate-500">{purpose}</span>}
                   </span>
-                  <span className="shrink-0 text-xs font-bold text-sky-700">{file.op === 'patch' ? tl("modifica") : file.op === 'delete' ? tl("eliminato") : `${file.lines} ln`}</span>
+                  <span className="shrink-0 text-xs font-semibold text-sky-700">{file.op === 'patch' ? tl("modifica") : file.op === 'delete' ? tl("eliminato") : `${file.lines} ln`}</span>
                 </div>
               )
             })}
@@ -3971,7 +3980,7 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
         : { border: 'border-[color:var(--border-subtle)] bg-[var(--surface-muted)]', label: 'text-[color:var(--text-secondary)]', text: 'text-[color:var(--text-primary)]', inner: 'border-white/70 bg-white/70' }
     return (
       <div className={`rounded-xl border px-3 py-2.5 shadow-sm ${tone.border}`}>
-        <div className={`mb-1.5 text-xs font-black uppercase tracking-wide ${tone.label}`}>
+        <div className={`mb-1.5 text-xs font-semibold uppercase tracking-wide ${tone.label}`}>
           {label}
         </div>
         {isReasoning ? (
@@ -3990,7 +3999,7 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
                 key={file.path}
                 type="button"
                 onClick={() => onShowFileDiff(String(file.path))}
-                className="rounded-full border border-[rgba(62,169,244,0.24)] bg-white/75 px-2 py-1 text-xs font-bold text-[var(--logo-blue-strong)] hover:border-[rgba(62,169,244,0.42)]"
+                className="rounded-full border border-[rgba(62,169,244,0.24)] bg-white/75 px-2 py-1 text-xs font-semibold text-[var(--logo-blue-strong)] hover:border-[rgba(62,169,244,0.42)]"
                 title={tl("Mostra modifiche (rosso = prima, celeste = dopo)")}
               >
                 {file.path} · {file.lines} righe
@@ -4009,7 +4018,7 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
           ? 'coding-user-bubble rounded-br-md text-[var(--logo-blue-strong)]'
           : 'rounded-bl-md border border-[color:var(--border-subtle)] bg-white text-[color:var(--text-primary)]'
       }`}>
-        <div className={`mb-1 text-[11px] font-black uppercase tracking-wide ${isUser ? 'text-[var(--logo-blue-strong)]/70' : 'text-[color:var(--text-secondary)]'}`}>
+        <div className={`mb-1 text-[11px] font-semibold uppercase tracking-wide ${isUser ? 'text-[var(--logo-blue-strong)]/70' : 'text-[color:var(--text-secondary)]'}`}>
           {label}
         </div>
         {Array.isArray(item.metadata_json?.attachments) && item.metadata_json.attachments.length > 0 && (
@@ -4432,251 +4441,251 @@ function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, c
 }
 
 function GeneratedDescriptionPreview({ file }: { file: GeneratedFile }) {
-  const lineCount = file.content.split('\n').length
-  return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-900">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-3 py-2">
-        <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-100">
-          {tl("markdown generato ·")} {lineCount} ln
-        </span>
-        <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-          {tl("Compilato dal prompt")}
-        </span>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        <div className="mb-3 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold leading-relaxed text-emerald-50">
-          {tl("Questo documento si aggiorna automaticamente dal prompt e dalle risposte alle domande. Per cambiare il progetto, usa il prompt a sinistra.")}
-        </div>
-        <div className="rounded-lg border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100">
-          <ReasoningMarkdown dark>{file.content}</ReasoningMarkdown>
-        </div>
-      </div>
-    </div>
-  )
+ const lineCount = file.content.split('\n').length
+ return (
+ <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-900">
+ <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-3 py-2">
+ <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-100">
+ {tl("markdown generato ·")} {lineCount} ln
+ </span>
+ <span className="truncate text-[10px] font-semibold text-slate-500">
+ {tl("Compilato dal prompt")}
+ </span>
+ </div>
+ <div className="min-h-0 flex-1 overflow-auto p-4">
+ <div className="mb-3 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold leading-relaxed text-emerald-50">
+ {tl("Questo documento si aggiorna automaticamente dal prompt e dalle risposte alle domande. Per cambiare il progetto, usa il prompt a sinistra.")}
+ </div>
+ <div className="rounded-lg border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100">
+ <ReasoningMarkdown dark>{file.content}</ReasoningMarkdown>
+ </div>
+ </div>
+ </div>
+ )
 }
 
 function HighlightedCodeEditor({ file, onChange, live = false }: { file: GeneratedFile; onChange: (content: string) => void; live?: boolean }) {
-  const language = languageForFile(file)
-  const editorRef = useRef<ReactCodeMirrorRef>(null)
-  // While an agent writes the file, keep its newest lines in view.
-  useEffect(() => {
-    const scroller = live ? editorRef.current?.view?.scrollDOM : null
-    if (scroller) scroller.scrollTop = scroller.scrollHeight
-  }, [file.content, live])
-  const lineCount = file.content.split('\n').length
-  const extensions = useMemo(() => [
-    ...getEditorExtensions('p5js', 'dark', 'jetbrains', editorKeymap(() => undefined), 450),
-    EditorView.theme({
-      '&': { height: '100%' },
-      '.cm-editor': { height: '100%' },
-      '.cm-scroller': { minHeight: '100%', overflow: 'auto' },
-      '.cm-content': {
-        minHeight: '100%',
-        padding: '14px 0',
-      },
-      '.cm-line': {
-        padding: '0 14px',
-      },
-    }),
-  ], [])
+ const language = languageForFile(file)
+ const editorRef = useRef<ReactCodeMirrorRef>(null)
+ // While an agent writes the file, keep its newest lines in view.
+ useEffect(() => {
+ const scroller = live ? editorRef.current?.view?.scrollDOM : null
+ if (scroller) scroller.scrollTop = scroller.scrollHeight
+ }, [file.content, live])
+ const lineCount = file.content.split('\n').length
+ const extensions = useMemo(() => [
+ ...getEditorExtensions('p5js', 'dark', 'jetbrains', editorKeymap(() => undefined), 450),
+ EditorView.theme({
+ '&': { height: '100%'},
+ '.cm-editor': { height: '100%'},
+ '.cm-scroller': { minHeight: '100%', overflow: 'auto'},
+ '.cm-content': {
+ minHeight: '100%',
+ padding: '14px 0',
+ },
+ '.cm-line': {
+ padding: '0 14px',
+ },
+ }),
+ ], [])
 
-  return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-900">
-      <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-slate-900 px-3 py-2">
-        <span className="rounded-full border border-sky-400/30 bg-sky-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-100">
-          {language} · {lineCount} ln
-        </span>
-        {live ? (
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
-            <Loader2 className="h-3 w-3 animate-spin" /> {tl("In scrittura")}
-          </span>
-        ) : (
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">CodeMirror</span>
-        )}
-      </div>
-      <CodeMirror
-        ref={editorRef}
-        value={file.content}
-        onChange={live ? undefined : onChange}
-        editable={!live}
-        extensions={extensions}
-        height="100%"
-        basicSetup={{
-          lineNumbers: true,
-          highlightActiveLineGutter: true,
-          highlightSpecialChars: true,
-          foldGutter: false,
-          drawSelection: true,
-          dropCursor: true,
-          allowMultipleSelections: true,
-          indentOnInput: true,
-          syntaxHighlighting: false,
-          bracketMatching: true,
-          closeBrackets: true,
-          autocompletion: true,
-          rectangularSelection: true,
-          crosshairCursor: false,
-          highlightActiveLine: true,
-          highlightSelectionMatches: true,
-          closeBracketsKeymap: true,
-          defaultKeymap: true,
-          searchKeymap: true,
-          historyKeymap: true,
-          foldKeymap: false,
-          completionKeymap: true,
-          lintKeymap: false,
-        }}
-        className="min-h-0 flex-1 text-[13px]"
-        aria-label={tl("Modifica {0}", file.path)}
-      />
-    </div>
-  )
+ return (
+ <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-900">
+ <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-slate-900 px-3 py-2">
+ <span className="rounded-full border border-sky-400/30 bg-sky-400/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-sky-100">
+ {language} · {lineCount} ln
+ </span>
+ {live ? (
+ <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300">
+ <Loader2 className="h-3 w-3 animate-spin"/> {tl("In scrittura")}
+ </span>
+ ) : (
+ <span className="text-[10px] font-semibold text-slate-500">CodeMirror</span>
+ )}
+ </div>
+ <CodeMirror
+ ref={editorRef}
+ value={file.content}
+ onChange={live ? undefined : onChange}
+ editable={!live}
+ extensions={extensions}
+ height="100%"
+ basicSetup={{
+ lineNumbers: true,
+ highlightActiveLineGutter: true,
+ highlightSpecialChars: true,
+ foldGutter: false,
+ drawSelection: true,
+ dropCursor: true,
+ allowMultipleSelections: true,
+ indentOnInput: true,
+ syntaxHighlighting: false,
+ bracketMatching: true,
+ closeBrackets: true,
+ autocompletion: true,
+ rectangularSelection: true,
+ crosshairCursor: false,
+ highlightActiveLine: true,
+ highlightSelectionMatches: true,
+ closeBracketsKeymap: true,
+ defaultKeymap: true,
+ searchKeymap: true,
+ historyKeymap: true,
+ foldKeymap: false,
+ completionKeymap: true,
+ lintKeymap: false,
+ }}
+ className="min-h-0 flex-1 text-[13px]"
+ aria-label={tl("Modifica {0}", file.path)}
+ />
+ </div>
+ )
 }
 
 function languageForFile(file: GeneratedFile) {
-  const language = (file.language || '').toLowerCase()
-  if (language === 'javascript' || language === 'js') return 'javascript'
-  if (language === 'typescript' || language === 'ts') return 'typescript'
-  if (language === 'css') return 'css'
-  if (language === 'html' || language === 'markup') return 'markup'
-  if (language === 'json') return 'json'
-  if (file.path.endsWith('.js')) return 'javascript'
-  if (file.path.endsWith('.ts')) return 'typescript'
-  if (file.path.endsWith('.css')) return 'css'
-  if (file.path.endsWith('.html')) return 'markup'
-  if (file.path.endsWith('.json')) return 'json'
-  return 'text'
+ const language = (file.language || '').toLowerCase()
+ if (language === 'javascript'|| language === 'js') return 'javascript'
+ if (language === 'typescript'|| language === 'ts') return 'typescript'
+ if (language === 'css') return 'css'
+ if (language === 'html'|| language === 'markup') return 'markup'
+ if (language === 'json') return 'json'
+ if (file.path.endsWith('.js')) return 'javascript'
+ if (file.path.endsWith('.ts')) return 'typescript'
+ if (file.path.endsWith('.css')) return 'css'
+ if (file.path.endsWith('.html')) return 'markup'
+ if (file.path.endsWith('.json')) return 'json'
+ return 'text'
 }
 
 type DiffRow =
-  | { collapsed: true; count: number }
-  | { collapsed?: false; type: 'same' | 'add' | 'del'; text: string }
+ | { collapsed: true; count: number }
+ | { collapsed?: false; type: 'same'| 'add'| 'del'; text: string }
 
 // Line-level diff (LCS) between the previous and latest version of a file.
-function computeLineDiff(oldText: string, newText: string): { type: 'same' | 'add' | 'del'; text: string }[] {
-  const a = oldText.split('\n')
-  const b = newText.split('\n')
-  const n = a.length
-  const m = b.length
-  // Guard against pathological O(n*m) blow-ups on very large files.
-  if (n > 2000 || m > 2000) {
-    return [
-      ...a.map((text) => ({ type: 'del' as const, text })),
-      ...b.map((text) => ({ type: 'add' as const, text })),
-    ]
-  }
-  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
-    }
-  }
-  const out: { type: 'same' | 'add' | 'del'; text: string }[] = []
-  let i = 0
-  let j = 0
-  while (i < n && j < m) {
-    if (a[i] === b[j]) {
-      out.push({ type: 'same', text: a[i] })
-      i++
-      j++
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      out.push({ type: 'del', text: a[i] })
-      i++
-    } else {
-      out.push({ type: 'add', text: b[j] })
-      j++
-    }
-  }
-  while (i < n) out.push({ type: 'del', text: a[i++] })
-  while (j < m) out.push({ type: 'add', text: b[j++] })
-  return out
+function computeLineDiff(oldText: string, newText: string): { type: 'same'| 'add'| 'del'; text: string }[] {
+ const a = oldText.split('\n')
+ const b = newText.split('\n')
+ const n = a.length
+ const m = b.length
+ // Guard against pathological O(n*m) blow-ups on very large files.
+ if (n > 2000 || m > 2000) {
+ return [
+ ...a.map((text) => ({ type: 'del'as const, text })),
+ ...b.map((text) => ({ type: 'add'as const, text })),
+ ]
+ }
+ const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
+ for (let i = n - 1; i >= 0; i--) {
+ for (let j = m - 1; j >= 0; j--) {
+ dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+ }
+ }
+ const out: { type: 'same'| 'add'| 'del'; text: string }[] = []
+ let i = 0
+ let j = 0
+ while (i < n && j < m) {
+ if (a[i] === b[j]) {
+ out.push({ type: 'same', text: a[i] })
+ i++
+ j++
+ } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+ out.push({ type: 'del', text: a[i] })
+ i++
+ } else {
+ out.push({ type: 'add', text: b[j] })
+ j++
+ }
+ }
+ while (i < n) out.push({ type: 'del', text: a[i++] })
+ while (j < m) out.push({ type: 'add', text: b[j++] })
+ return out
 }
 
 // Collapse long runs of unchanged lines, keeping a few lines of context around each change.
 function buildDiffRows(oldText: string, newText: string): DiffRow[] {
-  const diff = computeLineDiff(oldText, newText)
-  const CONTEXT = 3
-  const keep = new Array(diff.length).fill(false)
-  diff.forEach((entry, index) => {
-    if (entry.type !== 'same') {
-      for (let k = Math.max(0, index - CONTEXT); k <= Math.min(diff.length - 1, index + CONTEXT); k++) keep[k] = true
-    }
-  })
-  const rows: DiffRow[] = []
-  let i = 0
-  while (i < diff.length) {
-    if (diff[i].type === 'same' && !keep[i]) {
-      let count = 0
-      while (i < diff.length && diff[i].type === 'same' && !keep[i]) {
-        count++
-        i++
-      }
-      rows.push({ collapsed: true, count })
-    } else {
-      rows.push({ type: diff[i].type, text: diff[i].text })
-      i++
-    }
-  }
-  return rows
+ const diff = computeLineDiff(oldText, newText)
+ const CONTEXT = 3
+ const keep = new Array(diff.length).fill(false)
+ diff.forEach((entry, index) => {
+ if (entry.type !== 'same') {
+ for (let k = Math.max(0, index - CONTEXT); k <= Math.min(diff.length - 1, index + CONTEXT); k++) keep[k] = true
+ }
+ })
+ const rows: DiffRow[] = []
+ let i = 0
+ while (i < diff.length) {
+ if (diff[i].type === 'same'&& !keep[i]) {
+ let count = 0
+ while (i < diff.length && diff[i].type === 'same'&& !keep[i]) {
+ count++
+ i++
+ }
+ rows.push({ collapsed: true, count })
+ } else {
+ rows.push({ type: diff[i].type, text: diff[i].text })
+ i++
+ }
+ }
+ return rows
 }
 
 function DiffViewer({
-  path,
-  oldContent,
-  newContent,
-  onClose,
-  onOpenInEditor,
+ path,
+ oldContent,
+ newContent,
+ onClose,
+ onOpenInEditor,
 }: {
-  path: string
-  oldContent: string
-  newContent: string
-  onClose: () => void
-  onOpenInEditor: () => void
+ path: string
+ oldContent: string
+ newContent: string
+ onClose: () => void
+ onOpenInEditor: () => void
 }) {
-  const rows = useMemo(() => buildDiffRows(oldContent, newContent), [oldContent, newContent])
-  const hasChanges = rows.some((row) => !row.collapsed && row.type !== 'same')
+ const rows = useMemo(() => buildDiffRows(oldContent, newContent), [oldContent, newContent])
+ const hasChanges = rows.some((row) => !row.collapsed && row.type !== 'same')
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/50 p-4 backdrop-blur-sm">
-      <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-4">
-          <div className="flex min-w-0 items-center gap-2 text-sm font-bold text-slate-900">
-            <FileCode2 className="h-4 w-4 shrink-0" />
-            <span className="truncate">{path}</span>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Button
-              type="button"
-              onClick={onOpenInEditor}
-              variant="outline"
-              density="compact"
-              className="text-xs font-bold"
-            >
-              {tl("Apri nel codice")}
-            </Button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-              title={tl("Chiudi")}
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </header>
-        <div className="min-h-0 flex-1 overflow-auto bg-neutral-900 py-2 font-mono text-[12px] leading-relaxed">
-          {!hasChanges && (
-            <div className="px-4 py-6 text-center text-xs text-slate-400">{tl("Nessuna differenza rispetto alla versione precedente.")}</div>
-          )}
-          {rows.map((row, index) =>
-            row.collapsed ? (
-              <div key={index} className="px-3 py-1 text-center text-[10px] text-slate-500">
-                ··· {row.count} {tl("righe invariate ···")}
-              </div>
-            ) : (
-              <div
-                key={index}
-                className={`flex ${row.type === 'add' ? 'bg-sky-500/15' : row.type === 'del' ? 'bg-rose-500/15' : ''}`}
+ return (
+ <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/50 p-4 backdrop-blur-sm">
+ <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+ <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-4">
+ <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-900">
+ <FileCode2 className="h-4 w-4 shrink-0"/>
+ <span className="truncate">{path}</span>
+ </div>
+ <div className="flex shrink-0 items-center gap-2">
+ <Button
+ type="button"
+ onClick={onOpenInEditor}
+ variant="outline"
+ density="compact"
+ className="text-xs font-semibold"
+ >
+ {tl("Apri nel codice")}
+ </Button>
+ <button
+ type="button"
+ onClick={onClose}
+ className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+ title={tl("Chiudi")}
+ >
+ <X className="h-5 w-5"/>
+ </button>
+ </div>
+ </header>
+ <div className="min-h-0 flex-1 overflow-auto bg-neutral-900 py-2 font-mono text-[12px] leading-relaxed">
+ {!hasChanges && (
+ <div className="px-4 py-6 text-center text-xs text-slate-400">{tl("Nessuna differenza rispetto alla versione precedente.")}</div>
+ )}
+ {rows.map((row, index) =>
+ row.collapsed ? (
+ <div key={index} className="px-3 py-1 text-center text-[10px] text-slate-500">
+ ··· {row.count} {tl("righe invariate ···")}
+ </div>
+ ) : (
+ <div
+ key={index}
+ className={`flex ${row.type === 'add' ? 'bg-sky-500/15' : row.type === 'del' ? 'bg-rose-500/15' : ''}`}
               >
                 <span
                   className={`w-5 shrink-0 select-none text-center ${row.type === 'add' ? 'text-sky-400' : row.type === 'del' ? 'text-rose-400' : 'text-slate-600'}`}
@@ -4740,7 +4749,7 @@ function CodingToolbarIconButton({
       disabled={disabled}
       title={title || label}
       aria-label={title || label}
-      className={`group inline-flex h-8 min-w-8 shrink-0 items-center justify-center overflow-hidden rounded-[var(--selection-radius)] text-xs font-bold transition-[max-width,padding,background-color,color,box-shadow] duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,169,244,0.45)] ${
+      className={`group inline-flex h-8 min-w-8 shrink-0 items-center justify-center overflow-hidden rounded-[var(--selection-radius)] text-xs font-semibold transition-[max-width,padding,background-color,color,box-shadow] duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,169,244,0.45)] ${
         active
           ? `max-w-[11rem] px-3 ${activeClasses}`
           : `max-w-8 px-0 hover:max-w-[11rem] hover:px-3 focus-visible:max-w-[11rem] focus-visible:px-3 ${toneClasses}`
@@ -4777,7 +4786,7 @@ function PanelHeader({
     <div className={`flex h-12 items-center gap-2 border-b ${compact ? 'justify-center px-2' : 'justify-between px-4'} ${dark ? 'border-white/10 bg-slate-900 text-white' : 'border-slate-100 bg-white text-slate-900'}`}>
       <div className={`flex min-w-0 items-center gap-2 ${compact ? 'sr-only' : ''}`}>
         <Icon className="h-4 w-4" />
-        <h2 className="truncate text-sm font-bold">{title}</h2>
+        <h2 className="truncate text-sm font-semibold">{title}</h2>
       </div>
       {action}
     </div>

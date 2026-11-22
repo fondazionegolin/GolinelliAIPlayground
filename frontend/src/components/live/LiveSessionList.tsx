@@ -152,7 +152,7 @@ function StatusBadge({ item }: { item: LiveSessionItem }) {
   const label = active ? tl("In corso") : lobby ? tl("Lobby aperta") : closed ? tl("Conclusa") : tl("Bozza")
   const style = active ? 'bg-emerald-500 text-white' : lobby ? 'bg-amber-500 text-white' : closed ? 'bg-[var(--ds-field-bg)] text-[var(--text-secondary)]' : 'bg-amber-400/20 text-amber-600'
   return (
-    <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${style}`}>
+    <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${style}`}>
       {(active || lobby) && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}{label}
     </span>
   )
@@ -174,13 +174,13 @@ function Card({ item, actions, onOpen }: { item: LiveSessionItem; actions: Actio
         <div className="relative aspect-video overflow-hidden" style={{ background: `linear-gradient(135deg, ${color} 0%, ${color}b3 55%, ${color}66 100%)` }}>
           <Icon className="absolute -bottom-6 -right-4 h-36 w-36 text-white/20" strokeWidth={1.2} aria-hidden />
           <span className="ds-squircle absolute bottom-4 left-4 flex h-12 w-12 items-center justify-center bg-white/20 text-white" aria-hidden><Icon className="h-6 w-6" strokeWidth={1.7} /></span>
-          <span className={`absolute left-3 top-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold text-white ${active ? 'bg-emerald-600' : 'bg-black/55'}`}>
+          <span className={`absolute left-3 top-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold text-white ${active ? 'bg-emerald-600' : 'bg-black/55'}`}>
             {active && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}
             {item.status === 'ACTIVE' ? tl("In corso") : isOpenLobby(item) ? tl("Lobby aperta") : item.status === 'CLOSED' ? tl("Conclusa") : tl("Bozza")}
           </span>
         </div>
         <div className="px-4 pb-4 pt-3">
-          <h2 className="line-clamp-1 text-sm font-black text-[var(--text-primary)]" title={item.title}>{item.title}</h2>
+          <h2 className="line-clamp-1 text-sm font-semibold text-[var(--text-primary)]" title={item.title}>{item.title}</h2>
           <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-xs leading-5 text-[var(--text-secondary)]">{summary(item)}</p>
           <p className="mt-2 text-[11px] text-[var(--text-secondary)] opacity-80">{isEscape(item) ? 'Escape Room' : label} · {unit(item)}</p>
         </div>
@@ -215,7 +215,7 @@ function PreviewDialog({ item, actions, onClose }: { item: LiveSessionItem; acti
         <div className="flex items-start justify-between gap-4 px-6 pb-3 pt-6">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2"><StatusBadge item={item} /><span className="text-xs text-[var(--text-secondary)]">{isEscape(item) ? 'Escape Room' : tl("Quiz")} · {unit(item)} · {date(item.created_at)}</span></div>
-            <h2 className="mt-1.5 break-words text-xl font-bold text-[var(--text-primary)]">{item.title}</h2>
+            <h2 className="mt-1.5 break-words text-xl font-semibold text-[var(--text-primary)]">{item.title}</h2>
           </div>
           <button type="button" onClick={onClose} aria-label={tl("Chiudi")} className="rounded-xl p-2 text-[var(--text-secondary)] hover:bg-black/5"><X className="h-5 w-5" /></button>
         </div>
@@ -229,7 +229,7 @@ function PreviewDialog({ item, actions, onClose }: { item: LiveSessionItem; acti
                   <button type="button" onClick={() => setIndex(position)} aria-current={safe === position}
                     className={`flex w-full items-center gap-2.5 rounded-2xl p-2 text-left text-xs transition ${safe === position ? 'bg-[var(--ds-well-tile)] shadow-sm' : 'hover:bg-[var(--ds-well-tile)]/50'}`}>
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-white" style={{ background: color }}><KindIcon className="h-3.5 w-3.5" /></span>
-                    <span className="min-w-0 flex-1"><span className="block font-bold text-[var(--text-secondary)]">{position + 1}</span><span className="line-clamp-2 font-semibold text-[var(--text-primary)]">{slideText(slide) || '…'}</span></span>
+                    <span className="min-w-0 flex-1"><span className="block font-semibold text-[var(--text-secondary)]">{position + 1}</span><span className="line-clamp-2 font-semibold text-[var(--text-primary)]">{slideText(slide) || '…'}</span></span>
                   </button>
                 </li>
               )
@@ -240,7 +240,7 @@ function PreviewDialog({ item, actions, onClose }: { item: LiveSessionItem; acti
           <div className="flex min-w-0 flex-col gap-3 rounded-3xl bg-[var(--ds-well)] p-4">
             <div className="min-h-[18rem] flex-1 [&>div]:min-h-[18rem]">{current && <LiveSlidePreview slide={current} escape={isEscape(item)} />}</div>
             {slides.length > 1 && (
-              <div className="flex items-center justify-center gap-3 text-xs font-bold text-[var(--text-secondary)]">
+              <div className="flex items-center justify-center gap-3 text-xs font-semibold text-[var(--text-secondary)]">
                 <button type="button" disabled={safe === 0} onClick={() => setIndex(safe - 1)} aria-label={tl("Slide precedente")} className="rounded-full p-1.5 hover:bg-black/5 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
                 {safe + 1} / {slides.length}
                 <button type="button" disabled={safe === slides.length - 1} onClick={() => setIndex(safe + 1)} aria-label={tl("Slide successiva")} className="rounded-full p-1.5 hover:bg-black/5 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
@@ -305,7 +305,7 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
         <div className="flex flex-wrap items-center gap-1" role="group" aria-label={tl("Filtra per stato")}>
           {chips.map(([id, label]) => (
             <button key={id} type="button" onClick={() => setStatus(id)} aria-pressed={status === id}
-              className={`rounded-full px-3.5 py-2 text-xs font-bold transition ${status === id ? 'ds-selected text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-black/5'}`}>
+              className={`rounded-full px-3.5 py-2 text-xs font-semibold transition ${status === id ? 'ds-selected text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-black/5'}`}>
               {label} <span className="opacity-60">{counts[id]}</span>
             </button>
           ))}
@@ -324,12 +324,12 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
         <div role="alert" className="flex flex-col gap-3 rounded-2xl bg-amber-500/15 p-4 sm:flex-row sm:items-center">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white"><Radio className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-[var(--text-primary)]">{pending.length === 1 ? tl("1 sessione è ancora attiva") : tl("{0} sessioni sono ancora attive", pending.length)}{tl(": gli studenti della classe la vedono.")}</p>
+            <p className="text-sm font-semibold text-[var(--text-primary)]">{pending.length === 1 ? tl("1 sessione è ancora attiva") : tl("{0} sessioni sono ancora attive", pending.length)}{tl(": gli studenti della classe la vedono.")}</p>
             <p className="truncate text-xs text-[var(--text-secondary)]">{pending.map(i => i.title).join(' · ')}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {pending.map(item => (
-              <button key={item.id} type="button" onClick={() => actions.onEnd(item)} className="flex items-center gap-1.5 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">
+              <button key={item.id} type="button" onClick={() => actions.onEnd(item)} className="flex items-center gap-1.5 rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">
                 <Square className="h-3.5 w-3.5" />{isOpenLobby(item) ? tl("Chiudi lobby") : tl("Concludi")}{pending.length > 1 ? ` «${item.title.length > 18 ? item.title.slice(0, 18) + '…' : item.title}»` : ''}
               </button>
             ))}
@@ -345,7 +345,7 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
         <div className="ds-well py-14 text-center text-[var(--text-secondary)]">
           <Zap className="mx-auto mb-2 h-8 w-8 opacity-40" />
           <p className="text-sm font-medium text-[var(--text-primary)]">{tl("Nessuna sessione corrisponde ai filtri")}</p>
-          <button type="button" onClick={() => { setQuery(''); setStatus('all'); setType('all') }} className="mt-2 text-xs font-bold text-[var(--app-accent,#7c3aed)] underline">{tl("Azzera i filtri")}</button>
+          <button type="button" onClick={() => { setQuery(''); setStatus('all'); setType('all') }} className="mt-2 text-xs font-semibold text-[var(--app-accent,#7c3aed)] underline">{tl("Azzera i filtri")}</button>
         </div>
       )}
 

@@ -133,7 +133,7 @@ export default function ToyLMEmbeddingPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <ScatterChart className="h-4 w-4 text-[var(--logo-violet)]" />
-          <span className="text-sm font-black">{tl("Spazio embedding")}</span>
+          <span className="text-sm font-semibold">{tl("Spazio embedding")}</span>
         </div>
         <Button tone="accent" surface={payload ? 'soft' : 'solid'} density="compact" disabled={!canLoad || isLoading} onClick={fetchEmbeddings}>
           <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -161,7 +161,7 @@ export default function ToyLMEmbeddingPanel({
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <label className="text-xs font-medium text-[var(--text-secondary)]">{tl("Zoom")}</label>
-                <span className="font-mono text-xs font-bold text-[var(--logo-violet)]">{zoom.toFixed(1)}x</span>
+                <span className="font-mono text-xs font-semibold text-[var(--logo-violet)]">{zoom.toFixed(1)}x</span>
               </div>
               <input
                 type="range"
@@ -211,7 +211,7 @@ export default function ToyLMEmbeddingPanel({
                         <text
                           x={point.sx + 8}
                           y={point.sy - 7}
-                          className={`pointer-events-none text-[11px] ${isSelected ? 'fill-slate-950 font-bold' : 'fill-slate-500'}`}
+                          className={`pointer-events-none text-[11px] ${isSelected ? 'fill-slate-950 font-semibold' : 'fill-slate-500'}`}
                         >
                           {tokenLabel(point.token)}
                         </text>
@@ -229,13 +229,13 @@ export default function ToyLMEmbeddingPanel({
             <div className="rounded-xl border border-[var(--border-subtle)] bg-white p-3">
               <div className="mb-2 flex items-center gap-2">
                 <Sigma className="h-3.5 w-3.5 text-[var(--logo-violet)]" />
-                <span className="text-xs font-black">{tl("Token selezionato")}</span>
+                <span className="text-xs font-semibold">{tl("Token selezionato")}</span>
               </div>
               {selectedToken ? (
                 <div className="space-y-3">
                   <div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="rounded-lg bg-[var(--logo-violet-10)] px-2 py-1 font-mono text-sm font-black text-[var(--logo-violet)]">
+                      <span className="rounded-lg bg-[var(--logo-violet-10)] px-2 py-1 font-mono text-sm font-semibold text-[var(--logo-violet)]">
                         {tokenLabel(selectedToken.token)}
                       </span>
                       <span className="font-mono text-[11px] text-[var(--text-muted)]">#{selectedToken.index}</span>
@@ -245,7 +245,7 @@ export default function ToyLMEmbeddingPanel({
                     </p>
                   </div>
                   <div>
-                    <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{tl("Vicini coseno")}</p>
+                    <p className="mb-1.5 text-[10px] font-semibold text-[var(--text-muted)]">{tl("Vicini coseno")}</p>
                     <div className="space-y-1">
                       {nearest.map(({ token, score }) => (
                         <button
@@ -254,7 +254,7 @@ export default function ToyLMEmbeddingPanel({
                           onClick={() => setSelectedIndex(token.index)}
                           className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left hover:bg-[var(--surface-elevated)]"
                         >
-                          <span className="font-mono text-xs font-bold text-[var(--text-primary)]">{tokenLabel(token.token)}</span>
+                          <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">{tokenLabel(token.token)}</span>
                           <span className="font-mono text-[10px] text-[var(--text-muted)]">{score.toFixed(3)}</span>
                         </button>
                       ))}

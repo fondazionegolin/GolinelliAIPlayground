@@ -334,7 +334,7 @@ export function StudentNavbar({
           </span>
           <button
             onClick={handleExitPreview}
-            className="ml-2 underline hover:no-underline font-bold"
+            className="ml-2 underline hover:no-underline font-semibold"
           >
             {subjectiveMode ? t('navbar.subjective_exit') : t('navbar.preview_exit')}
           </button>
@@ -355,7 +355,7 @@ export function StudentNavbar({
                 <button
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
-                  className="brand-beta-pill absolute -bottom-1 -right-2 rounded-full border-0 px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
+                  className="brand-beta-pill absolute -bottom-1 -right-2 rounded-full border-0 px-1.5 py-0.5 text-[6px] font-semibold leading-none tracking-[0.06em] shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
                   aria-label={tl("Scopri le novità della versione beta")}
                 >
                   BETA
@@ -418,9 +418,9 @@ export function StudentNavbar({
                     className="navbar-inline-control flex h-9 items-center gap-2 rounded-[var(--selection-radius)] px-2.5 md:px-3"
                     style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                   >
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
                     <div className="hidden text-left min-w-0 md:block">
-                      <span className="block max-w-[150px] truncate text-[11px] font-bold leading-tight text-[var(--student-accent-text)]">{sessionTitle}</span>
+                      <span className="block max-w-[150px] truncate text-[11px] font-semibold leading-tight text-[var(--student-accent-text)]">{sessionTitle}</span>
                     </div>
                     {joinCode && <SessionCodePill size="sm" code={joinCode} className="hidden sm:flex" />}
                   </div>
@@ -436,7 +436,7 @@ export function StudentNavbar({
                     <MessageSquare className="h-4 w-4 flex-shrink-0" />
                     {chatBadge > 0 ? (
                       <span
-                        className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white"
+                        className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white ring-2 ring-white"
                         style={{ backgroundColor: accentTheme.accent }}
                       >
                         {chatBadge > 9 ? '9+' : chatBadge}
@@ -485,7 +485,7 @@ export function StudentNavbar({
                     />
                   ) : (
                     <div
-                      className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-sm font-bold text-white transition-transform duration-200 group-hover:scale-110`}
+                      className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-sm font-semibold text-white transition-transform duration-200 group-hover:scale-110`}
                       style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
                     >
                       {getInitials()}
@@ -589,7 +589,7 @@ export function StudentNavbar({
                     <span className="relative">
                       <item.icon className="h-4 w-4" />
                       {getNavBadge(item.key) > 0 && (
-                        <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black leading-none text-white ring-2 ring-white">
+                        <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-white">
                           {getNavBadge(item.key) > 9 ? '9+' : getNavBadge(item.key)}
                         </span>
                       )}
@@ -633,7 +633,7 @@ export function StudentNavbar({
                 >
                   <Icon className="h-5 w-5" />
                   {getNavBadge(item.key) > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black leading-none text-white ring-2 ring-white">
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-white">
                       {getNavBadge(item.key) > 9 ? '9+' : getNavBadge(item.key)}
                     </span>
                   )}
@@ -731,7 +731,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-50 bg-slate-50/50">
-          <h2 className="text-lg font-bold text-slate-900">{t('navbar.settings_title')}</h2>
+          <h2 className="text-lg font-semibold text-slate-900">{t('navbar.settings_title')}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
             ✕
           </button>
@@ -772,7 +772,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
 
           {/* Nickname (read-only) */}
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Nickname</label>
+            <label className="block text-xs font-semibold text-slate-500 mb-1.5">Nickname</label>
             <input
               type="text"
               value={formData.nickname}
@@ -783,7 +783,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">{t('navbar.language_label')}</label>
+            <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t('navbar.language_label')}</label>
             <LanguageSwitcher variant="full" />
           </div>
 

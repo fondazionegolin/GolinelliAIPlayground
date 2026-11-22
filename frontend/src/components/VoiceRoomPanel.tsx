@@ -1010,7 +1010,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
         {/* Stage + controls */}
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-slate-950 text-white">
           {recordingState && (
-            <div className="pointer-events-none absolute bottom-20 left-1/2 z-10 -translate-x-1/2 rounded-full bg-red-600 px-3 py-1 text-xs font-bold tracking-wide shadow-lg">
+            <div className="pointer-events-none absolute bottom-20 left-1/2 z-10 -translate-x-1/2 rounded-full bg-red-600 px-3 py-1 text-xs font-semibold tracking-wide shadow-lg">
               ● REC {recordingLabel} · {tl("La chiamata è registrata")}
             </div>
           )}
@@ -1034,7 +1034,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                 </p>
                 {waitingHint && <p className="max-w-md text-sm text-white/60">{waitingHint}</p>}
                 {isModerator && (
-                  <button type="button" onClick={() => emitVoice('voice_room_start')} className="flex h-12 items-center gap-2 rounded-full bg-emerald-500 px-6 text-sm font-bold text-white hover:bg-emerald-600">
+                  <button type="button" onClick={() => emitVoice('voice_room_start')} className="flex h-12 items-center gap-2 rounded-full bg-emerald-500 px-6 text-sm font-semibold text-white hover:bg-emerald-600">
                     <Phone className="h-4 w-4" />{tl("Avvia la videochiamata")}
                   </button>
                 )}
@@ -1048,10 +1048,10 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                       {selectedTile.participantName} · {selectedTile.source === 'screen' ? tl("Schermo") : 'Video'}
                     </span>
                     {focusReason === 'spotlight' && (
-                      <span className="flex items-center gap-1 rounded-full bg-amber-400 px-2.5 py-1 text-[11px] font-bold text-slate-950"><Sparkles className="h-3.5 w-3.5" />{tl("In evidenza per tutti")}</span>
+                      <span className="flex items-center gap-1 rounded-full bg-amber-400 px-2.5 py-1 text-[11px] font-semibold text-slate-950"><Sparkles className="h-3.5 w-3.5" />{tl("In evidenza per tutti")}</span>
                     )}
                     {focusReason === 'pinned' && (
-                      <span className="flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-950"><Pin className="h-3.5 w-3.5" />{tl("Fissato da te")}</span>
+                      <span className="flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-950"><Pin className="h-3.5 w-3.5" />{tl("Fissato da te")}</span>
                     )}
                   </div>
                   <div className="absolute right-3 top-3 flex items-center gap-2">
@@ -1098,7 +1098,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                   const live = participant.role === 'teacher' || participant.active
                   return (
                     <div key={participant.id} className={`flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-2xl bg-white/5 ${participant.active ? 'ring-2 ring-emerald-400' : participant.queued ? 'ring-2 ring-amber-400' : ''}`}>
-                      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-2xl font-bold">
+                      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-2xl font-semibold">
                         {participantLabel(participant).slice(0, 1).toUpperCase()}
                       </span>
                       <span className="max-w-[90%] truncate text-sm font-semibold">{participantLabel(participant)}{participant.local ? ` (${tl("tu")})` : ''}</span>
@@ -1133,7 +1133,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                   {screenShareEnabled ? <ScreenShareOff className="h-5 w-5" /> : <ScreenShare className="h-5 w-5" />}
                 </button>
                 <button type="button" onClick={() => void updateVideoQuality(videoQuality === 'hi' ? 'low' : 'hi')} className={controlButton(false)} title={tl("Qualità video")}>
-                  <span className="text-xs font-bold">{videoQuality === 'hi' ? 'HD' : 'LOW'}</span>
+                  <span className="text-xs font-semibold">{videoQuality === 'hi' ? 'HD' : 'LOW'}</span>
                 </button>
               </>
             )}
@@ -1161,7 +1161,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
             <span className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
             <button type="button" onClick={() => setSideOpen((open) => !open)} className={controlButton(sideOpen)} title={sideOpen ? tl("Nascondi la chat") : tl("Mostra la chat")} aria-pressed={sideOpen}>
               <MessageSquare className="h-5 w-5" />
-              {queued.length > 0 && isModerator && <span className="rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-slate-950">{queued.length}</span>}
+              {queued.length > 0 && isModerator && <span className="rounded-full bg-amber-400 px-1.5 text-[10px] font-semibold text-slate-950">{queued.length}</span>}
             </button>
             {isModerator && isActive && (
               <button type="button" onClick={() => { if (window.confirm(tl("Terminare la videochiamata per tutti?"))) emitVoice('voice_room_end') }} className={controlButton(false, true)}>
@@ -1206,10 +1206,10 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                     <span className={`h-2 w-2 flex-shrink-0 rounded-full ${participant.role === 'teacher' || participant.active ? 'bg-emerald-500' : participant.queued ? 'bg-amber-400' : 'bg-slate-300'}`} />
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">{participantLabel(participant)}{participant.local ? ` (${tl("tu")})` : ''}</span>
                     {isModerator && participant.role === 'student' && participant.queued && (
-                      <button type="button" onClick={() => emitVoice('voice_grant_speaker', { student_id: participant.id })} className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-200">{tl("Dai parola")}</button>
+                      <button type="button" onClick={() => emitVoice('voice_grant_speaker', { student_id: participant.id })} className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-200">{tl("Dai parola")}</button>
                     )}
                     {isModerator && participant.role === 'student' && participant.active && (
-                      <button type="button" onClick={() => emitVoice('voice_revoke_speaker', { student_id: participant.id })} className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-200">{tl("Togli parola")}</button>
+                      <button type="button" onClick={() => emitVoice('voice_revoke_speaker', { student_id: participant.id })} className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-200">{tl("Togli parola")}</button>
                     )}
                     {!(isModerator && participant.role === 'student' && (participant.queued || participant.active)) && (
                       <span className="text-[11px] text-[var(--text-secondary)]">{participant.role === 'teacher' ? tl("Docente") : participant.active ? tl("In parola") : participant.queued ? tl("Chiede la parola") : tl("In ascolto")}</span>
@@ -1234,10 +1234,10 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
           <div className="flex items-center gap-2">
             <span className={`h-2 w-2 rounded-full ${isActive ? 'animate-pulse bg-emerald-500 ring-2 ring-emerald-200' : 'bg-sky-300'}`} />
             {recordingState && (
-              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white" title={tl("La chiamata è registrata")}>● REC {recordingLabel}</span>
+              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white" title={tl("La chiamata è registrata")}>● REC {recordingLabel}</span>
             )}
             <p
-              className="inline-flex rounded-full text-xs font-bold uppercase tracking-wide text-[var(--logo-blue-strong)]"
+              className="inline-flex rounded-full text-xs font-semibold text-[var(--logo-blue-strong)]"
               aria-label={tl("Chiamata: parla e condividi lo schermo con la tua classe.")}
             >
               {tl("Chiamata")}
@@ -1255,7 +1255,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
           <Button
             size="sm"
             onClick={() => emitVoice(isActive ? 'voice_room_end' : 'voice_room_start')}
-            className={`h-8 rounded-full bg-none px-3 text-xs font-bold shadow-sm ${isActive ? 'bg-white text-red-600 hover:bg-white/90' : 'bg-white text-[var(--app-accent-text)] hover:bg-white/90'}`}
+            className={`h-8 rounded-full bg-none px-3 text-xs font-semibold shadow-sm ${isActive ? 'bg-white text-red-600 hover:bg-white/90' : 'bg-white text-[var(--app-accent-text)] hover:bg-white/90'}`}
           >
             {isActive ? <PhoneOff className="mr-1.5 h-3.5 w-3.5" /> : <Phone className="mr-1.5 h-3.5 w-3.5" />}
             {isActive ? tl("Chiudi") : tl("Avvia")}
@@ -1267,7 +1267,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
             onClick={() => emitVoice(
               isSpeaker || isQueued ? 'voice_cancel_request' : 'voice_request_speak',
             )}
-            className={`h-8 rounded-full bg-none px-3 text-xs font-bold shadow-sm ${
+            className={`h-8 rounded-full bg-none px-3 text-xs font-semibold shadow-sm ${
               isQueued || isSpeaker
                 ? 'border border-white/40 bg-white/15 text-white hover:bg-white/25'
                 : 'bg-white text-[var(--app-accent-text)] hover:bg-white/90'
@@ -1300,7 +1300,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
         <div className="space-y-2 px-3 py-2">
           <div className="rounded-xl border border-slate-100 bg-white px-2.5 py-2">
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Utenti voce")}</span>
+              <span className="text-[10px] font-semibold text-slate-400">{tl("Utenti voce")}</span>
               <span className="text-[10px] font-semibold text-slate-400">{voiceParticipants.length}</span>
             </div>
             <div className="space-y-1">
@@ -1314,7 +1314,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                     <button
                       type="button"
                       onClick={() => emitVoice('voice_grant_speaker', { student_id: participant.id })}
-                      className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold uppercase text-amber-700 hover:bg-amber-100"
+                      className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-semibold text-amber-700 hover:bg-amber-100"
                     >
                       {tl("Dai parola")}
                     </button>
@@ -1323,15 +1323,15 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                     <button
                       type="button"
                       onClick={() => emitVoice('voice_revoke_speaker', { student_id: participant.id })}
-                      className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold uppercase text-emerald-700 hover:bg-emerald-100"
+                      className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold text-emerald-700 hover:bg-emerald-100"
                     >
                       {tl("Togli")}
                     </button>
                   )}
                   {(!isModerator || participant.role === 'teacher' || (!participant.queued && !participant.active)) && (
-                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
-                      participant.role === 'teacher' || participant.active ? 'bg-emerald-50 text-emerald-700' : participant.queued ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
-                    }`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ${
+ participant.role === 'teacher'|| participant.active ? 'bg-emerald-50 text-emerald-700': participant.queued ? 'bg-amber-50 text-amber-700': 'bg-slate-100 text-slate-500'
+ }`}>
                       {participant.role === 'teacher' ? tl("Docente") : participant.active ? 'Live' : participant.queued ? tl("Richiede") : participant.local ? 'Tu' : tl("Connesso")}
                     </span>
                   )}
@@ -1399,7 +1399,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                           else if (window.confirm(tl("Un altro docente sta registrando dal suo browser. Fermare la registrazione per tutti?"))) void voiceCallsApi.stopRecording(recordingState.id).then(({ data }) => notifyRecordingClosed(data)).catch(() => setError(tl("Impossibile fermare la registrazione")))
                         }}
                         title={tl("Ferma la registrazione: trascrizione e riassunto partono subito")}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 text-[11px] font-bold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 text-[11px] font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
                       >
                         {recordingBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="h-2.5 w-2.5 rounded-sm bg-red-600" />}
                         {tl("Stop")} {recordingLabel}
@@ -1410,7 +1410,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                         disabled={recordingBusy || !isConnected}
                         onClick={() => void startRecording()}
                         title={tl("Registra la chiamata: trascrizione con i nomi, riassunto e analisi nella scheda «Chiamate» della sessione")}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
                       >
                         {recordingBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="h-2.5 w-2.5 rounded-full bg-red-500" />}
                         {tl("Registra")}
@@ -1421,7 +1421,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                     type="button"
                     onClick={() => void toggleCamera()}
                     disabled={!isConnected}
-                    className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-bold transition-colors disabled:opacity-50 ${
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
                       localCameraEnabled
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
@@ -1435,7 +1435,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                     type="button"
                     onClick={() => void toggleScreenShare()}
                     disabled={!isConnected}
-                    className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-bold transition-colors disabled:opacity-50 ${
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
                       screenShareEnabled
                         ? 'border-sky-200 bg-sky-50 text-sky-700'
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
@@ -1446,7 +1446,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                   </button>
 
                   <div className="ml-auto flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold text-slate-500">{tl("Qualità")}</span>
+                    <span className="text-[10px] font-semibold text-slate-500">{tl("Qualità")}</span>
                     <div className="inline-flex h-8 overflow-hidden rounded-full border border-slate-200 bg-white p-0.5">
                       {(['low', 'hi'] as const).map((quality) => (
                         <button
@@ -1456,11 +1456,11 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                           aria-pressed={videoQuality === quality}
                           aria-label={quality === 'low' ? tl("Qualità video ridotta") : tl("Qualità video alta")}
                           title={quality === 'low' ? tl("Qualità video ridotta") : tl("Qualità video alta")}
-                          className={`rounded-full px-2.5 text-[10px] font-black uppercase transition-colors ${
-                            videoQuality === quality
-                              ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
-                              : 'text-slate-500 hover:bg-slate-100'
-                          }`}
+                          className={`rounded-full px-2.5 text-[10px] font-semibold transition-colors ${
+ videoQuality === quality
+ ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
+ : 'text-slate-500 hover:bg-slate-100'
+ }`}
                         >
                           {quality}
                         </button>
@@ -1472,11 +1472,11 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
 
               {hasMedia && (
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Preview video</span>
+                  <span className="text-[10px] font-semibold text-slate-400">Preview video</span>
                   <button
                     type="button"
                     onClick={openVideoCallWindow}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100"
+                    className="inline-flex h-7 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-100"
                   >
                     <PictureInPicture2 className="h-3 w-3" />
                     {tl("Finestra")}
@@ -1496,7 +1496,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                     </div>
                     <div className="flex items-center justify-between gap-2 border-t border-white/10 px-2 py-1.5 text-[10px] font-semibold text-white/85">
                       <span className="truncate">{selectedTile.participantName}</span>
-                      <span className="rounded-full bg-white/10 px-1.5 py-0.5 uppercase">
+                      <span className="rounded-full bg-white/10 px-1.5 py-0.5">
                         {selectedTile.source === 'screen' ? tl("Schermo") : 'Video'}
                       </span>
                     </div>
@@ -1516,7 +1516,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                       </div>
                           <div className="flex items-center justify-between gap-1 border-t border-white/10 px-1.5 py-1 text-[9px] font-semibold text-white/80">
                             <span className="truncate">{tile.participantName}</span>
-                            <span className="rounded-full bg-white/10 px-1 py-0.5 uppercase">
+                            <span className="rounded-full bg-white/10 px-1 py-0.5">
                           {tile.source === 'screen' ? tl("Schermo") : 'Video'}
                         </span>
                       </div>

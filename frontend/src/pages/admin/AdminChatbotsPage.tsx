@@ -60,7 +60,7 @@ export default function AdminChatbotsPage() {
         description={<span className="block max-w-3xl">{tl("Scegli quali chatbot predefiniti trovano gli studenti in Spazio AI. Di base c'è un solo assistente generalista (Tutor AI): i chatbot specializzati o personalizzati vanno creati dai docenti nella sezione Teacherbot. Le conversazioni già avviate restano consultabili.")}</span>}
       />
       <section className="admin-panel p-5">
-        <h2 className="font-bold text-[var(--admin-ink)]">{tl("Teacherbot per tutti")}</h2>
+        <h2 className="font-semibold text-[var(--admin-ink)]">{tl("Teacherbot per tutti")}</h2>
         <p className="mb-4 mt-1 text-sm text-[var(--admin-ink-2)]">{tl("Scegli tra i teacherbot creati con il tuo account admin. Saranno disponibili automaticamente per tutti gli utenti del gruppo, senza pubblicazioni per classe. I docenti possono usarli senza modificare la tua configurazione.")}</p>
         {starters.isError && <p role="alert">{tl("Impossibile caricare i teacherbot iniziali.")}</p>}
         {(['student', 'teacher'] as const).map((audience) => {
@@ -95,7 +95,7 @@ export default function AdminChatbotsPage() {
                   onClick={() => toggle(p)}
                   className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-60 ${p.enabled ? 'bg-[var(--admin-accent)]' : 'bg-slate-300'}`}
                 >
-                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${p.enabled ? 'left-[22px]' : 'left-0.5'}`} />
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${p.enabled ? 'left-[22px]' : 'left-0.5'}`} />
                 </button>
               </li>
             ))}

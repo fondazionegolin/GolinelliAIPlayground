@@ -4,8 +4,8 @@ import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
-  Heading1, Heading2, Pilcrow, Type, Plus, Minus, Video, ZoomIn, ZoomOut, Sparkles, Rows3, MoreHorizontal,
-  Square, Circle, RotateCw, Magnet, Grid3x3, Layers, Paintbrush, ListTree, Eraser, Highlighter, Palette
+  Pilcrow, Type, Plus, Minus, Video, ZoomIn, ZoomOut, Sparkles, Rows3,
+  Square, Circle, RotateCw, Magnet, Grid3x3, Layers, Paintbrush, ListTree, Eraser, Highlighter, Palette, Settings2
 } from '@/components/icons'
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
@@ -13,8 +13,10 @@ import { SlideBlock, SlideBlockType, SlideSnapOptions, type ShapeSlideBlock, typ
 import { AIImageGeneratorModal } from './AIImageGeneratorModal'
 import { DocumentTableMenu } from '@/components/documents/DocumentTableMenu'
 import { useFormatPainter } from '@/hooks/useFormatPainter'
-import { LineSpacingMenu } from '@/components/documents/LineSpacingMenu'
-import { CompositionMenu } from '@/components/documents/CompositionMenu'
+import { CompositionOptions } from '@/components/documents/CompositionMenu'
+import { MenuDivider, MenuIconRow, MenuLabel, MenuRow, ToolbarSection } from '@/components/documents/ToolbarSectionMenu'
+import { Switch } from '@/components/ui/switch'
+import { DEFAULT_LINE_SPACING, LINE_SPACING_OPTIONS, documentRow } from '@/lib/documentPage'
 import { applyFormatOperations, clearFormatting, STRUCTURE_CLEANUP } from '@/lib/documentFormatOps'
 import { useToast } from '@/components/ui/use-toast'
 import {
@@ -50,6 +52,9 @@ interface UnifiedToolbarProps {
   onAIAssistAnchorChange?: (position: { x: number; y: number }) => void
   showRuledLines?: boolean
   onToggleRuledLines?: () => void
+  /** Document line spacing (baseline grid row = 16 px × value) and its setter. */
+  lineSpacing?: number
+  onLineSpacingChange?: (value: number) => void
   snapOptions?: SlideSnapOptions
   onChangeSnapOptions?: (options: SlideSnapOptions) => void
   layersPanelOpen?: boolean
@@ -78,6 +83,8 @@ export function UnifiedToolbar({
   onAIAssistAnchorChange,
   showRuledLines = false,
   onToggleRuledLines,
+  lineSpacing = DEFAULT_LINE_SPACING,
+  onLineSpacingChange,
   snapOptions,
   onChangeSnapOptions,
   layersPanelOpen = false,
@@ -87,12 +94,9 @@ export function UnifiedToolbar({
   const [showImageModal, setShowImageModal] = useState(false)
   const formatPainter = useFormatPainter(mode === 'document' ? editor : null)
   const { toast } = useToast()
-  const [showOverflowMenu, setShowOverflowMenu] = useState(false)
   const [hasTextSelection, setHasTextSelection] = useState(false)
   const aiAssistButtonRef = useRef<HTMLButtonElement | null>(null)
-  const overflowMenuRef = useRef<HTMLDivElement | null>(null)
   const toolbarRef = useRef<HTMLDivElement | null>(null)
-  const [isCompactLayout, setIsCompactLayout] = useState(false)
   const groupClass = 'flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-200'
 
   const handleImageGenerated = (imageUrl: string) => {
@@ -188,28 +192,6 @@ export function UnifiedToolbar({
     }
   }, [activeBlockEditor, mode])
 
-  useEffect(() => {
-    if (!toolbarRef.current) return
-    const node = toolbarRef.current
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width || window.innerWidth
-      setIsCompactLayout(width < 820)
-    })
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    const onClickOutside = (event: MouseEvent) => {
-      if (!overflowMenuRef.current) return
-      if (!overflowMenuRef.current.contains(event.target as Node)) {
-        setShowOverflowMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
-
   const activeFontSizeAttr = editor?.getAttributes('textStyle')?.fontSize
   const activeFontSize = activeFontSizeAttr ? fontSizeToPoints(activeFontSizeAttr) : DEFAULT_DOC_FONT_PT
   const fontSizeOptions = FONT_SIZES.includes(activeFontSize) ? FONT_SIZES : [...FONT_SIZES, activeFontSize].sort((a, b) => a - b)
@@ -242,6 +224,31 @@ export function UnifiedToolbar({
     savedSelectionRef.current = null
     if (s && s.from !== s.to) editor.chain().setTextSelection({ from: s.from, to: s.to }).run()
     setFontSize(editor, size)
+  }
+  const [openSection, setOpenSection] = useState<string | null>(null)
+  const toggleSection = (id: string) => setOpenSection((current) => (current === id ? null : id))
+  const closeSection = useCallback(() => setOpenSection(null), [])
+  const docRow = documentRow({ lineSpacing })
+  const caretBlock = mode === 'document' && editor ? editor.state.selection.$from.parent : null
+  const paragraphStyle = !editor ? 'p' : editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p'
+  /** Space of the caret paragraph in whole rows (the sheet rounds any space up to the grid). */
+  const spaceRows = (value: unknown, fallback: number) => {
+    const px = Number.parseFloat(String(value ?? ''))
+    return Number.isFinite(px) ? Math.ceil(px / docRow - 0.01) : fallback
+  }
+  const setParagraphSpacing = (key: 'spaceBefore' | 'spaceAfter', value: string | null) => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    const tr = editor.state.tr
+    editor.state.doc.nodesBetween(from, to, (node, pos) => {
+      if (node.type.name === 'paragraph' || node.type.name === 'heading') {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, [key]: value })
+        return false
+      }
+      return true
+    })
+    if (tr.docChanged) editor.view.dispatch(tr)
+    editor.view.focus()
   }
   const decreaseFontSize = () => { if (editor) stepFontSize(editor, -1) }
   const increaseFontSize = () => { if (editor) stepFontSize(editor, 1) }
@@ -276,282 +283,151 @@ export function UnifiedToolbar({
         </Button>
       </div>}
 
-      {mode === 'document' && editor && (
-        <div className={groupClass}>
-          <Button
-            size="icon"
-            variant="ghost"
-            className={`h-8 w-8 ${formatPainter.armed ? 'bg-violet-100 text-violet-700' : ''}`}
-            title={formatPainter.armed ? tl("Seleziona il testo a cui applicare la formattazione (Esc per annullare)") : tl("Copia formattazione: copia lo stile del testo o paragrafo corrente")}
-            aria-pressed={formatPainter.armed}
-            onClick={formatPainter.copy}
-          >
-            <Paintbrush className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8"
-            title={tl("Riordina struttura: righe vuote → spaziatura tra paragrafi, riconosce capitoli e titoli (solo sulla selezione, se presente)")}
-            onClick={cleanUpStructure}
-          >
-            <ListTree className="h-4 w-4" />
-          </Button>
-          <CompositionMenu />
-        </div>
-      )}
-
-      {/* DOCUMENT MODE TOOLBAR */}
+      {/* DOCUMENT MODE TOOLBAR: settings grouped in named sections, each opening a vertical menu. */}
       {mode === 'document' && editor && (
         <>
-          {/* Font Selector */}
-          {!isCompactLayout && (
           <div className={groupClass}>
-            <select
-              className="h-8 text-xs border rounded px-2 w-32"
-              value={activeFontFamily}
-              onMouseDown={saveSelection}
-              onChange={(e) => restoreSelection(editor.chain().focus()).setFontFamily(e.target.value).run()}
-              title={tl("Carattere")}
-            >
-              {fontOptions.map(f => <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>)}
-            </select>
-            <div className="flex items-center gap-0.5 ml-1">
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={decreaseFontSize} title={tl("Riduci font")}>
-                <Minus className="h-4 w-4" />
-              </Button>
-              <select
-                className="h-8 text-xs border rounded px-2 w-16"
-                value={String(activeFontSize)}
-                onMouseDown={saveSelection}
-                onChange={(e) => applyFontSize(Number(e.target.value))}
-                title={tl("Dimensione font")}
-              >
-                {fontSizeOptions.map((size) => (
-                  <option key={size} value={size}>{size}</option>
-                ))}
-              </select>
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={increaseFontSize} title={tl("Aumenta font")}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-          )}
+            <ToolbarSection label={tl("Testo")} icon={Type} open={openSection === 'text'} onToggle={() => toggleSection('text')} onClose={closeSection}>
+              <MenuLabel>{tl("Carattere")}</MenuLabel>
+              <div className="space-y-1.5 px-1.5 pb-1">
+                <select
+                  className="ds-control h-9 w-full rounded-[var(--control-radius)] px-3 text-sm"
+                  value={activeFontFamily}
+                  onMouseDown={saveSelection}
+                  onChange={(e) => restoreSelection(editor.chain().focus()).setFontFamily(e.target.value).run()}
+                  title={tl("Carattere")}
+                >
+                  {fontOptions.map(f => <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>)}
+                </select>
+                <div className="flex items-center gap-1">
+                  <Button size="icon" variant="ghost" className="h-9 w-9" onClick={decreaseFontSize} title={tl("Riduci font")}><Minus className="h-4 w-4" /></Button>
+                  <select
+                    className="ds-control h-9 flex-1 rounded-[var(--control-radius)] px-3 text-sm"
+                    value={String(activeFontSize)}
+                    onMouseDown={saveSelection}
+                    onChange={(e) => applyFontSize(Number(e.target.value))}
+                    title={tl("Dimensione font")}
+                  >
+                    {fontSizeOptions.map((size) => <option key={size} value={size}>{size} pt</option>)}
+                  </select>
+                  <Button size="icon" variant="ghost" className="h-9 w-9" onClick={increaseFontSize} title={tl("Aumenta font")}><Plus className="h-4 w-4" /></Button>
+                </div>
+              </div>
+              <MenuLabel>{tl("Stile")}</MenuLabel>
+              <MenuIconRow items={[
+                { icon: Bold, label: tl("Grassetto"), active: editor.isActive('bold'), onClick: () => editor.chain().focus().toggleBold().run() },
+                { icon: Italic, label: tl("Corsivo"), active: editor.isActive('italic'), onClick: () => editor.chain().focus().toggleItalic().run() },
+                { icon: Underline, label: tl("Sottolineato"), active: editor.isActive('underline'), onClick: () => editor.chain().focus().toggleUnderline().run() },
+                { icon: Strikethrough, label: tl("Barrato"), active: editor.isActive('strike'), onClick: () => editor.chain().focus().toggleStrike().run() },
+              ]} />
+              <div className="flex min-h-9 items-center gap-2.5 px-3 py-1 text-sm text-[var(--text-primary)]">
+                <Palette className="h-4 w-4 shrink-0 opacity-80" />
+                <span className="flex-1">{tl("Colore testo")}</span>
+                <ColorPicker glyph="A" value={editor.getAttributes('textStyle').color || '#000000'} onChange={(color) => editor.chain().focus().setColor(color).run()} title={tl("Colore testo")} />
+              </div>
+              <MenuRow icon={Highlighter} label={tl("Evidenzia")} hint="Ctrl+Alt+H" active={editor.isActive('importedHighlight')}
+                onClick={() => (editor.isActive('importedHighlight') ? editor.chain().focus().unsetMark('importedHighlight').run() : editor.chain().focus().setMark('importedHighlight', { color: '#fef08a' }).run())} />
+              <MenuDivider />
+              <MenuRow icon={Eraser} label={tl("Cancella formattazione")} hint="Ctrl+\" onClick={() => { clearFormatting(editor); closeSection() }} />
+            </ToolbarSection>
 
-          {/* Text Style Group */}
+            <ToolbarSection label={tl("Paragrafo")} icon={Pilcrow} open={openSection === 'paragraph'} onToggle={() => toggleSection('paragraph')} onClose={closeSection}>
+              <MenuLabel>{tl("Stile del paragrafo")}</MenuLabel>
+              {([['p', tl("Testo normale"), 'Ctrl+Alt+0'], ['h1', tl("Titolo 1"), 'Ctrl+Alt+1'], ['h2', tl("Titolo 2"), 'Ctrl+Alt+2'], ['h3', tl("Titolo 3"), 'Ctrl+Alt+3']] as const).map(([value, label, hint]) => (
+                <MenuRow key={value} label={label} hint={hint} active={paragraphStyle === value}
+                  onClick={() => (value === 'p' ? editor.chain().focus().setParagraph().run() : editor.chain().focus().setHeading({ level: Number(value.slice(1)) as 1 | 2 | 3 }).run())} />
+              ))}
+              <MenuLabel>{tl("Allineamento")}</MenuLabel>
+              <MenuIconRow items={[
+                { icon: AlignLeft, label: tl("A sinistra"), active: editor.isActive({ textAlign: 'left' }), onClick: () => editor.chain().focus().setTextAlign('left').run() },
+                { icon: AlignCenter, label: tl("Al centro"), active: editor.isActive({ textAlign: 'center' }), onClick: () => editor.chain().focus().setTextAlign('center').run() },
+                { icon: AlignRight, label: tl("A destra"), active: editor.isActive({ textAlign: 'right' }), onClick: () => editor.chain().focus().setTextAlign('right').run() },
+                { icon: AlignJustify, label: tl("Giustificato"), active: editor.isActive({ textAlign: 'justify' }), onClick: () => editor.chain().focus().setTextAlign('justify').run() },
+              ]} />
+              <MenuLabel>{tl("Elenchi")}</MenuLabel>
+              <MenuRow icon={List} label={tl("Elenco puntato")} hint={tl("«- » o Tab a inizio riga")} active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} />
+              <MenuRow icon={ListOrdered} label={tl("Elenco numerato")} hint={tl("«1. » a inizio riga")} active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} />
+              <MenuLabel>{tl("Spazio prima del paragrafo")}</MenuLabel>
+              <div className="flex gap-1 px-1.5 pb-1">
+                {[0, 1, 2].map((rows) => (
+                  <button key={rows} type="button" onClick={() => setParagraphSpacing('spaceBefore', rows === 0 ? null : `${rows * docRow}px`)}
+                    className={`h-9 flex-1 rounded-[var(--control-radius)] text-xs font-semibold transition-colors ${spaceRows(caretBlock?.attrs.spaceBefore, 0) === rows ? 'ds-selected' : 'text-[var(--text-primary)] hover:bg-[var(--ds-control-hover)]'}`}>
+                    {rows === 0 ? tl("Nessuno") : rows === 1 ? tl("1 riga") : tl("{0} righe", rows)}
+                  </button>
+                ))}
+              </div>
+              <MenuLabel>{tl("Spazio dopo il paragrafo")}</MenuLabel>
+              <div className="flex gap-1 px-1.5 pb-1">
+                {[0, 1, 2].map((rows) => (
+                  <button key={rows} type="button" onClick={() => setParagraphSpacing('spaceAfter', rows === 1 ? null : `${rows * docRow}px`)}
+                    className={`h-9 flex-1 rounded-[var(--control-radius)] text-xs font-semibold transition-colors ${spaceRows(caretBlock?.attrs.spaceAfter, 1) === rows ? 'ds-selected' : 'text-[var(--text-primary)] hover:bg-[var(--ds-control-hover)]'}`}>
+                    {rows === 0 ? tl("Nessuno") : rows === 1 ? tl("1 riga") : tl("{0} righe", rows)}
+                  </button>
+                ))}
+              </div>
+            </ToolbarSection>
+
+            <ToolbarSection label={tl("Inserisci")} icon={Plus} open={openSection === 'insert'} onToggle={() => toggleSection('insert')} onClose={closeSection} width={300}>
+              <MenuRow icon={LinkIcon} label={tl("Collegamento")} hint="Ctrl+K" active={editor.isActive('link')} onClick={() => { closeSection(); setLink() }} />
+              <MenuRow icon={ImageIcon} label={tl("Immagine")} onClick={() => { closeSection(); if (onInsertImage) onInsertImage(); else setShowImageModal(true) }} />
+              <DocumentTableMenu editor={editor} inline onDone={closeSection} />
+            </ToolbarSection>
+
+            <ToolbarSection label={tl("Foglio")} icon={Rows3} open={openSection === 'sheet'} onToggle={() => toggleSection('sheet')} onClose={closeSection}>
+              <MenuLabel>{tl("Interlinea del documento")}</MenuLabel>
+              {LINE_SPACING_OPTIONS.map((value) => (
+                <MenuRow key={value} label={value.toLocaleString('it-IT')} hint={tl("Riga di {0} px", documentRow({ lineSpacing: value }))}
+                  active={Math.abs(lineSpacing - value) < 0.001} disabled={!onLineSpacingChange}
+                  onClick={() => onLineSpacingChange?.(value)} />
+              ))}
+              <MenuDivider />
+              <label className="flex min-h-9 cursor-pointer items-center justify-between gap-3 rounded-[var(--control-radius)] px-3 py-1.5 text-sm text-[var(--text-primary)] hover:bg-[var(--ds-control-hover)]">
+                <span className="flex items-center gap-2.5"><Rows3 className="h-4 w-4 opacity-80" />{tl("Mostra le righe del foglio")}</span>
+                <Switch checked={showRuledLines} onCheckedChange={() => onToggleRuledLines?.()} />
+              </label>
+            </ToolbarSection>
+
+            <ToolbarSection label={tl("Strumenti")} icon={Settings2} open={openSection === 'tools'} onToggle={() => toggleSection('tools')} onClose={closeSection} width={320}>
+              <MenuRow icon={Paintbrush} label={tl("Copia formattazione")} hint={formatPainter.armed ? tl("Seleziona il testo di destinazione (Esc per annullare)") : tl("Copia lo stile del testo o paragrafo corrente")}
+                active={formatPainter.armed} onClick={() => { formatPainter.copy(); closeSection() }} />
+              <MenuRow icon={ListTree} label={tl("Riordina struttura")} hint={tl("Righe vuote → spaziatura, riconosce capitoli e titoli")} onClick={() => { cleanUpStructure(); closeSection() }} />
+              <MenuLabel>{tl("Composizione automatica")}</MenuLabel>
+              <CompositionOptions />
+            </ToolbarSection>
+          </div>
+
+          {/* Quick formatting, always at hand */}
           <div className={groupClass}>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('bold') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleBold().run()}>
+            <Button size="icon" variant="ghost" title={tl("Grassetto (Ctrl+B)")} className={`h-8 w-8 ${editor.isActive('bold') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleBold().run()}>
               <Bold className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('italic') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleItalic().run()}>
+            <Button size="icon" variant="ghost" title={tl("Corsivo (Ctrl+I)")} className={`h-8 w-8 ${editor.isActive('italic') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleItalic().run()}>
               <Italic className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('underline') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleUnderline().run()}>
+            <Button size="icon" variant="ghost" title={tl("Sottolineato (Ctrl+U)")} className={`h-8 w-8 ${editor.isActive('underline') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleUnderline().run()}>
               <Underline className="h-4 w-4" />
             </Button>
-            {!isCompactLayout && (
-              <>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('strike') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleStrike().run()}>
-              <Strikethrough className="h-4 w-4" />
-            </Button>
-            <ColorPicker
-              className="ml-1"
-              glyph="A"
-              value={editor.getAttributes('textStyle').color || '#000000'}
-              onChange={(color) => editor.chain().focus().setColor(color).run()}
-              title={tl("Colore testo")}
-            />
-              </>
-            )}
           </div>
 
-          {/* Alignment Group */}
-          {!isCompactLayout && (
-          <div className={groupClass}>
-            <LineSpacingMenu editor={editor} />
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'left' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('left').run()}>
-              <AlignLeft className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'center' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('center').run()}>
-              <AlignCenter className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'right' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('right').run()}>
-              <AlignRight className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'justify' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('justify').run()}>
-              <AlignJustify className="h-4 w-4" />
-            </Button>
-          </div>
-          )}
-
-          {/* Paragraph style, clear formatting, highlight */}
-          {!isCompactLayout && (
-          <div className={groupClass}>
-            <select
-              className="h-8 w-36 rounded border px-2 text-xs"
-              value={editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p'}
-              onChange={(event) => {
-                const value = event.target.value
-                const chain = editor.chain().focus()
-                if (value === 'p') chain.setParagraph().run()
-                else chain.setHeading({ level: Number(value.slice(1)) as 1 | 2 | 3 }).run()
-              }}
-              title={tl("Stile del paragrafo (Ctrl+Alt+0…3)")}
-            >
-              <option value="p">{tl("Testo normale")}</option>
-              <option value="h1">{tl("Titolo 1")}</option>
-              <option value="h2">{tl("Titolo 2")}</option>
-              <option value="h3">{tl("Titolo 3")}</option>
-            </select>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('importedHighlight') ? 'bg-yellow-100' : ''}`} title={tl("Evidenzia (Ctrl+Alt+H)")}
-              onClick={() => (editor.isActive('importedHighlight') ? editor.chain().focus().unsetMark('importedHighlight').run() : editor.chain().focus().setMark('importedHighlight', { color: '#fef08a' }).run())}>
-              <Highlighter className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" title={tl("Cancella formattazione (Ctrl+\\\\)")} onClick={() => clearFormatting(editor)}>
-              <Eraser className="h-4 w-4" />
-            </Button>
-          </div>
-          )}
-
-          {/* Lists & Media */}
-          <div className="flex items-center gap-0.5">
-            {!isCompactLayout && (
-              <>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('bulletList') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleBulletList().run()}>
-              <List className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('orderedList') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
-              <ListOrdered className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={setLink}>
-              <LinkIcon className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onInsertImage ? onInsertImage() : setShowImageModal(true)} title={tl("Inserisci immagine")}>
-              <ImageIcon className="h-4 w-4" />
-            </Button>
-            <DocumentTableMenu editor={editor} />
-              </>
-            )}
-            {allowAI && <Button
-              ref={aiAssistButtonRef}
-              density="icon"
-              tone="warning"
-              surface={hasTextSelection ? 'soft' : 'ghost'}
-              disabled={!hasTextSelection}
-              className={`h-8 w-8 transition-all ${hasTextSelection ? 'scale-105 shadow-[var(--selection-shadow)]' : ''}`}
-              onClick={(e) => {
-                if (!onOpenAIAssist) return
-                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
-                onOpenAIAssist({
-                  x: rect.left + rect.width - 320,
-                  y: rect.bottom + 8
-                })
-              }}
-              title={hasTextSelection ? tl("Espandi o trasforma il testo selezionato con AI") : tl("Seleziona del testo per attivare l’assistente AI")}
-            >
-              <Sparkles className="h-4 w-4" />
-            </Button>}
-            {isCompactLayout && (
-              <div className="relative" ref={overflowMenuRef}>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  onClick={() => setShowOverflowMenu((v) => !v)}
-                  title={tl("Altri strumenti")}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-                {showOverflowMenu && (
-                  <div className="absolute right-0 top-10 z-30 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl space-y-1">
-                    <div className="flex items-center gap-2 pb-1 mb-1 border-b border-slate-100">
-                      <select
-                        className="h-8 text-xs border rounded px-2 w-full"
-                        value={activeFontFamily}
-                        onMouseDown={saveSelection}
-                        onChange={(e) => restoreSelection(editor.chain().focus()).setFontFamily(e.target.value).run()}
-                        title={tl("Carattere")}
-                      >
-                        {fontOptions.map(f => <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>)}
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-1 pb-1 mb-1 border-b border-slate-100">
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={decreaseFontSize} title={tl("Riduci font")}>
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <select
-                        className="h-8 text-xs border rounded px-2 flex-1"
-                        value={String(activeFontSize)}
-                        onMouseDown={saveSelection}
-                        onChange={(e) => applyFontSize(Number(e.target.value))}
-                        title={tl("Dimensione font")}
-                      >
-                        {fontSizeOptions.map((size) => (
-                          <option key={size} value={size}>{size} pt</option>
-                        ))}
-                      </select>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={increaseFontSize} title={tl("Aumenta font")}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('strike') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleStrike().run()}>
-                        <Strikethrough className="h-4 w-4" />
-                      </Button>
-                      <ColorPicker
-                        glyph="A"
-                        value={editor.getAttributes('textStyle').color || '#000000'}
-                        onChange={(color) => editor.chain().focus().setColor(color).run()}
-                        title={tl("Colore testo")}
-                      />
-                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'left' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('left').run()}><AlignLeft className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'center' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('center').run()}><AlignCenter className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'right' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('right').run()}><AlignRight className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'justify' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('justify').run()}><AlignJustify className="h-4 w-4" /></Button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('heading', { level: 1 }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}><Heading1 className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('heading', { level: 2 }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('paragraph') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setParagraph().run()}><Pilcrow className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('bulletList') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleBulletList().run()}><List className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('orderedList') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered className="h-4 w-4" /></Button>
-                    </div>
-                    <div className="flex items-center gap-1 pt-1 border-t border-slate-100">
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={setLink}><LinkIcon className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onInsertImage ? onInsertImage() : setShowImageModal(true)} title={tl("Inserisci immagine")}><ImageIcon className="h-4 w-4" /></Button>
-                      <DocumentTableMenu editor={editor} />
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className={`h-8 w-8 ${showRuledLines ? 'bg-slate-200 text-slate-900' : 'text-slate-500'}`}
-                        onClick={onToggleRuledLines}
-                        title={tl("Mostra/Nascondi righe del foglio")}
-                      >
-                        <Rows3 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Document Zoom */}
-          <div className="flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300">
-            {!isCompactLayout && (
-              <Button
-                size="icon"
-                variant="ghost"
-                className={`h-8 w-8 ${showRuledLines ? 'bg-slate-200 text-slate-900' : 'text-slate-500'}`}
-                onClick={onToggleRuledLines}
-                title={tl("Mostra/Nascondi righe del foglio")}
-              >
-                <Rows3 className="h-4 w-4" />
-              </Button>
-            )}
-            {/* Zoom now lives in the floating page/zoom widget at the bottom right of the sheet. */}
-          </div>
-
+          {allowAI && <Button
+            ref={aiAssistButtonRef}
+            density="icon"
+            tone="warning"
+            surface={hasTextSelection ? 'soft' : 'ghost'}
+            disabled={!hasTextSelection}
+            className={`h-8 w-8 transition ${hasTextSelection ? 'scale-105 shadow-[var(--selection-shadow)]' : ''}`}
+            onClick={(e) => {
+              if (!onOpenAIAssist) return
+              const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
+              onOpenAIAssist({
+                x: rect.left + rect.width - 320,
+                y: rect.bottom + 8
+              })
+            }}
+            title={hasTextSelection ? tl("Espandi o trasforma il testo selezionato con AI") : tl("Seleziona del testo per attivare l’assistente AI")}
+          >
+            <Sparkles className="h-4 w-4" />
+          </Button>}
         </>
       )}
 
@@ -630,7 +506,7 @@ export function UnifiedToolbar({
           </div>
 
           {selectedBlock && selectionCount > 1 && (
-            <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700" title={tl("Le modifiche si applicano a tutti gli oggetti selezionati")}>
+            <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700" title={tl("Le modifiche si applicano a tutti gli oggetti selezionati")}>
               {selectionCount} {tl("oggetti")}
             </span>
           )}
@@ -738,7 +614,7 @@ export function UnifiedToolbar({
             <div className="flex items-center gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
               {selectionCount <= 1 && (
                 <span
-                  className={`rounded-full px-2 py-1 text-[11px] font-bold ${useRange ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'}`}
+                  className={`rounded-full px-2 py-1 text-[11px] font-semibold ${useRange ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'}`}
                   title={useRange ? tl("Le modifiche valgono solo per il testo evidenziato") : tl("Le modifiche valgono per tutto il testo del blocco")}
                 >
                   {useRange ? tl("Testo selezionato") : tl("Tutto il blocco")}

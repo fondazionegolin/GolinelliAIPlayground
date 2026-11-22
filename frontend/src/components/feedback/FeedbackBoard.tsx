@@ -137,12 +137,12 @@ function matchesSearch(card: BoardCard, query: string, columns: BoardColumn[]): 
 // ── Small presentational helpers ──────────────────────────────────────────────
 function CategoryBadge({ category }: { category: string | null }) {
   if (!category || !CATEGORY_META[category]) {
-    return <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">N/D</span>
+    return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">N/D</span>
   }
   const meta = CATEGORY_META[category]
   const Icon = meta.icon
   return (
-    <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${meta.cls}`}>
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${meta.cls}`}>
       <Icon className="h-3 w-3" />
       {meta.label}
     </span>
@@ -184,14 +184,14 @@ function Card({
       </div>
       <p className="text-[13px] leading-snug text-slate-700 line-clamp-3">{card.message}</p>
       <div className="mt-2 flex items-center gap-1.5">
-        <div className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold ${
+        <div className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold ${
           card.user_type === 'teacher' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
         }`}>
           {(card.user_display_name?.[0] || '?').toUpperCase()}
         </div>
         <span className="text-[11px] text-slate-500 truncate">{card.user_display_name || tl("Anonimo")}</span>
         {card.source === 'manual' && (
-          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">task</span>
+          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">task</span>
         )}
         {card.browser_info?.screenshot_base64 && <ImageIcon className="h-3 w-3 text-slate-300" />}
         {card.console_errors?.length > 0 && (
@@ -256,7 +256,7 @@ function DetailModal({
         <div className="px-5 py-4 space-y-4">
           {/* Reporter */}
           <div className="flex items-center gap-2">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+            <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
               card.user_type === 'teacher' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
             }`}>
               {(card.user_display_name?.[0] || '?').toUpperCase()}
@@ -293,7 +293,7 @@ function DetailModal({
           {/* Classification controls */}
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tl("Tipologia")}</span>
+              <span className="mb-1 block text-[10px] font-semibold text-slate-400">{tl("Tipologia")}</span>
               <select
                 value={card.category || ''}
                 onChange={(e) => onPatch({ category: e.target.value })}
@@ -304,7 +304,7 @@ function DetailModal({
               </select>
             </label>
             <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tl("Urgenza")}</span>
+              <span className="mb-1 block text-[10px] font-semibold text-slate-400">{tl("Urgenza")}</span>
               <select
                 value={card.urgency || ''}
                 onChange={(e) => onPatch({ urgency: e.target.value })}
@@ -319,7 +319,7 @@ function DetailModal({
           {/* Move + classify */}
           <div className="flex items-end gap-2">
             <label className="block flex-1">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tl("Sposta in…")}</span>
+              <span className="mb-1 block text-[10px] font-semibold text-slate-400">{tl("Sposta in…")}</span>
               <select
                 value={card.board_status}
                 onChange={(e) => onPatch({ board_status: e.target.value })}
@@ -341,7 +341,7 @@ function DetailModal({
 
           {/* Internal note */}
           <label className="block">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tl("Nota interna")}</span>
+            <span className="mb-1 block text-[10px] font-semibold text-slate-400">{tl("Nota interna")}</span>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -449,7 +449,7 @@ function CollaboratorsModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h3 className="flex items-center gap-2 text-base font-bold text-slate-800"><Share2 className="h-4 w-4" /> {tl("Condividi la board")}</h3>
+          <h3 className="flex items-center gap-2 text-base font-semibold text-slate-800"><Share2 className="h-4 w-4" /> {tl("Condividi la board")}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
         </div>
         <div className="px-5 py-4 space-y-4">
@@ -699,7 +699,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
     }`}>
       <header className="relative z-20 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-4 py-3 shadow-[var(--shadow-sm)] sm:grid-cols-[minmax(0,1fr)_minmax(240px,360px)_minmax(0,1fr)]">
         <div className="min-w-0">
-          <SectionHeading section="/teacher/feedback-board" compact className="truncate text-base font-bold text-[var(--text-primary)]" subtitle={<>{cards.length} task · {columns.length} colonne</>} subtitleClassName="text-xs text-[var(--text-secondary)]">{config?.title || tl("Board di sviluppo")}</SectionHeading>
+          <SectionHeading section="/teacher/feedback-board" compact className="truncate text-base font-semibold text-[var(--text-primary)]" subtitle={<>{cards.length} task · {columns.length} colonne</>} subtitleClassName="text-xs text-[var(--text-secondary)]">{config?.title || tl("Board di sviluppo")}</SectionHeading>
         </div>
         <SearchPill
           value={searchQuery}
@@ -720,7 +720,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
             {classifyAllMutation.isPending ? <Loader2 className="animate-spin" /> : <Wand2 />}
             <span className="hidden xl:inline">{tl("Valuta con AI")}</span>
             {unclassifiedCount > 0 && (
-              <span className="rounded-full bg-[var(--surface-base)] px-1.5 py-0.5 text-[10px] font-bold">{unclassifiedCount}</span>
+              <span className="rounded-full bg-[var(--surface-base)] px-1.5 py-0.5 text-[10px] font-semibold">{unclassifiedCount}</span>
             )}
           </Button>
           {isAdmin && (
@@ -742,7 +742,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
             {showSettings && (
               <div className="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-[min(360px,calc(100vw-2rem))] space-y-3 rounded-[var(--card-radius)] border border-[var(--border-subtle)] bg-[var(--surface-base)] p-3 text-[var(--text-primary)] shadow-[var(--shadow-xl)]">
               <div>
-                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-[var(--text-secondary)]">Template board</label>
+                <label className="mb-1 block text-[11px] font-semibold text-[var(--text-secondary)]">Template board</label>
                 <select
                   onChange={(e) => applyTemplate(e.target.value)}
                   defaultValue=""
@@ -762,7 +762,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                 }}
                 className="space-y-1"
               >
-                <label className="block text-[11px] font-bold uppercase tracking-wide text-[var(--text-secondary)]">{tl("Nuova colonna")}</label>
+                <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">{tl("Nuova colonna")}</label>
                 <div className="flex gap-2">
                   <input
                     value={newColumnName}
@@ -810,11 +810,11 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                   style={{ borderTop: `3px solid ${col.color}` }}
                 >
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-[12px] font-bold uppercase leading-tight tracking-wide text-slate-700">{col.label}</h3>
+                    <h3 className="text-[12px] font-semibold leading-tight text-slate-700">{col.label}</h3>
                     <p className="mt-1 line-clamp-3 text-[10px] leading-tight text-slate-400 lg:line-clamp-2">{col.hint}</p>
                   </div>
                   <div className="mt-auto flex items-center gap-1.5 pt-3 lg:mt-0 lg:pt-0">
-                    <span className="border border-slate-300 bg-white px-1.5 py-0.5 text-[11px] font-bold text-slate-500">{colCards.length}</span>
+                    <span className="border border-slate-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-slate-500">{colCards.length}</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -841,7 +841,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                       className="w-[280px] shrink-0 space-y-2 border border-slate-200 bg-white p-3 shadow-sm lg:w-auto"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-700">{tl("Nuovo task")}</span>
+                        <span className="text-xs font-semibold text-slate-700">{tl("Nuovo task")}</span>
                         <button type="button" onClick={() => setInlineColumnId(null)} className="text-slate-400 hover:text-slate-700" aria-label={tl("Annulla")}>
                           <X className="h-4 w-4" />
                         </button>

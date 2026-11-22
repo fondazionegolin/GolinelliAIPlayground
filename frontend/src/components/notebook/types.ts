@@ -37,6 +37,8 @@ export interface NotebookCodeProposal {
   required_libraries?: string[]
   /** point-wise diff (changed blocks + context) computed by the agent pipeline; absent for legacy proposals */
   hunks?: NotebookDiffHunk[]
+  /** p5.js: the proposal was run in a hidden preview (synthetic webcam, then a full-screen-like resize) before showing it */
+  verification?: { status: 'passed' | 'failed'; seconds: number; rounds: number; errors?: string[] }
 }
 
 export interface NotebookDiffHunk {

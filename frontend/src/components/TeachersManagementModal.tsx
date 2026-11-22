@@ -89,7 +89,7 @@ export function TeachersManagementModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey })
       setEmail('')
-      toast({ title: tl("Invito inviato!") })
+      toast({ title: tl("Invito inviato") })
     },
     onError: (error: { response?: { data?: { detail?: string } } }) => {
       const detail = error.response?.data?.detail || tl("Errore nell'invio dell'invito")
@@ -165,7 +165,7 @@ export function TeachersManagementModal({
           }}
         >
           <div>
-            <h2 className="text-lg font-bold text-slate-900">
+            <h2 className="text-lg font-semibold text-slate-900">
               {type === 'class' ? tl("Docenti della Classe") : tl("Docenti della Sessione")}
             </h2>
             <p className="text-sm text-slate-600 mt-0.5">{targetName}</p>
@@ -189,7 +189,7 @@ export function TeachersManagementModal({
               {tl("Invita docente o admin")}
             </label>
             {type === 'class' && (
-              <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 text-xs font-bold">
+              <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 text-xs font-semibold">
                 <button type="button" onClick={() => setInviteScope('class')} className={`rounded-lg px-3 py-2 ${inviteScope === 'class' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{tl("Intera classe")}</button>
                 <button type="button" onClick={() => setInviteScope('session')} className={`rounded-lg px-3 py-2 ${inviteScope === 'session' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{tl("Una sessione")}</button>
               </div>
@@ -358,7 +358,7 @@ export function TeachersManagementModal({
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => resendMutation.mutate(inv.id)} disabled={resendMutation.isPending} className="flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-white px-2 text-[11px] font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50" title={tl("Reinvia email e notifica")}>
+                          <button type="button" onClick={() => resendMutation.mutate(inv.id)} disabled={resendMutation.isPending} className="flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-white px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50" title={tl("Reinvia email e notifica")}>
                             <RefreshCw className={`h-3 w-3 ${resendMutation.isPending ? 'animate-spin' : ''}`} /> {tl("Reinvia")}
                           </button>
                           <span className="px-2 py-1 bg-amber-200 text-amber-800 text-xs font-medium rounded-lg">{tl("In attesa")}</span>

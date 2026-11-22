@@ -145,10 +145,81 @@ export function ShellNavHandle({ accent }: { accent: string }) {
   )
 }
 
-/** Generic fullscreen button: fixed top-right beside the user icon, outside the navbar so it stays visible in fullscreen. */
+/** A fixed layer at this z-index or above (drawers, side panels, dialogs, popups) owns the corner while it is open. */
+const OVERLAY_MIN_Z = 30
+
+/** True when something other than the navbar — a drawer, side panel, dialog or popup — sits under the corner box. */
+function cornerIsCovered(box: DOMRect, self: Element): boolean {
+  const inset = 2
+  const points: Array<[number, number]> = [
+    [box.left + box.width / 2, box.top + box.height / 2],
+    [box.left + inset, box.top + inset],
+    [box.right - inset, box.top + inset],
+    [box.left + inset, box.bottom - inset],
+    [box.right - inset, box.bottom - inset],
+  ]
+  for (const [x, y] of points) {
+    if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) continue
+    for (const element of document.elementsFromPoint(x, y)) {
+      if (self.contains(element)) continue
+      if (element.closest('.shell-nav, .shell-nav-handle')) break
+      // Walk up to the nearest fixed layer and read the stacking level it establishes.
+      let node: Element | null = element
+      let fixed = false
+      let z = 0
+      while (node && node !== document.body) {
+        const style = window.getComputedStyle(node)
+        if (style.position === 'fixed') fixed = true
+        const level = Number.parseInt(style.zIndex, 10)
+        if (fixed && Number.isFinite(level)) z = Math.max(z, level)
+        node = node.parentElement
+      }
+      if (fixed && z >= OVERLAY_MIN_Z) return true
+      break // only the topmost element at each point matters
+    }
+  }
+  return false
+}
+
+/**
+ * Generic fullscreen button: fixed top-right beside the user icon, outside the navbar so it stays visible in fullscreen.
+ * It never overlaps a panel: while any drawer, side panel, dialog or popup covers its corner (e.g. «Librerie» in the
+ * Coding Lab, whose close X sits right there) the button steps aside, and comes back when the panel closes.
+ */
 export function ShellFullscreenCorner() {
+  const [covered, setCovered] = useState(false)
+  const [host, setHost] = useState<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!host) return
+    let frame = 0
+    const check = () => {
+      frame = 0
+      setCovered(cornerIsCovered(host.getBoundingClientRect(), host))
+    }
+    const schedule = () => { if (!frame) frame = window.requestAnimationFrame(check) }
+    const observer = new MutationObserver(schedule)
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'data-state', 'open', 'hidden'] })
+    window.addEventListener('resize', schedule)
+    document.addEventListener('transitionend', schedule, true)
+    document.addEventListener('animationend', schedule, true)
+    schedule()
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', schedule)
+      document.removeEventListener('transitionend', schedule, true)
+      document.removeEventListener('animationend', schedule, true)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [host])
+
   return (
-    <div className="fixed right-1.5 top-4 z-[96] hidden md:block">
+    <div
+      ref={setHost}
+      className="fixed right-1.5 top-4 z-[96] hidden md:block"
+      style={covered ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
+      aria-hidden={covered || undefined}
+    >
       <ShellFullscreenButton />
     </div>
   )

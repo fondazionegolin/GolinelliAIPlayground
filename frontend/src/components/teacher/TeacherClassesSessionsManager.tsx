@@ -485,8 +485,8 @@ export default function TeacherClassesSessionsManager({
           <>
             <header className="flex items-start justify-between gap-4 px-1">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-600">{tl("Area docente")}</p>
-                <SectionHeading section="/teacher/classes" className="mt-1 text-3xl font-black tracking-tight text-slate-950" subtitle={<>{tl("Scegli una classe per vedere e gestire le sessioni.")}</>} subtitleClassName="mt-1 text-sm font-medium text-slate-500">{tl("Le tue classi")}</SectionHeading>
+                <p className="text-[10px] font-semibold text-violet-600">{tl("Area docente")}</p>
+                <SectionHeading section="/teacher/classes" className="mt-1 text-3xl font-semibold tracking-tight text-slate-950" subtitle={<>{tl("Scegli una classe per vedere e gestire le sessioni.")}</>} subtitleClassName="mt-1 text-sm font-medium text-slate-500">{tl("Le tue classi")}</SectionHeading>
               </div>
               <InvitationsPanel />
             </header>
@@ -505,7 +505,7 @@ export default function TeacherClassesSessionsManager({
 
             {showNewClassForm && (
               <form onSubmit={handleCreateClass} className="mt-3 space-y-3 rounded-3xl border border-violet-100 bg-white p-4 shadow-sm">
-                <h2 className="text-lg font-black text-slate-950">{t('classes.new_class')}</h2>
+                <h2 className="text-lg font-semibold text-slate-950">{t('classes.new_class')}</h2>
                 <Input value={newClassName} onChange={(event) => setNewClassName(event.target.value)} placeholder={t('classes.class_name_placeholder')} className="h-12 bg-slate-50 text-base" />
                 <Select value={newClassSchoolId} onChange={(event) => setNewClassSchoolId(event.target.value)} className="h-12 bg-slate-50">
                   <option value="">{isEnglish ? 'No institution' : 'Senza istituto'}</option>
@@ -514,7 +514,7 @@ export default function TeacherClassesSessionsManager({
                 <Select value={newClassGrade} onChange={(event) => setNewClassGrade(event.target.value)} className="h-12 bg-slate-50">
                   {schoolGradeOptions.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
                 </Select>
-                <button type="submit" disabled={!newClassName.trim() || createClassMutation.isPending} className="flex h-12 w-full items-center justify-center rounded-2xl bg-violet-600 px-5 text-sm font-black text-white disabled:opacity-50">
+                <button type="submit" disabled={!newClassName.trim() || createClassMutation.isPending} className="flex h-12 w-full items-center justify-center rounded-2xl bg-violet-600 px-5 text-sm font-semibold text-white disabled:opacity-50">
                   {createClassMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : <Plus className="mr-2 h-4 w-4" />}
                   {t('classes.create_class')}
                 </button>
@@ -522,14 +522,14 @@ export default function TeacherClassesSessionsManager({
             )}
 
             <div className="mt-6 flex items-center justify-between px-1">
-              <h2 className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{filteredClasses.length} {isEnglish ? 'classes' : 'classi'}</h2>
+              <h2 className="text-xs font-semibold text-slate-500">{filteredClasses.length} {isEnglish ? 'classes' : 'classi'}</h2>
             </div>
             {isClassesLoading ? (
               <div className="mt-3 grid grid-cols-2 gap-3">{[1, 2, 3, 4].map(item => <div key={item} className="h-48 animate-pulse rounded-3xl bg-white" />)}</div>
             ) : filteredClasses.length === 0 ? (
               <div className="mt-3 rounded-3xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center">
                 <School className="mx-auto h-9 w-9 text-slate-300" />
-                <p className="mt-3 text-base font-black text-slate-800">{classes.length ? (isEnglish ? 'No results' : 'Nessun risultato') : t('classes.empty_title')}</p>
+                <p className="mt-3 text-base font-semibold text-slate-800">{classes.length ? (isEnglish ? 'No results' : 'Nessun risultato') : t('classes.empty_title')}</p>
                 <p className="mt-1 text-sm text-slate-500">{classes.length ? (isEnglish ? 'Try another search.' : 'Prova con un’altra ricerca.') : t('classes.empty_body')}</p>
               </div>
             ) : (
@@ -544,8 +544,8 @@ export default function TeacherClassesSessionsManager({
                     <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${index % 3 === 0 ? 'bg-sky-50 text-sky-700' : index % 3 === 1 ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'}`}>
                       <School className="h-5 w-5" />
                     </span>
-                    <span className="mt-auto line-clamp-2 text-base font-black leading-tight text-slate-950">{cls.name}</span>
-                    <span className="flex w-full items-center justify-between pt-2 text-xs font-black text-slate-600">
+                    <span className="mt-auto line-clamp-2 text-base font-semibold leading-tight text-slate-950">{cls.name}</span>
+                    <span className="flex w-full items-center justify-between pt-2 text-xs font-semibold text-slate-600">
                       {cls.session_count || 0} {isEnglish ? 'sessions' : 'sessioni'}
                       <ChevronRight className="h-5 w-5" />
                     </span>
@@ -553,7 +553,7 @@ export default function TeacherClassesSessionsManager({
                 ))}
               </div>
             )}
-            <button type="button" onClick={() => setShowArchivedClasses(true)} className="mt-5 flex min-h-12 w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-600">
+            <button type="button" onClick={() => setShowArchivedClasses(true)} className="mt-5 flex min-h-12 w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600">
               <span className="flex items-center gap-2"><Archive className="h-5 w-5" />{isEnglish ? 'Class archive' : 'Archivio classi'}</span>
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs">{archivedClasses.length}</span>
             </button>
@@ -571,16 +571,16 @@ export default function TeacherClassesSessionsManager({
                   <ArrowLeft className="h-5 w-5" />
                 </button>
                 <div className="min-w-0 flex-1 pt-1">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-600">{isEnglish ? 'Selected class' : 'Classe selezionata'}</p>
-                  <SectionHeading section="/teacher/classes" className="truncate text-2xl font-black text-slate-950" subtitle={<>{selectedClass.school_grade || t('classes.not_set')}</>} subtitleClassName="truncate text-sm font-semibold text-slate-400">{selectedClass.name}</SectionHeading>
+                  <p className="text-[10px] font-semibold text-violet-600">{isEnglish ? 'Selected class' : 'Classe selezionata'}</p>
+                  <SectionHeading section="/teacher/classes" className="truncate text-2xl font-semibold text-slate-950" subtitle={<>{selectedClass.school_grade || t('classes.not_set')}</>} subtitleClassName="truncate text-sm font-semibold text-slate-400">{selectedClass.name}</SectionHeading>
                 </div>
               </div>
               {selectedClass.role !== 'session_shared' && <div className="mt-4 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setShowTeachersModal(true)} className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-100 px-3 text-xs font-black text-slate-700">
+                <button type="button" onClick={() => setShowTeachersModal(true)} className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-100 px-3 text-xs font-semibold text-slate-700">
                   <UserPlus className="h-5 w-5" />
                   {isEnglish ? 'Teachers' : 'Docenti'}
                 </button>
-                <button type="button" onClick={() => setIsEditingClass((editing) => !editing)} className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-100 px-3 text-xs font-black text-slate-700">
+                <button type="button" onClick={() => setIsEditingClass((editing) => !editing)} className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-100 px-3 text-xs font-semibold text-slate-700">
                   <Edit2 className="h-5 w-5" />
                   {isEnglish ? 'Edit class' : 'Modifica classe'}
                 </button>
@@ -592,8 +592,8 @@ export default function TeacherClassesSessionsManager({
                     {schoolGradeOptions.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
                   </Select>
                   <div className="grid grid-cols-2 gap-2">
-                    <button type="button" onClick={() => handleSaveClass()} disabled={updateClassMutation.isPending} className="flex h-12 items-center justify-center rounded-xl bg-slate-950 px-3 text-xs font-black text-white disabled:opacity-50">{isEnglish ? 'Save' : 'Salva'}</button>
-                    {selectedClass.role === 'owner' && <button type="button" onClick={() => { if (window.confirm(tl("Archiviare la classe \"{0}\"?", selectedClass.name))) archiveClassMutation.mutate(selectedClass.id) }} disabled={archiveClassMutation.isPending} className="flex h-12 items-center justify-center rounded-xl bg-rose-50 px-3 text-xs font-black text-rose-600 disabled:opacity-50">{isEnglish ? 'Archive' : 'Archivia'}</button>}
+                    <button type="button" onClick={() => handleSaveClass()} disabled={updateClassMutation.isPending} className="flex h-12 items-center justify-center rounded-xl bg-slate-950 px-3 text-xs font-semibold text-white disabled:opacity-50">{isEnglish ? 'Save' : 'Salva'}</button>
+                    {selectedClass.role === 'owner' && <button type="button" onClick={() => { if (window.confirm(tl("Archiviare la classe \"{0}\"?", selectedClass.name))) archiveClassMutation.mutate(selectedClass.id) }} disabled={archiveClassMutation.isPending} className="flex h-12 items-center justify-center rounded-xl bg-rose-50 px-3 text-xs font-semibold text-rose-600 disabled:opacity-50">{isEnglish ? 'Archive' : 'Archivia'}</button>}
                   </div>
                 </div>
               )}
@@ -613,8 +613,8 @@ export default function TeacherClassesSessionsManager({
 
             <div className="mt-6 flex items-center justify-between px-1">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{isEnglish ? 'Class sessions' : 'Sessioni della classe'}</p>
-                <h2 className="mt-1 text-2xl font-black text-slate-950">{filteredOrderedSessions.length} {isEnglish ? 'sessions' : 'sessioni'}</h2>
+                <p className="text-[10px] font-semibold text-slate-400">{isEnglish ? 'Class sessions' : 'Sessioni della classe'}</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-950">{filteredOrderedSessions.length} {isEnglish ? 'sessions' : 'sessioni'}</h2>
               </div>
             </div>
 
@@ -623,7 +623,7 @@ export default function TeacherClassesSessionsManager({
             ) : filteredOrderedSessions.length === 0 ? (
               <div className="mt-3 rounded-3xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center">
                 <MonitorPlay className="mx-auto h-9 w-9 text-slate-300" />
-                <p className="mt-3 text-base font-black text-slate-800">{sessionSearch ? (isEnglish ? 'No results' : 'Nessun risultato') : t('sessions.empty_title')}</p>
+                <p className="mt-3 text-base font-semibold text-slate-800">{sessionSearch ? (isEnglish ? 'No results' : 'Nessun risultato') : t('sessions.empty_title')}</p>
                 <p className="mt-1 text-sm text-slate-500">{isEnglish ? 'Create a session or change your search.' : 'Crea una sessione o modifica la ricerca.'}</p>
               </div>
             ) : (
@@ -636,29 +636,29 @@ export default function TeacherClassesSessionsManager({
                   return (
                     <article key={session.id} className={`mobile-card-standard relative flex flex-col rounded-3xl p-4 shadow-sm ring-1 ${isActive ? 'bg-emerald-50 ring-emerald-200' : 'bg-white ring-slate-100'}`}>
                       <div className="flex items-start justify-between gap-2">
-                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${isActive ? 'bg-emerald-100 text-emerald-700' : isPaused ? 'bg-amber-100 text-amber-700' : isEnded ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{meta.label}</span>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${isActive ? 'bg-emerald-100 text-emerald-700' : isPaused ? 'bg-amber-100 text-amber-700' : isEnded ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{meta.label}</span>
                         <button type="button" onClick={() => setMobileSessionMenuId(mobileSessionMenuId === session.id ? null : session.id)} className="flex h-11 w-11 -mr-2 -mt-2 items-center justify-center rounded-2xl text-slate-500" aria-label={isEnglish ? 'Session options' : 'Opzioni sessione'}>
                           <MoreVertical className="h-5 w-5" />
                         </button>
                       </div>
-                      <h3 className="mt-3 line-clamp-2 text-base font-black leading-tight text-slate-950">{session.title}</h3>
+                      <h3 className="mt-3 line-clamp-2 text-base font-semibold leading-tight text-slate-950">{session.title}</h3>
                       <div className="mt-auto flex gap-2">
                         {session.join_code && (
-                          <button type="button" onClick={() => copyCode(session.join_code)} className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl bg-slate-100 px-2 font-mono text-[11px] font-black text-slate-700">
+                          <button type="button" onClick={() => copyCode(session.join_code)} className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl bg-slate-100 px-2 font-mono text-[11px] font-semibold text-slate-700">
                             <span className="truncate">{session.join_code}</span><Copy className="h-3.5 w-3.5 shrink-0" />
                           </button>
                         )}
-                        <button type="button" onClick={() => navigate(`/teacher/sessions/${session.id}`)} className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl bg-slate-950 px-2 text-xs font-black text-white">
+                        <button type="button" onClick={() => navigate(`/teacher/sessions/${session.id}`)} className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl bg-slate-950 px-2 text-xs font-semibold text-white">
                           {isEnded ? 'Report' : (isEnglish ? 'Open' : 'Apri')}<ChevronRight className="h-4 w-4 shrink-0" />
                         </button>
                       </div>
                       {mobileSessionMenuId === session.id && (
                         <div className="absolute inset-x-2 top-12 z-20 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
-                          {(isActive || isPaused) && <button type="button" onClick={() => { updateSessionMutation.mutate({ id: session.id, status: isActive ? 'paused' : 'active' }); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black text-slate-700 hover:bg-slate-50">{isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}{isActive ? (isEnglish ? 'Pause' : 'Metti in pausa') : (isEnglish ? 'Resume' : 'Riprendi')}</button>}
-                          {session.status === 'draft' && <button type="button" onClick={() => { updateSessionMutation.mutate({ id: session.id, status: 'active' }); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black text-slate-700 hover:bg-slate-50"><Play className="h-4 w-4" />{isEnglish ? 'Start' : 'Avvia'}</button>}
-                          {(isActive || isPaused) && <button type="button" onClick={() => { updateSessionMutation.mutate({ id: session.id, status: 'ended' }); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black text-slate-700 hover:bg-slate-50"><Square className="h-4 w-4" />{isEnglish ? 'Stop' : 'Termina'}</button>}
-                          <button type="button" onClick={() => navigate(`/teacher/sessions/${session.id}?tab=documents`)} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black text-slate-700 hover:bg-slate-50"><FileText className="h-4 w-4" />{isEnglish ? 'Documents' : 'Documenti'}</button>
-                          {isEnded && session.created_by_teacher_id === currentTeacherId && <button type="button" onClick={() => { setSessionToTrash(session); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" />{isEnglish ? 'Archive' : 'Archivia'}</button>}
+                          {(isActive || isPaused) && <button type="button" onClick={() => { updateSessionMutation.mutate({ id: session.id, status: isActive ? 'paused' : 'active' }); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">{isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}{isActive ? (isEnglish ? 'Pause' : 'Metti in pausa') : (isEnglish ? 'Resume' : 'Riprendi')}</button>}
+                          {session.status === 'draft' && <button type="button" onClick={() => { updateSessionMutation.mutate({ id: session.id, status: 'active' }); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"><Play className="h-4 w-4" />{isEnglish ? 'Start' : 'Avvia'}</button>}
+                          {(isActive || isPaused) && <button type="button" onClick={() => { updateSessionMutation.mutate({ id: session.id, status: 'ended' }); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"><Square className="h-4 w-4" />{isEnglish ? 'Stop' : 'Termina'}</button>}
+                          <button type="button" onClick={() => navigate(`/teacher/sessions/${session.id}?tab=documents`)} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"><FileText className="h-4 w-4" />{isEnglish ? 'Documents' : 'Documenti'}</button>
+                          {isEnded && session.created_by_teacher_id === currentTeacherId && <button type="button" onClick={() => { setSessionToTrash(session); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" />{isEnglish ? 'Archive' : 'Archivia'}</button>}
                         </div>
                       )}
                     </article>
@@ -709,10 +709,10 @@ export default function TeacherClassesSessionsManager({
                 {archivedClasses.length === 0 && <p className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">{isEnglish ? 'No archived classes.' : 'Nessuna classe archiviata.'}</p>}
                 {archivedClasses.map((cls) => (
                   <div key={cls.id} className="rounded-2xl border border-slate-200 bg-white p-3">
-                    <p className="truncate text-sm font-black text-slate-800">{cls.name}</p>
+                    <p className="truncate text-sm font-semibold text-slate-800">{cls.name}</p>
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button type="button" onClick={() => restoreClassMutation.mutate(cls.id)} className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-slate-100 px-2 text-xs font-black text-slate-700"><RotateCcw className="h-4 w-4" />{isEnglish ? 'Restore' : 'Ripristina'}</button>
-                      <button type="button" onClick={() => { if (window.confirm(`${isEnglish ? 'Permanently delete' : 'Eliminare definitivamente'} \"${cls.name}\"?`)) permanentlyDeleteClassMutation.mutate(cls.id) }} className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-rose-50 px-2 text-xs font-black text-rose-600"><Trash2 className="h-4 w-4" />{isEnglish ? 'Delete' : 'Elimina'}</button>
+                      <button type="button" onClick={() => restoreClassMutation.mutate(cls.id)} className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-slate-100 px-2 text-xs font-semibold text-slate-700"><RotateCcw className="h-4 w-4" />{isEnglish ? 'Restore' : 'Ripristina'}</button>
+                      <button type="button" onClick={() => { if (window.confirm(`${isEnglish ? 'Permanently delete' : 'Eliminare definitivamente'} \"${cls.name}\"?`)) permanentlyDeleteClassMutation.mutate(cls.id) }} className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-rose-50 px-2 text-xs font-semibold text-rose-600"><Trash2 className="h-4 w-4" />{isEnglish ? 'Delete' : 'Elimina'}</button>
                     </div>
                   </div>
                 ))}
@@ -825,7 +825,7 @@ export default function TeacherClassesSessionsManager({
       <header className="ds-frame-header px-6 pb-5 pt-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            <p className="text-[10px] font-semibold text-slate-400">
               {isEnglish ? 'Teacher panel' : 'Pannello docente'}
             </p>
             <SectionHeading section="/teacher/classes" className="mt-1 text-[22px] font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950" subtitle={<>
@@ -836,12 +836,12 @@ export default function TeacherClassesSessionsManager({
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <InvitationsPanel />
-            <Button onClick={() => setShowArchivedClasses(true)} tone="neutral" surface="soft" density="compact" className="h-9 rounded-full px-3 text-xs font-bold">
+            <Button onClick={() => setShowArchivedClasses(true)} tone="neutral" surface="soft" density="compact" className="h-9 rounded-full px-3 text-xs font-semibold">
               <Archive className="mr-1.5 h-3.5 w-3.5" />
               {isEnglish ? 'Class archive' : 'Archivio classi'}
               <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 text-[10px] text-slate-600">{archivedClasses.length}</span>
             </Button>
-            <Button onClick={() => setShowNewClassForm((value) => !value)} tone="accent" surface="solid" density="compact" className="h-9 rounded-full px-4 text-xs font-bold">
+            <Button onClick={() => setShowNewClassForm((value) => !value)} tone="accent" surface="solid" density="compact" className="h-9 rounded-full px-4 text-xs font-semibold">
               {showNewClassForm ? <X className="mr-1.5 h-3.5 w-3.5" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
               {t('classes.new_class')}
             </Button>
@@ -873,7 +873,7 @@ export default function TeacherClassesSessionsManager({
               type="button"
               onClick={() => setSessionStatusFilter(option.id)}
               aria-pressed={sessionStatusFilter === option.id}
-              className={`h-8 rounded-full px-3 text-xs font-bold transition-colors ${sessionStatusFilter === option.id ? 'ds-selected' : 'text-slate-500 hover:text-slate-800'}`}
+              className={`h-8 rounded-full px-3 text-xs font-semibold transition-colors ${sessionStatusFilter === option.id ? 'ds-selected' : 'text-slate-500 hover:text-slate-800'}`}
             >
               {option.label}
             </button>
@@ -892,7 +892,7 @@ export default function TeacherClassesSessionsManager({
         </label>
 
         {!isNarrowing && folders.length > 0 && (
-          <div className="ml-auto flex items-center gap-1 text-xs font-bold text-slate-500">
+          <div className="ml-auto flex items-center gap-1 text-xs font-semibold text-slate-500">
             <button type="button" onClick={() => setExpandedClassIds(new Set(folders.map((folder) => folder.cls.id)))} className="rounded-full px-2.5 py-1.5 hover:bg-slate-100 hover:text-slate-800">
               {isEnglish ? 'Expand all' : 'Espandi tutto'}
             </button>
@@ -907,21 +907,21 @@ export default function TeacherClassesSessionsManager({
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8 pt-4">
         {showNewClassForm && (
           <form onSubmit={handleCreateClass} className="mb-4 rounded-2xl bg-[var(--ds-surface-muted)] p-4 shadow-[var(--ds-shadow-1)]">
-            <p className="text-sm font-bold text-slate-900">{t('classes.new_class')}</p>
+            <p className="text-sm font-semibold text-slate-900">{t('classes.new_class')}</p>
             <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
               <label className="space-y-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{isEnglish ? 'Class name' : 'Nome della classe'}</span>
+                <span className="text-[10px] font-semibold text-slate-500">{isEnglish ? 'Class name' : 'Nome della classe'}</span>
                 <Input autoFocus placeholder={t('classes.class_name_placeholder')} value={newClassName} onChange={(e) => setNewClassName(e.target.value)} surface="base" className="bg-white" />
               </label>
               <label className="space-y-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{isEnglish ? 'Institution' : 'Istituto'}</span>
+                <span className="text-[10px] font-semibold text-slate-500">{isEnglish ? 'Institution' : 'Istituto'}</span>
                 <Select value={newClassSchoolId} onChange={(e) => setNewClassSchoolId(e.target.value)} surface="base">
                   <option value="">{isEnglish ? 'No institution' : 'Senza istituto'}</option>
                   {teacherSchools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
                 </Select>
               </label>
               <label className="space-y-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{isEnglish ? 'Grade' : 'Grado'}</span>
+                <span className="text-[10px] font-semibold text-slate-500">{isEnglish ? 'Grade' : 'Grado'}</span>
                 <Select value={newClassGrade} onChange={(e) => setNewClassGrade(e.target.value)} surface="base">
                   {schoolGradeOptions.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
                 </Select>
@@ -980,14 +980,14 @@ export default function TeacherClassesSessionsManager({
                       </span>
                       <span className="min-w-0">
                         <span className="flex min-w-0 items-center gap-2">
-                          <span className="truncate text-[15px] font-bold text-slate-950">{cls.name}</span>
+                          <span className="truncate text-[15px] font-semibold text-slate-950">{cls.name}</span>
                           {hasCurrent && (
-                            <span className="inline-flex shrink-0 items-center rounded-full border border-yellow-500 px-2 py-px text-[10px] font-bold uppercase tracking-wide text-yellow-600 dark:border-yellow-400 dark:text-yellow-300">
+                            <span className="inline-flex shrink-0 items-center rounded-full border border-yellow-500 px-2 py-px text-[10px] font-semibold text-yellow-600 dark:border-yellow-400 dark:text-yellow-300">
                               {isEnglish ? 'Current session' : 'Sessione corrente'}
                             </span>
                           )}
                           {activeCount > 0 && (
-                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold text-white">
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
                               {activeCount === 1 ? (isEnglish ? 'Live' : 'Attiva') : `${activeCount} ${isEnglish ? 'live' : 'attive'}`}
                             </span>
@@ -1009,7 +1009,7 @@ export default function TeacherClassesSessionsManager({
                     </button>
 
                     {cls.role !== 'session_shared' && <div className="flex shrink-0 items-center gap-1">
-                      <Button onClick={() => openNewSession(cls.id)} tone="accent" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-bold">
+                      <Button onClick={() => openNewSession(cls.id)} tone="accent" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-semibold">
                         <Plus className="mr-1 h-3.5 w-3.5" />
                         {t('sessions.new_session')}
                       </Button>
@@ -1069,7 +1069,7 @@ export default function TeacherClassesSessionsManager({
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-4 text-sm text-slate-500">
                           <span>{isNarrowing ? (isEnglish ? 'No session matches.' : 'Nessuna sessione corrisponde.') : (isEnglish ? 'No sessions in this class yet.' : 'Questa classe non ha ancora sessioni.')}</span>
                           {!isNarrowing && (
-                            <Button onClick={() => openNewSession(cls.id)} tone="accent" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-bold">
+                            <Button onClick={() => openNewSession(cls.id)} tone="accent" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-semibold">
                               <Plus className="mr-1 h-3.5 w-3.5" />{isEnglish ? 'Create the first one' : 'Crea la prima'}
                             </Button>
                           )}
@@ -1079,7 +1079,7 @@ export default function TeacherClassesSessionsManager({
                           {visibleSessions.length > 0 && (
                             <>
                               <div className="rounded-2xl border border-slate-300/70 bg-white dark:border-white/15 dark:bg-black/25">
-                                <div className="hidden rounded-t-2xl grid-cols-[6rem_minmax(0,1fr)_9.5rem_5.5rem_9.5rem] gap-x-4 border-b border-slate-300/70 bg-slate-100/80 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:border-white/15 dark:bg-white/[0.06] lg:grid">
+                                <div className="hidden rounded-t-2xl grid-cols-[6rem_minmax(0,1fr)_9.5rem_5.5rem_9.5rem] gap-x-4 border-b border-slate-300/70 bg-slate-100/80 px-4 py-2 text-[10px] font-semibold text-slate-500 dark:border-white/15 dark:bg-white/[0.06] lg:grid">
                                   <span>{isEnglish ? 'Status' : 'Stato'}</span>
                                   <span>{isEnglish ? 'Session' : 'Sessione'}</span>
                                   <span>{isEnglish ? 'Students · Created' : 'Studenti · Creata'}</span>
@@ -1097,7 +1097,7 @@ export default function TeacherClassesSessionsManager({
                               <button
                                 type="button"
                                 onClick={() => toggleInSet(setShowEndedFor, cls.id)}
-                                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                                 aria-expanded={showEnded}
                               >
                                 <ChevronRight className={`h-3.5 w-3.5 transition-transform ${showEnded ? 'rotate-90' : ''}`} />
@@ -1113,7 +1113,7 @@ export default function TeacherClassesSessionsManager({
                           <button
                             type="button"
                             onClick={() => toggleInSet(setShowTrashFor, cls.id)}
-                            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                             aria-expanded={showTrash}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -1168,7 +1168,7 @@ export default function TeacherClassesSessionsManager({
               {archivedClasses.map(cls => (
                 <div key={cls.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-slate-800">{cls.name}</p>
+                    <p className="truncate text-sm font-semibold text-slate-800">{cls.name}</p>
                     <p className="text-xs text-slate-500">{cls.archived_at ? new Date(cls.archived_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT') : ''}</p>
                   </div>
                   <div className="flex shrink-0 gap-2">
@@ -1392,7 +1392,7 @@ function SessionLine({
       aria-current={isCurrent ? 'true' : undefined}
       onClick={openSession}
     >
-      <span className={`order-2 inline-flex items-center gap-2 text-xs font-bold lg:order-none ${statusText}`}>
+      <span className={`order-2 inline-flex items-center gap-2 text-xs font-semibold lg:order-none ${statusText}`}>
         <span className={`h-2 w-2 rounded-full ${statusDot} ${isActive ? 'animate-pulse' : ''}`} />
         {meta.label}
       </span>
@@ -1408,9 +1408,9 @@ function SessionLine({
         ) : (
           <span className="block min-w-0">
             <span className="flex min-w-0 items-center gap-2">
-              <span className={`truncate text-sm font-bold ${isEnded ? 'text-slate-500' : 'text-slate-950'}`}>{session.title}</span>
+              <span className={`truncate text-sm font-semibold ${isEnded ? 'text-slate-500' : 'text-slate-950'}`}>{session.title}</span>
               {isCurrent && (
-                <span className="shrink-0 rounded-full border border-yellow-500 px-2 py-px text-[9px] font-bold uppercase tracking-wide text-yellow-600 dark:border-yellow-400 dark:text-yellow-300">
+                <span className="shrink-0 rounded-full border border-yellow-500 px-2 py-px text-[9px] font-semibold text-yellow-600 dark:border-yellow-400 dark:text-yellow-300">
                   {isEnglish ? 'Current' : 'Corrente'}
                 </span>
               )}
@@ -1431,7 +1431,7 @@ function SessionLine({
       </span>
       <span className="hidden lg:block" onClick={(e) => e.stopPropagation()}>
         {session.join_code ? (
-          <button type="button" onClick={() => onCopyCode(session.join_code)} className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 font-mono text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900" title={isEnglish ? 'Copy code' : 'Copia codice'}>
+          <button type="button" onClick={() => onCopyCode(session.join_code)} className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 font-mono text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900" title={isEnglish ? 'Copy code' : 'Copia codice'}>
             {session.join_code}<Copy className="h-3 w-3 opacity-60" />
           </button>
         ) : <span className="text-xs text-slate-300">—</span>}
@@ -1439,12 +1439,12 @@ function SessionLine({
 
       <div className="relative flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
         {isActive && (
-          <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-bold">
+          <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-semibold">
             <Pause className="mr-1 h-3.5 w-3.5" /> {isEnglish ? 'Pause' : 'Pausa'}
           </Button>
         )}
         {(isPaused || isDraft) && (
-          <Button onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-bold">
+          <Button onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-semibold">
             <Play className="mr-1 h-3.5 w-3.5" /> {isPaused ? (isEnglish ? 'Resume' : 'Riprendi') : (isEnglish ? 'Start' : 'Avvia')}
           </Button>
         )}
@@ -1500,7 +1500,7 @@ function SessionTrash({
     <section className="rounded-2xl bg-slate-50 p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+          <h3 className="flex items-center gap-2 text-[10px] font-semibold text-slate-500">
             <Trash2 className="h-3.5 w-3.5" />
             {isEnglish ? 'Trash' : 'Cestino'}
           </h3>

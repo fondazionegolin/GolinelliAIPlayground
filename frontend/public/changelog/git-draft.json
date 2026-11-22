@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-18T22:59:32.578181+00:00",
-  "version_label": "2026.11.18-1b372beb",
+  "generated_at": "2026-11-19T13:41:42.902846+00:00",
+  "version_label": "2026.11.19-266eb7b0",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 31 commit dall'ultima release pubblicata.",
-  "git_ref": "1b372beb7eea866f48dff89c7001f36c2758110c",
+  "summary": "Bozza generata automaticamente da 32 commit dall'ultima release pubblicata.",
+  "git_ref": "266eb7b02adbeee51ec186b76812d06f191b9f22",
   "items": [
     {
       "category": "new",
@@ -159,6 +159,11 @@
       "category": "new",
       "title": "Vibe-lab: model team, parallel writers, live code, authentic design, library landing",
       "description": "Vibe-lab: model team, parallel writers, live code, authentic design, library landing"
+    },
+    {
+      "category": "new",
+      "title": "Improve Vibe QA, voice and live labs",
+      "description": "Improve Vibe QA, voice and live labs"
     }
   ]
 }

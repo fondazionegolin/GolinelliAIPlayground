@@ -62,7 +62,7 @@ export function SessionVoiceCalls({ sessionId, isTeacher }: { sessionId: string;
           aria-expanded={expanded}
         >
           <Video className="h-3.5 w-3.5 flex-shrink-0 text-[var(--text-secondary)]" />
-          <span className="truncate text-[11px] font-bold uppercase tracking-wide text-[var(--text-secondary)]">{tl("Videochiamate con link")}</span>
+          <span className="truncate text-[11px] font-semibold text-[var(--text-secondary)]">{tl("Videochiamate con link")}</span>
           {live.length > 0 && <span className="h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-emerald-500" aria-label={tl("In corso")} />}
           <span className="text-[10px] font-semibold text-[var(--text-secondary)]">{calls.length}</span>
           <ChevronDown className={`ml-auto h-3.5 w-3.5 flex-shrink-0 text-[var(--text-secondary)] transition-transform ${expanded ? 'rotate-180' : ''}`} />
@@ -72,7 +72,7 @@ export function SessionVoiceCalls({ sessionId, isTeacher }: { sessionId: string;
             type="button"
             onClick={() => create.mutate()}
             disabled={create.isPending}
-            className="flex h-6 items-center gap-1 rounded-full bg-[var(--ds-surface)] px-2 text-[10px] font-bold text-[var(--text-primary)] hover:bg-[var(--ds-surface-raised)] disabled:opacity-60"
+            className="flex h-6 items-center gap-1 rounded-full bg-[var(--ds-surface)] px-2 text-[10px] font-semibold text-[var(--text-primary)] hover:bg-[var(--ds-surface-raised)] disabled:opacity-60"
             title={tl("Crea un link di invito per una videochiamata con questa sessione")}
           >
             {create.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}{tl("Link")}
@@ -99,7 +99,7 @@ export function SessionVoiceCalls({ sessionId, isTeacher }: { sessionId: string;
               <button
                 type="button"
                 onClick={() => openVoiceCall(call.code)}
-                className={`flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-bold ${call.live ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-[var(--ds-surface-muted)] text-[var(--text-primary)] hover:brightness-95'}`}
+                className={`flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-semibold ${call.live ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-[var(--ds-surface-muted)] text-[var(--text-primary)] hover:brightness-95'}`}
               >
                 {call.live ? tl("Entra") : tl("Apri")}<ExternalLink className="h-3 w-3 opacity-70" />
               </button>

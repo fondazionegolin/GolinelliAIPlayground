@@ -11,7 +11,7 @@ import { DocumentPageDecorations } from '@/components/documents/DocumentPageDeco
 import PresentationPlayer from '@/components/presentation/PresentationPlayer'
 import { applyStyleToBlocks, createShapeBlock } from '@/lib/slideBlocks'
 import { PublicDocumentError, publicDocumentApi, type SharedDocument } from '@/lib/documentShares'
-import { pageDimensions, readPageSetup } from '@/lib/documentPage'
+import { documentRow, pageDimensions, readPageSetup } from '@/lib/documentPage'
 import { readHeaderFooter } from '@/lib/documentHeaderFooter'
 import { sanitizeDocumentHtml } from '@/lib/sanitizeDocumentHtml'
 import type { StudioSlide } from '@/lib/presentationStudio'
@@ -51,7 +51,9 @@ export default function PublicDocumentPage() {
   const slide = slides[index]
   const isSlides = meta?.doc_type === 'presentation'
   const dimensions = content.format === '4:3' ? { width: 800, height: 600 } : { width: 960, height: 540 }
-  const page = pageDimensions(readPageSetup(content.page))
+  const pageSetup = readPageSetup(content.page)
+  const page = pageDimensions(pageSetup)
+  const row = documentRow(pageSetup)
   const marginX = Number(content.margins?.horizontal ?? 64)
   const marginY = Number(content.margins?.vertical ?? 64)
 
@@ -141,14 +143,14 @@ export default function PublicDocumentPage() {
   }
 
   if (loading) return <main className="grid min-h-screen place-items-center bg-[var(--bg-primary)] text-[var(--text-primary)]"><p role="status">{tl('Caricamento documento…')}</p></main>
-  if (!meta) return <main className="grid min-h-screen place-items-center bg-[var(--bg-primary)] p-6 text-[var(--text-primary)]"><div className="grid max-w-md gap-4"><h1 className="text-xl font-bold">{tl('Documento non disponibile')}</h1><p role="alert">{error}</p><Button onClick={() => void load()}>{tl('Riprova')}</Button></div></main>
+  if (!meta) return <main className="grid min-h-screen place-items-center bg-[var(--bg-primary)] p-6 text-[var(--text-primary)]"><div className="grid max-w-md gap-4"><h1 className="text-xl font-semibold">{tl('Documento non disponibile')}</h1><p role="alert">{error}</p><Button onClick={() => void load()}>{tl('Riprova')}</Button></div></main>
 
   return <main className="flex h-dvh flex-col overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
     <header className="ds-panel flex shrink-0 flex-wrap items-center gap-3 rounded-none px-4 py-3">
       <SectionIllustration section="/teacher/documents" compact />
       <div className="min-w-0 flex-1">
         {meta.permission === 'edit' ? <Input aria-label={tl('Titolo documento')} value={title} disabled={!editable} onChange={event => { setTitle(event.target.value); setDirty(true) }} />
-          : <h1 className="truncate text-lg font-bold">{title}</h1>}
+          : <h1 className="truncate text-lg font-semibold">{title}</h1>}
         <p className="mt-1 text-xs text-[var(--text-secondary)]">{meta.permission === 'edit' ? tl('Modifica tramite link') : tl('Sola lettura')} · {tl('Golinelli AI')}</p>
       </div>
       {isSlides && <Button surface="ghost" onClick={() => setPresenting(true)} disabled={!slides.length}><MonitorPlay className="mr-2 h-4 w-4" />{tl('Presenta')}</Button>}
@@ -173,7 +175,7 @@ export default function PublicDocumentPage() {
     </nav>}
     <div ref={host} className="min-h-0 flex-1 overflow-auto p-4">
       {isSlides && slide ? <div className="mx-auto" style={{ width: dimensions.width * scale, height: dimensions.height * scale }}>
-        <div className="theme-keep relative bg-white shadow-lg" style={{ width: dimensions.width, height: dimensions.height, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+        <div className="theme-keep relative bg-white shadow-lg" style={{ width: dimensions.width, height: dimensions.height, transform: `scale(${scale})`, transformOrigin: 'top left', ['--doc-row' as string]: `${row}px` }}>
           {editable ? <SlideEditor key={slide.id} blocks={slide.blocks} onChange={setBlocks} selectedBlockId={selected} onSelectBlock={setSelected} scale={scale}
             slideWidth={dimensions.width} slideHeight={dimensions.height} backgroundColor={slide.backgroundColor} onActiveTextEditorChange={setActiveBlockEditor} />
             : <SlidePreview content={{ format: content.format || '16:9', slides: [slide] }} title={slide.title} interactive />}
@@ -183,8 +185,8 @@ export default function PublicDocumentPage() {
           <DocumentPageDecorations config={readHeaderFooter(content.headerFooter)} pageCount={pageCount} pageHeight={page.height} pageGap={24} marginVertical={marginY} marginHorizontal={marginX} />
           <RichTextEditor key={loadId} content={content.htmlContent || ''} readOnly={!editable} onEditorReady={setEditor} enableSelectionAssist={false}
             onChange={html => edit(value => ({ ...value, htmlContent: html }))}
-            contentClassName="relative z-10 min-h-full max-w-none p-0 [&_.ProseMirror]:min-h-[400px] [&_.ProseMirror]:text-[16px] [&_.ProseMirror]:leading-7 [&_.ProseMirror_p]:m-0"
-            pagination={{ pageHeight: page.height, pageGap: 24, marginTop: marginY, marginBottom: marginY, onPageCountChange: setPageCount }} />
+            contentClassName="relative z-10 min-h-full max-w-none p-0 [&_.ProseMirror]:min-h-[400px] [&_.ProseMirror]:text-[16px]"
+            pagination={{ pageHeight: page.height, pageGap: 24, marginTop: marginY, marginBottom: marginY, row, onPageCountChange: setPageCount }} />
         </article>
       </div>}
     </div>

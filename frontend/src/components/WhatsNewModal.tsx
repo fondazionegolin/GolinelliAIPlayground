@@ -82,7 +82,7 @@ export default function WhatsNewModal({ onClose }: { onClose: () => void }) {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
+                        <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white">
                           {release.version_label}
                         </span>
                         {release.published_at && (
@@ -113,7 +113,7 @@ export default function WhatsNewModal({ onClose }: { onClose: () => void }) {
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm font-semibold text-slate-900">{item.title}</span>
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${meta.badgeClass}`}>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${meta.badgeClass}`}>
                                 {meta.label}
                               </span>
                             </div>

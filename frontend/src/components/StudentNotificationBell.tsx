@@ -134,7 +134,7 @@ export function StudentNotificationBell({
       >
         <Bell className="h-4 w-4" />
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white" style={{ backgroundColor: accentColor }}>
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white ring-2 ring-white" style={{ backgroundColor: accentColor }}>
             {unread > 9 ? '9+' : unread}
           </span>
         )}
@@ -143,7 +143,7 @@ export function StudentNotificationBell({
       {open && (
         <div className="absolute right-0 z-50 mt-2 w-80 ds-popover nav-cluster-unroll overflow-hidden rounded-[var(--ds-radius-panel)]">
           <div className="flex items-center justify-between border-b border-slate-50 px-4 py-2.5">
-            <span className="text-sm font-bold text-slate-800">{tl("Notifiche")}</span>
+            <span className="text-sm font-semibold text-slate-800">{tl("Notifiche")}</span>
             {notifs.length > 0 && (
               <button onClick={markAllRead} className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">
                 <Check className="h-3 w-3" /> {tl("Segna lette")}

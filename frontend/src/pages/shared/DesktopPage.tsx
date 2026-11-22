@@ -385,7 +385,7 @@ export default function DesktopPage({
 
       {/* Canvas */}
       <div
-        className={`flex-1 overflow-auto relative transition-all duration-200 ${isDragOver ? 'ring-2 ring-inset ring-cyan-400/40' : ''}`}
+        className={`flex-1 overflow-auto relative transition duration-200 ${isDragOver ? 'ring-2 ring-inset ring-cyan-400/40' : ''}`}
       >
         {/* Dot grid overlay */}
         <div className="absolute inset-0 pointer-events-none z-0" style={dotStyle} />

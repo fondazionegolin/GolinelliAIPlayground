@@ -82,7 +82,7 @@ export default function EnvironmentalImpactPill({
     <div
       className={[
         // inline-flex already sizes to content — no w-fit needed
-        'group inline-flex flex-col overflow-hidden rounded-2xl border px-1.5 py-1 transition-all duration-200 ease-out',
+        'group inline-flex flex-col overflow-hidden rounded-2xl border px-1.5 py-1 transition duration-200 ease-out',
         darkMode
           ? 'border-white/15 bg-white/10 text-white/85'
           : 'border-emerald-200/80 bg-emerald-50/90 text-emerald-900',

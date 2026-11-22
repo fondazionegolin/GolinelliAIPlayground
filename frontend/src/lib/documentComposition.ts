@@ -6,12 +6,11 @@ export interface CompositionPrefs {
   capitalize: boolean
   /** Curly quotes and apostrophes, "…", " – ", no double spaces. */
   typography: boolean
-  /** Small first-line indent on the paragraph created by pressing Enter after body text. */
-  indent: boolean
 }
 
-export const DEFAULT_COMPOSITION: CompositionPrefs = { lists: true, capitalize: true, typography: true, indent: true }
-export const COMPOSITION_INDENT = '24px'
+export const DEFAULT_COMPOSITION: CompositionPrefs = { lists: true, capitalize: true, typography: true }
+/** First-line indent the removed «rientro sui nuovi paragrafi» option used to add on Enter (cleaned on load). */
+export const LEGACY_ENTER_INDENT = '24px'
 
 const KEY = 'documents.composition'
 let current: CompositionPrefs = readStored()
@@ -26,7 +25,6 @@ function readStored(): CompositionPrefs {
         lists: parsed.lists !== false,
         capitalize: parsed.capitalize !== false,
         typography: parsed.typography !== false,
-        indent: parsed.indent !== false,
       }
     }
   } catch {

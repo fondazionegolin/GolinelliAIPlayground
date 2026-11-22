@@ -215,7 +215,7 @@ export function ChatConversationList({
                 return (
                   <div key={group}>
                     <div className="px-4 py-2 bg-slate-100/50 sticky top-0 z-10">
-                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      <span className="text-xs font-medium text-slate-500">
                         {group}
                       </span>
                     </div>

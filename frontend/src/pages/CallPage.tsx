@@ -50,7 +50,7 @@ function PageShell({ children, onBack, title, subtitle, right }: {
           <Video className="h-5 w-5 text-[var(--text-secondary)]" />
         </div>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-bold">{title}</h1>
+          <h1 className="truncate text-lg font-semibold">{title}</h1>
           {subtitle && <p className="truncate text-xs text-[var(--text-secondary)]">{subtitle}</p>}
         </div>
         {right}
@@ -139,7 +139,7 @@ function CallLobby() {
               <Card key={call.id} className="p-5">
                 <div className="mb-3 flex items-center gap-2">
                   <span className={`h-2.5 w-2.5 rounded-full ${call.live ? 'animate-pulse bg-emerald-500' : 'bg-slate-300'}`} />
-                  <h2 className="min-w-0 flex-1 truncate text-sm font-bold">{call.title}</h2>
+                  <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{call.title}</h2>
                   <span className="truncate text-xs text-[var(--text-secondary)]">{call.session_label || call.class_label || (call.is_owner ? '' : call.owner_name)}</span>
                 </div>
                 <VoiceCallLinkCard call={call} onSchedule={call.is_owner ? schedule : undefined} />
@@ -232,7 +232,7 @@ function CallRoom({ code }: { code: string }) {
       <PageShell title={tl("Videochiamata")} subtitle={code}>
         <Card className="mx-auto max-w-md p-6 text-center">
           <Video className="mx-auto h-8 w-8 text-[var(--text-secondary)]" />
-          <h2 className="mt-3 text-lg font-bold">{tl("Accedi per partecipare")}</h2>
+          <h2 className="mt-3 text-lg font-semibold">{tl("Accedi per partecipare")}</h2>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             {tl("Gli studenti entrano nella loro sessione con il codice della classe, i docenti con il proprio account. Poi riapri questo link.")}
           </p>
@@ -253,7 +253,7 @@ function CallRoom({ code }: { code: string }) {
         <Card className="mx-auto max-w-md p-6 text-center">
           {isLoading ? <Loader2 className="mx-auto h-6 w-6 animate-spin text-[var(--text-secondary)]" /> : (
             <>
-              <h2 className="text-lg font-bold">{tl("Impossibile entrare")}</h2>
+              <h2 className="text-lg font-semibold">{tl("Impossibile entrare")}</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">{errorMessage}</p>
               <Button className="mt-4" tone="neutral" surface="soft" onClick={() => navigate('/call')}>{tl("Inserisci un altro codice")}</Button>
             </>
@@ -273,7 +273,7 @@ function CallRoom({ code }: { code: string }) {
         <Button type="button" tone="neutral" surface="ghost" density="icon" aria-label={tl("Indietro")} onClick={back}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h1 className="min-w-0 flex-1 truncate text-base font-bold">{call.title}</h1>
+        <h1 className="min-w-0 flex-1 truncate text-base font-semibold">{call.title}</h1>
         <VoiceCallCodeTag code={call.code} />
         <Button type="button" tone="neutral" surface="soft" density="compact" onClick={() => setShowInvite(true)}>
           <UserPlus className="mr-1.5 h-4 w-4" />{tl("Invita")}
@@ -362,7 +362,7 @@ export default function CallPage() {
     return (
       <PageShell title={tl("Videochiamata")} subtitle={raw} onBack={() => navigate('/call')}>
         <Card className="mx-auto max-w-md p-6 text-center">
-          <h2 className="text-lg font-bold">{tl("Codice non valido")}</h2>
+          <h2 className="text-lg font-semibold">{tl("Codice non valido")}</h2>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">{tl("Il codice ha la forma abc-defg-hij.")}</p>
           <Button className="mt-4" tone="neutral" surface="soft" onClick={() => navigate('/call')}>{tl("Inserisci un codice")}</Button>
         </Card>

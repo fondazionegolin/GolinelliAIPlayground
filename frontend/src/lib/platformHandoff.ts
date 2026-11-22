@@ -18,7 +18,9 @@ export interface PlatformHandoff {
   needs_session?: boolean
   title: string
   brief: string
-  hints: { variant?: string; mode?: string; classes?: string[]; name?: string }
+  /** Existing text carried over verbatim (the script the chat just wrote, attached documents). */
+  source?: string
+  hints: { variant?: string; mode?: string; classes?: string[]; name?: string; kind?: 'voice' | 'music' }
 }
 
 export interface HandoffDenied {

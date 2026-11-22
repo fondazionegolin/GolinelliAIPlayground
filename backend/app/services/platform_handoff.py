@@ -71,7 +71,12 @@ DESTINATIONS: dict[str, Destination] = {d.id: d for d in [
                 hints='"topic": cosa deve fare il programma micro:bit; "title": titolo breve.'),
     Destination("vibe_lab", "Vibe Lab", "A real software project to be built with AI: a multi-section website, a web app, a landing page with several pieces of information, a tool with logic. More substantial than a single interactive page.",
                 "/teacher/coding", "coding", needs_session=True,
-                hints='"topic": brief del progetto software (scopo, sezioni, contenuti, stile); "title": nome breve del progetto.'),
+                hints='"topic": brief del progetto software (scopo, sezioni, contenuti, stile); "title": nome breve del progetto. '
+                      'Per Vibe Lab il "brief" è un METAPROMPT: esplodi la richiesta in una specifica ricca e ben strutturata, in italiano, con sezioni brevi: '
+                      'Obiettivo e pubblico (età, livello); Funzionalità e interazioni richieste, una per riga, anche quelle implicite ma necessarie; '
+                      'Contenuti e correttezza dei dati/dominio (valori reali, formule, vincoli scientifici o tecnici); Tecnologie (usa quelle indicate, es. three.js); '
+                      'Interfaccia e controlli (cosa vede e può fare l\'utente); Stile grafico e tono; Criteri di qualità (fluidità, responsive, nessun errore). '
+                      'Mantieni tutto ciò che l\'utente ha chiesto, aggiungi solo dettagli coerenti, niente codice. Lunghezza 1500-3000 caratteri.'),
     Destination("ml_lab", "Lab ML", "A machine-learning classifier trained in the browser from webcam/photos: image classifier, body-pose classifier, hand-gesture classifier, facial-expression recognition.",
                 "/teacher/ml-lab", "classification", variant="image",
                 hints='"mode": uno tra "image" (oggetti/immagini), "pose" (posture del corpo), "hand" (gesti delle mani), "face" (espressioni del viso); "name": nome del progetto; "classes": da 2 a 6 nomi delle classi da riconoscere.'),
@@ -89,7 +94,7 @@ DESTINATIONS: dict[str, Destination] = {d.id: d for d in [
     Destination("video_studio", "Video Studio", "A video to produce with AI (shots, scenes, clips, storyboard).",
                 "/teacher/video-studio", None, hints='"topic": che video produrre.'),
     Destination("audio_lab", "Audio Lab", "Music, a jingle, a voice-over or audio to produce with AI.",
-                "/teacher/audio-lab", None, hints='"topic": che audio o brano produrre.'),
+                "/teacher/audio-lab", None, hints='"kind": "voice" se serve un parlato/voce narrante da un testo, "music" se serve un brano/jingle musicale; "topic": per la musica stile, mood e strumentazione; per la voce il testo da leggere se è breve.'),
     Destination("live_interaction", "Interazione live", "A live interaction for the classroom: poll, word wall, MCQ or feedback slides shown to the students in real time.",
                 "/teacher/live-interaction", None, hints='"topic": che interazione live preparare.'),
 ]}
@@ -124,24 +129,60 @@ async def active_modules_text(db: AsyncSession, actor: StudentOrTeacher) -> str:
 
 
 PLANNER_SYSTEM = """Sei l'assistente agentico di una piattaforma didattica. L'utente ha chiesto qualcosa che si fa in una sezione dedicata
-della piattaforma ({label}). Non devi svolgere il lavoro: prepari il passaggio alla sezione.
+della piattaforma ({label}). Non devi svolgere il lavoro: prepari il passaggio alla sezione, che compilerà da sola i suoi campi con ciò che scrivi.
 Rispondi SOLO con un oggetto JSON con queste chiavi:
 - "summary": 2-4 frasi nella lingua dell'utente (sul modo di dire "ho capito che..."): che cosa creerai, tipo di progetto e 2-3 scelte iniziali
   sensate dedotte dalla richiesta (struttura, funzioni, stile). Niente codice, niente elenchi lunghi, niente promesse su ciò che non sai.
 - "title": titolo breve del progetto (max 60 caratteri).
 - "brief": la richiesta riscritta in modo completo e autosufficiente per la sezione di destinazione, nella lingua dell'utente, senza saluti.
+  Deve contenere TUTTE le indicazioni concrete date dall'utente (argomento, pubblico, durata, tono, stile, numeri, vincoli, nomi) e quelle
+  rilevanti emerse dalla conversazione o dai documenti. Non accorciare né generalizzare: se la richiesta è già completa, riportala quasi alla lettera.
+- "source_use": quale testo già esistente la sezione deve ricevere INTEGRALMENTE come materiale di partenza (non riassunto):
+  "assistant" se l'utente si riferisce al testo che l'assistente ha appena scritto in chat (sceneggiatura, bozza, copione, elenco...),
+  "materials" se si riferisce ai documenti allegati, "both" per entrambi, "none" se non c'è nulla da portare oltre al brief.
 - chiavi specifiche della sezione: {hints}
 Non inventare dati che l'utente non ha dato. Se un'informazione manca, scegli un default ragionevole e dichiaralo nel riassunto."""
 
+MAX_SOURCE = 20000
 
-async def _plan_with_llm(db: AsyncSession, actor: StudentOrTeacher, dest: Destination, prompt: str, history: list[dict]) -> dict[str, Any]:
-    transcript = "\n".join(f"{str(m.get('role', 'user')).upper()}: {str(m.get('content') or '')[:600]}" for m in history[-4:])
-    context = f"CONVERSAZIONE RECENTE:\n{transcript}\n\n" if transcript else ""
+
+def _planner_context(history: list[dict], materials: list[dict]) -> str:
+    """Conversation + attachments the planner reads: the last turns long enough to carry real instructions."""
+    parts: list[str] = []
+    turns = history[-6:]
+    lines = []
+    for index, m in enumerate(turns):
+        limit = 6000 if index >= len(turns) - 2 else 1200
+        lines.append(f"{str(m.get('role', 'user')).upper()}: {str(m.get('content') or '')[:limit]}")
+    if lines:
+        parts.append("CONVERSAZIONE RECENTE:\n" + "\n\n".join(lines))
+    for material in materials[:5]:
+        parts.append(f"DOCUMENTO ALLEGATO «{str(material.get('name') or 'documento')[:80]}»:\n{str(material.get('text') or '')[:6000]}")
+    return "\n\n".join(parts) + "\n\n" if parts else ""
+
+
+def _source_text(use: str, history: list[dict], materials: list[dict]) -> str:
+    """The text handed over verbatim: picked by the planner but copied by code, so the model never paraphrases or truncates it."""
+    chunks: list[str] = []
+    if use in {"assistant", "both"}:
+        last = next((str(m.get("content") or "").strip() for m in reversed(history) if m.get("role") == "assistant" and len(str(m.get("content") or "").strip()) > 200), "")
+        if last:
+            chunks.append(last)
+    if use in {"materials", "both"}:
+        for material in materials[:5]:
+            text = str(material.get("text") or "").strip()
+            if text:
+                chunks.append(f"### {str(material.get('name') or 'Documento')[:80]}\n{text}" if len(materials) > 1 else text)
+    return "\n\n".join(chunks)[:MAX_SOURCE]
+
+
+async def _plan_with_llm(db: AsyncSession, actor: StudentOrTeacher, dest: Destination, prompt: str, history: list[dict], materials: list[dict]) -> dict[str, Any]:
+    context = _planner_context(history, materials)
     messages = [{"role": "user", "content": f"{context}RICHIESTA:\n{prompt[:4000]}"}]
     provider, model = model_roles.provider_for("chat.fast"), model_roles.model_for("chat.fast")
     response = await llm_service.generate(
         messages=messages, system_prompt=PLANNER_SYSTEM.format(label=dest.label, hints=dest.hints or '"topic": sintesi della richiesta.'),
-        provider=provider, model=model, temperature=0.2, max_tokens=900, allow_web_search=False)
+        provider=provider, model=model, temperature=0.2, max_tokens=4500, allow_web_search=False)
     try:
         if actor.is_student:
             student = actor.student
@@ -181,6 +222,9 @@ def _hints(dest: Destination, data: dict[str, Any]) -> dict[str, Any]:
             hints["classes"] = classes
         if str(data.get("name") or "").strip():
             hints["name"] = str(data["name"]).strip()[:80]
+    if dest.id == "audio_lab":
+        kind = str(data.get("kind") or "").strip().lower()
+        hints["kind"] = kind if kind in {"voice", "music"} else "music"
     if dest.variant:
         hints["variant"] = dest.variant
     return hints
@@ -189,6 +233,7 @@ def _hints(dest: Destination, data: dict[str, Any]) -> dict[str, Any]:
 async def plan_handoff(
     db: AsyncSession, actor: StudentOrTeacher, *, target: str, prompt: str,
     conversation_id: Optional[uuid.UUID] = None, history: Optional[list[dict]] = None,
+    materials: Optional[list[dict]] = None,
 ) -> dict[str, Any]:
     """Build the hand-off card for ``target``; never raises for a model failure (falls back to the raw prompt)."""
     dest = DESTINATIONS.get(target)
@@ -210,10 +255,13 @@ async def plan_handoff(
                 "content": f"**{dest.label}** non è disponibile per i docenti."}
 
     try:
-        data = await _plan_with_llm(db, actor, dest, prompt, history or [])
+        data = await _plan_with_llm(db, actor, dest, prompt, history or [], materials or [])
     except Exception:
         logger.exception("platform handoff: planning failed, using the raw prompt")
         data = {}
+    use = str(data.get("source_use") or "").strip().lower()
+    if use not in {"assistant", "materials", "both", "none"}:
+        use = "materials" if materials else "none"  # planner failed: attachments still travel with the request
     summary = str(data.get("summary") or "").strip()[:900] or f"Apro **{dest.label}** con la tua richiesta."
     handoff = {
         "available": True,
@@ -224,6 +272,7 @@ async def plan_handoff(
         "needs_session": bool(dest.needs_session and actor.is_teacher),
         "title": str(data.get("title") or "").strip()[:80],
         "brief": str(data.get("brief") or data.get("topic") or prompt).strip()[:4000] or prompt,
+        "source": _source_text(use, history or [], materials or []),
         "hints": _hints(dest, data),
     }
     result: dict[str, Any] = {"content": summary, "handoff": handoff}

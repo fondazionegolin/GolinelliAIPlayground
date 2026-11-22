@@ -154,11 +154,11 @@ export default function WikiGuidePage({
               <Layers3 className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: accentText }}>
+              <p className="text-[10px] font-semibold" style={{ color: accentText }}>
                 {roleLabel}
               </p>
-              {section ? <SectionHeading section={section} compact className="truncate text-sm font-bold text-slate-950">{title}</SectionHeading>
-                : <h1 className="truncate text-sm font-bold text-slate-950">{title}</h1>}
+              {section ? <SectionHeading section={section} compact className="truncate text-sm font-semibold text-slate-950">{title}</SectionHeading>
+                : <h1 className="truncate text-sm font-semibold text-slate-950">{title}</h1>}
             </div>
             <span className="ml-auto">
               <SidebarCollapseButton onClick={() => setSidebarCollapsed(true)} label={tl("Comprimi indice")} />
@@ -199,7 +199,7 @@ export default function WikiGuidePage({
                     >
                       <Icon className="h-4 w-4 shrink-0" style={isActive ? { color: accentColor } : undefined} />
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold">{section.title}</span>
-                      <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+                      <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
                         {section.features.length}
                       </span>
                     </button>
@@ -258,10 +258,10 @@ export default function WikiGuidePage({
                     {ActiveSectionIcon && <ActiveSectionIcon className="h-5 w-5" />}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: accentText }}>
+                    <p className="text-[10px] font-semibold" style={{ color: accentText }}>
                       {t('wiki.active_section')}
                     </p>
-                    <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">{activeSection.title}</h2>
+                    <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{activeSection.title}</h2>
                     <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{activeSection.description}</p>
                   </div>
                 </div>
@@ -278,14 +278,14 @@ export default function WikiGuidePage({
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="max-w-3xl">
-                        <p className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: accentText }}>
+                        <p className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold" style={{ color: accentText }}>
                           {feature.path}
                         </p>
-                        <h3 className="mt-3 text-lg font-bold text-slate-950">{feature.title}</h3>
+                        <h3 className="mt-3 text-lg font-semibold text-slate-950">{feature.title}</h3>
                         <p className="mt-2 text-sm leading-6 text-slate-600">{feature.description}</p>
                       </div>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('wiki.class_sharing')}</p>
+                        <p className="text-[10px] font-semibold text-slate-400">{t('wiki.class_sharing')}</p>
                         <p className="mt-1 text-sm font-semibold text-slate-900">{feature.classSharing}</p>
                       </div>
                     </div>
@@ -294,7 +294,7 @@ export default function WikiGuidePage({
                       <InfoBlock title={t('wiki.standard_flow')}>
                         {feature.standardFlow.map((step, index) => (
                           <div key={step} className="flex gap-2.5">
-                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white">
+                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-semibold text-white">
                               {index + 1}
                             </span>
                             <p className="text-sm leading-5 text-slate-700">{step}</p>
@@ -313,7 +313,7 @@ export default function WikiGuidePage({
 
                       <InfoBlock title={t('wiki.output_and_options')}>
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('wiki.format')}</p>
+                          <p className="text-[10px] font-semibold text-slate-400">{t('wiki.format')}</p>
                           <p className="mt-1 text-sm font-medium text-slate-800">{feature.outputFormat}</p>
                         </div>
                         {(feature.extraOptions ?? []).map((option) => (
@@ -343,7 +343,7 @@ export default function WikiGuidePage({
 function InfoBlock({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{title}</p>
+      <p className="text-[11px] font-semibold text-slate-500">{title}</p>
       <div className="mt-3 space-y-2">{children}</div>
     </div>
   )

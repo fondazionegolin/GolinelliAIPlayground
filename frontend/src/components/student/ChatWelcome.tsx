@@ -18,11 +18,11 @@ export function ChatWelcome({ name, description, suggestedPrompts = [], onSelect
       <SectionHeading
         section="/teacher/teacherbots"
         as="h2"
-        className="text-xl font-bold tracking-tight text-[var(--text-primary)] sm:text-2xl"
+        className="text-xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-2xl"
         subtitle={description || tl("Come posso aiutarti oggi?")}
         subtitleClassName="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]"
       >
-        {tl("Ciao! Sono")} {name}
+        {tl("Ciao, sono")} {name}
       </SectionHeading>
 
       {suggestedPrompts.length > 0 && (

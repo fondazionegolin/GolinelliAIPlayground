@@ -133,7 +133,7 @@ export default function WallpaperPicker({ current, onSelect, onClose }: Wallpape
         </div>
 
         {/* 256-color palette — 16 cols × 16 rows */}
-        <div className="mb-1 text-[10px] text-white/30 uppercase tracking-wider">{tl("Colori")}</div>
+        <div className="mb-1 text-[10px] text-white/30">{tl("Colori")}</div>
         <div
           className="grid gap-[3px] mb-4"
           style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}
@@ -144,7 +144,7 @@ export default function WallpaperPicker({ current, onSelect, onClose }: Wallpape
               <button
                 key={idx}
                 title={color}
-                className={`relative aspect-square rounded-sm transition-all ${
+                className={`relative aspect-square rounded-sm transition ${
                   isSelected ? 'ring-2 ring-white/70 scale-90 z-10' : 'hover:scale-110 hover:z-10'
                 }`}
                 style={{ background: color }}
@@ -161,10 +161,10 @@ export default function WallpaperPicker({ current, onSelect, onClose }: Wallpape
         </div>
 
         {/* Image upload */}
-        <div className="mb-1 text-[10px] text-white/30 uppercase tracking-wider">{tl("Immagine")}</div>
+        <div className="mb-1 text-[10px] text-white/30">{tl("Immagine")}</div>
         <button
           disabled={compressing}
-          className={`w-full flex items-center justify-center gap-2 h-11 rounded-xl border-2 transition-all text-xs font-medium ${
+          className={`w-full flex items-center justify-center gap-2 h-11 rounded-xl border-2 transition text-xs font-medium ${
             isCustomImage
               ? 'border-white/40 text-white'
               : 'border-dashed border-white/20 bg-white/5 hover:bg-white/10 text-white/50'

@@ -3,6 +3,7 @@ import { AlertCircle } from '@/components/icons'
 import { NOTEBOOK_LIBRARIES } from './notebookLibraries'
 import { buildMlStub, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
 import { tl } from '@/i18n/tl'
+import { P5_RUNTIME_SCRIPT } from './p5Runtime'
 
 interface P5File {
   name: string
@@ -56,8 +57,38 @@ const CAMERA_SHIM = `<script>
 })();
 </script>`
 
-function buildPreviewDoc(files: P5File[], activeLibraries: string[], mlModels: MlRuntimeModel[] = []) {
-  const cameraShim = p5NeedsCamera(files, activeLibraries, mlModels) ? CAMERA_SHIM : ''
+// Verification runs (the agent tests its proposal before showing it): a synthetic moving webcam instead of the real
+// one, so no permission prompt and no real image leave the page; trackers simply find nothing in it.
+const SYNTHETIC_CAMERA = `<script>
+(function () {
+  try {
+    var md = navigator.mediaDevices || (navigator.mediaDevices = {});
+    md.getUserMedia = function () {
+      var c = document.createElement('canvas'); c.width = 640; c.height = 480;
+      var g = c.getContext('2d'), t = 0;
+      (function paint() {
+        t += 1;
+        g.fillStyle = '#20242a'; g.fillRect(0, 0, 640, 480);
+        g.fillStyle = '#c9a27e'; g.beginPath(); g.arc(320 + Math.sin(t / 20) * 120, 240, 90, 0, Math.PI * 2); g.fill();
+        setTimeout(paint, 33);
+      })();
+      return Promise.resolve(c.captureStream(30));
+    };
+    md.enumerateDevices = function () { return Promise.resolve([{ kind: 'videoinput', deviceId: 'synthetic', label: 'Webcam simulata', groupId: 'v' }]); };
+  } catch (e) {}
+})();
+</script>`
+
+export interface PreviewDocOptions {
+  /** postMessage source tag: the live preview uses 'p5-preview', verification runs their own channel. */
+  channel?: string
+  /** Replace the real webcam with a synthetic moving picture (verification). */
+  syntheticCamera?: boolean
+}
+
+export function buildPreviewDoc(files: P5File[], activeLibraries: string[], mlModels: MlRuntimeModel[] = [], options: PreviewDocOptions = {}) {
+  const channel = options.channel ?? 'p5-preview'
+  const cameraShim = options.syntheticCamera ? SYNTHETIC_CAMERA : p5NeedsCamera(files, activeLibraries, mlModels) ? CAMERA_SHIM : ''
   // Defined before any sketch code runs; it lazy-loads the ML runtime from the platform (same origin as this app).
   const mlStub = mlModels.length ? `<script>${buildMlStub(mlModels, window.location.origin).replace(/<\/script/gi, '<\\/script')}</script>` : ''
   const isEmpty = files.every((f) => !f.source.trim())
@@ -112,7 +143,7 @@ ${escaped}
     </div>
     <script>
       const notifyParent = (type, payload) => {
-        window.parent.postMessage({ source: 'p5-preview', type, payload }, '*')
+        window.parent.postMessage({ source: '${channel}', type, payload }, '*')
       }
       window.onerror = function(message, source, lineno, colno, error) {
         var stack = error && error.stack ? '\\n' + error.stack : ''
@@ -167,6 +198,7 @@ ${escaped}
       })
     </script>
     <script src="${P5_CDN}" crossorigin="anonymous"></script>
+    <script>${P5_RUNTIME_SCRIPT}</script>
 ${libScriptTags}
     ${mlStub}
     ${isEmpty ? '' : scriptBlocks}

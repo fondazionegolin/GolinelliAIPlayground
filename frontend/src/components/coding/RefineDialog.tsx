@@ -57,7 +57,7 @@ export default function RefineDialog({ open, projectId, files, onClose, onGo }: 
           {items && items.length === 0 && <p className="py-4 text-sm text-[var(--text-secondary)]">{tl("La specifica non elenca funzioni da controllare.")}</p>}
           {items && items.length > 0 && (
             <>
-              <p className="mb-2 text-xs font-bold text-[var(--text-secondary)]">{done}/{items.length} {tl("obiettivi completati")}</p>
+              <p className="mb-2 text-xs font-semibold text-[var(--text-secondary)]">{done}/{items.length} {tl("obiettivi completati")}</p>
               <ul className="space-y-2">
                 {items.map((item) => {
                   const complete = item.status === 'done'
@@ -68,7 +68,7 @@ export default function RefineDialog({ open, projectId, files, onClose, onGo }: 
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className={`text-sm font-semibold leading-snug ${complete ? 'text-[var(--text-secondary)]' : 'text-[var(--text-primary)]'}`}>
-                          <span className="mr-1.5 text-[11px] font-black text-[var(--text-secondary)]">{item.id}</span>{item.text}
+                          <span className="mr-1.5 text-[11px] font-semibold text-[var(--text-secondary)]">{item.id}</span>{item.text}
                         </p>
                         {!complete && (
                           <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
@@ -77,7 +77,7 @@ export default function RefineDialog({ open, projectId, files, onClose, onGo }: 
                         )}
                       </div>
                       {!complete && (
-                        <Button type="button" size="sm" tone="accent" surface="solid" onClick={() => go(`Funzioni da completare: ${item.id}`)}>{tl("Vai!")}</Button>
+                        <Button type="button" size="sm" tone="accent" surface="solid" onClick={() => go(`Funzioni da completare: ${item.id}`)}>{tl("Vai")}</Button>
                       )}
                     </li>
                   )

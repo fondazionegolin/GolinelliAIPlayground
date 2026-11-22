@@ -55,7 +55,7 @@
 }
 
 .voice-lab-music-composer { padding: 1rem; }
-.voice-lab-music-tracks { max-height: 220px; }
+.voice-lab-music-tracks { max-height: 360px; }
 @media (min-width: 1024px) {
-  .voice-lab-music-tracks { max-height: max(76px, calc(100dvh - 630px)); }
+  .voice-lab-music-tracks { max-height: max(220px, calc(100dvh - 560px)); }
 }

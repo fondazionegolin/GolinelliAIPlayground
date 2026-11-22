@@ -60,7 +60,7 @@ function MessageTranscript({ teacherbotId, conversationId }: { teacherbotId: str
     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
       {messages.map((msg) => (
         <div key={msg.id} className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold ${
             msg.role === 'user' ? 'bg-slate-200 text-slate-600' : 'bg-[#181b1e] text-white'
           }`}>
             {msg.role === 'user' ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
@@ -152,7 +152,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
             <FileText className="h-5 w-5 text-white" />
           </div>
           <div className="min-w-0">
-            <h2 className="truncate font-bold text-slate-800">{tl("Storico:")} {teacherbot?.name}</h2>
+            <h2 className="truncate font-semibold text-slate-800">{tl("Storico:")} {teacherbot?.name}</h2>
             <p className="truncate text-xs text-slate-500">
               {reports?.length ?? 0} {tl("conversazioni ·")} {withReport} {tl("con report")}
             </p>
@@ -218,7 +218,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                       <div className="flex gap-1 bg-slate-100 rounded-lg p-1 mb-4 w-fit">
                         <button
                           onClick={() => setExpandedView('report')}
-                          className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                          className={`px-3 py-1 rounded-md text-xs font-medium transition ${
                             expandedView === 'report' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >
@@ -226,7 +226,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                         </button>
                         <button
                           onClick={() => setExpandedView('transcript')}
-                          className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                          className={`px-3 py-1 rounded-md text-xs font-medium transition ${
                             expandedView === 'transcript' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >

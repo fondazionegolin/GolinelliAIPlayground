@@ -246,7 +246,7 @@ function CreateSchoolForm({ onSuccess }: { onSuccess: () => void }) {
       monthly_credit_pool: fromCredits(parseFloat(form.monthly_credit_pool) || 1000),
     }),
     onSuccess: () => {
-      toast({ title: tl("Scuola creata! Email di attivazione inviata all'owner.") })
+      toast({ title: tl("Scuola creata. Email di attivazione inviata all'owner.") })
       setForm({ school_name: '', slug: '', owner_first_name: '', owner_last_name: '', owner_email: '', max_teachers: '5', monthly_credit_pool: '1000' })
       onSuccess()
     },
@@ -260,7 +260,7 @@ function CreateSchoolForm({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <div className="admin-panel p-5">
-      <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+      <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
         <Building2 className="h-4 w-4 text-slate-500" /> {tl("Crea nuova scuola")}
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

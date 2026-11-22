@@ -148,7 +148,7 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
     <div className="flex h-full w-full flex-col overflow-hidden bg-neutral-50">
         {/* Presence bar — connected users shown as named bubbles */}
         <div className="flex items-center gap-2 border-b border-slate-200/70 bg-white px-4 py-2.5">
-          <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400">
             <Users className="h-3.5 w-3.5" />
           </span>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
@@ -164,7 +164,7 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
                     color: me ? accent.text : colorFor(p.nickname),
                   }}
                 >
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: me ? accent.accent : colorFor(p.nickname) }}>
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white" style={{ backgroundColor: me ? accent.accent : colorFor(p.nickname) }}>
                     {p.nickname.slice(0, 1).toUpperCase()}
                   </span>
                   {me ? (isEnglish ? 'You' : 'Tu') : p.nickname}
@@ -176,7 +176,7 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
             <button
               type="button"
               onClick={async () => { try { await collaborationApi.closeRoom(room.id) } catch { /* noop */ } onClose() }}
-              className="flex-shrink-0 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600 hover:bg-rose-100"
+              className="flex-shrink-0 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-100"
             >
               {isEnglish ? 'End' : 'Termina'}
             </button>
@@ -219,7 +219,7 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
                     style={isOwn && !isBot ? { backgroundColor: accent.accent } : undefined}
                   >
                     {!isOwn && (
-                      <div className="mb-0.5 flex items-center gap-1 text-[11px] font-bold" style={{ color: isBot ? accent.text : colorFor(m.sender_nickname || '') }}>
+                      <div className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold" style={{ color: isBot ? accent.text : colorFor(m.sender_nickname || '') }}>
                         {isBot ? <Bot className="h-3 w-3" /> : null}
                         {isBot ? (room.title || 'Bot') : m.sender_nickname}
                         {m.is_peer && <span className="ml-1 inline-flex items-center gap-0.5 text-amber-600"><AtSign className="h-2.5 w-2.5" />{isEnglish ? 'private' : 'privato'}</span>}
@@ -293,7 +293,7 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
             type="button"
             onClick={() => void send()}
             disabled={!input.trim() || sending}
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-white transition-all disabled:bg-slate-100 disabled:text-slate-300"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-white transition disabled:bg-slate-100 disabled:text-slate-300"
             style={input.trim() && !sending ? { backgroundColor: accent.accent } : undefined}
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

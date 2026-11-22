@@ -89,7 +89,7 @@ export function DocumentHeaderFooterDialog({ open, onOpenChange, value, onChange
           <DialogDescription>{t('Aggiungi loghi e testi, trascinali nell’anteprima o nella pagina. Compaiono su ogni pagina, anche in Word e PDF.', 'Add logos and text, drag them in the preview or on the page. Shown on every page, also in Word and PDF.')}</DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-sm font-bold">
+        <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-sm font-semibold">
           {(['header', 'footer'] as const).map((key) => (
             <button key={key} type="button" onClick={() => { setTab(key); setSelectedId(null) }} className={`rounded-lg py-1.5 transition ${tab === key ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>
               {key === 'header' ? t('Intestazione', 'Header') : t('Piè di pagina', 'Footer')}
@@ -140,7 +140,7 @@ export function DocumentHeaderFooterDialog({ open, onOpenChange, value, onChange
         {selected ? (
           <div className="space-y-3 rounded-xl border border-slate-200 p-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-black uppercase tracking-wide text-slate-500">{itemLabel(selected)}</p>
+              <p className="text-xs font-semibold text-slate-500">{itemLabel(selected)}</p>
               <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(selected.id)} title={t('Rimuovi', 'Remove')}><Trash2 className="h-4 w-4" /></Button>
             </div>
 
@@ -184,7 +184,7 @@ export function DocumentHeaderFooterDialog({ open, onOpenChange, value, onChange
               <span className={sectionLabel}>{t('Posizione', 'Position')}</span>
               <input type="range" min={0} max={100} step={0.5} value={selected.x} onChange={(event) => patchItem(selected.id, { x: Number(event.target.value) })} className={slider} aria-label={t('Posizione orizzontale', 'Horizontal position')} />
               {([['◧', 0], ['▣', 50], ['◨', 100]] as const).map(([label, x]) => (
-                <button key={x} type="button" className="rounded-lg px-2 py-1 text-xs font-bold text-slate-500 hover:bg-slate-100" onClick={() => patchItem(selected.id, { x })}>{label}</button>
+                <button key={x} type="button" className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100" onClick={() => patchItem(selected.id, { x })}>{label}</button>
               ))}
             </div>
           </div>

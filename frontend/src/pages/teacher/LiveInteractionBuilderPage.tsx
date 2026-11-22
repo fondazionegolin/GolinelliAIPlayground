@@ -1,6 +1,7 @@
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import AchievementIcon, { ACHIEVEMENT_ICON_KEYS } from '@/components/live/AchievementIcon'
 import { useState, useEffect, useRef } from 'react'
+import { takeHandoff } from '@/lib/platformHandoff'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
@@ -315,7 +316,7 @@ const TUTORIAL_STEPS = [
             className="flex items-center gap-1 bg-emerald-500/80 rounded-lg px-2 py-1"
           >
             <Play className="h-3 w-3 text-white" />
-            <span className="text-xs text-white font-bold">{tl("Avvia")}</span>
+            <span className="text-xs text-white font-semibold">{tl("Avvia")}</span>
           </motion.div>
         </div>
 
@@ -382,7 +383,7 @@ const TUTORIAL_STEPS = [
           </div>
           {bars.map((bar, i) => (
             <div key={bar.label} className="flex items-center gap-2">
-              <span className="text-xs text-white/50 w-4 font-bold">{bar.label}</span>
+              <span className="text-xs text-white/50 w-4 font-semibold">{bar.label}</span>
               <div className="flex-1 h-3.5 rounded-full bg-white/10 overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
@@ -414,7 +415,7 @@ const TUTORIAL_STEPS = [
           className="flex items-center gap-2 bg-emerald-500/20 rounded-xl px-3 py-2"
         >
           <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
-          <span className="text-sm text-white/90 font-semibold">{tl("Sessione completata!")}</span>
+          <span className="text-sm text-white/90 font-semibold">{tl("Sessione completata")}</span>
         </motion.div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {[
@@ -429,7 +430,7 @@ const TUTORIAL_STEPS = [
               transition={{ delay: i * 0.12 + 0.15, type: 'spring', stiffness: 260 }}
               className="bg-white/10 rounded-xl py-2.5 text-center"
             >
-              <div className="text-xl font-black text-white">{v}</div>
+              <div className="text-xl font-semibold text-white">{v}</div>
               <div className="text-xs text-white/50">{l}</div>
             </motion.div>
           ))}
@@ -505,9 +506,9 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-1">
           <Zap className="h-4 w-4 text-indigo-400" />
-          <span className="text-xs font-semibold text-indigo-400 uppercase tracking-widest">Tutorial</span>
+          <span className="text-xs font-semibold text-indigo-400">Tutorial</span>
         </div>
-        <h2 className="text-2xl font-black text-white leading-tight">
+        <h2 className="text-2xl font-semibold text-white leading-tight">
           {tl("Come funziona")}<br />Live Interaction
         </h2>
         <p className="text-white/50 text-sm mt-1">
@@ -524,11 +525,11 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
             <button
               key={i}
               onClick={() => setActive(i)}
-              className={`relative rounded-2xl p-3 flex flex-col items-center gap-2 transition-all duration-300 text-left ${
+              className={`relative rounded-2xl p-3 flex flex-col items-center gap-2 transition duration-300 text-left ${
                 isActive ? 'bg-white/15 ring-1 ' + s.ring : 'bg-white/5 hover:bg-white/10'
               }`}
             >
-              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${s.grad} flex items-center justify-center flex-shrink-0 ${isActive ? 'shadow-lg ' + s.glow : ''} transition-all duration-300`}>
+              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${s.grad} flex items-center justify-center flex-shrink-0 ${isActive ? 'shadow-lg ' + s.glow : ''} transition duration-300`}>
                 <Icon className="h-4.5 w-4.5 text-white" style={{ width: 18, height: 18 }} />
               </div>
               <span className={`text-xs font-semibold leading-tight text-center ${isActive ? 'text-white' : 'text-white/50'}`}>
@@ -558,10 +559,10 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
             className="flex flex-col justify-center"
           >
             <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r ${step.grad} mb-4 w-fit`}>
-              <span className="text-xs font-black text-white">STEP {step.num}</span>
+              <span className="text-xs font-semibold text-white">STEP {step.num}</span>
               <StepIcon className="h-3.5 w-3.5 text-white/80" />
             </div>
-            <h3 className="text-xl font-black text-white mb-2">{step.title}</h3>
+            <h3 className="text-xl font-semibold text-white mb-2">{step.title}</h3>
             <p className="text-white/60 text-sm leading-relaxed">{step.desc}</p>
           </motion.div>
         </AnimatePresence>
@@ -589,7 +590,7 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
             <button
               key={i}
               onClick={() => setActive(i)}
-              className={`rounded-full transition-all duration-300 ${
+              className={`rounded-full transition duration-300 ${
                 i === active ? 'w-5 h-1.5 bg-white/70' : 'w-1.5 h-1.5 bg-white/25 hover:bg-white/40'
               }`}
             />
@@ -599,9 +600,9 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
         {/* Dismiss */}
         <button
           onClick={onDismiss}
-          className="flex items-center gap-2 bg-white text-slate-800 font-bold text-sm px-5 py-2.5 rounded-xl hover:bg-slate-100 transition-colors shadow-lg"
+          className="flex items-center gap-2 bg-white text-slate-800 font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-slate-100 transition-colors shadow-lg"
         >
-          {tl("Ho capito, inizia! →")}
+          {tl("Ho capito, inizia. →")}
         </button>
       </div>
     </div>
@@ -992,7 +993,7 @@ function InteractionEditor({
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['live-interactions', sessionId] })
-      toast({ title: tl("Salvato!") })
+      toast({ title: tl("Salvato") })
       onSaved()
       if (!interactionId) navigate(`/teacher/live-interaction/${res.data.id}/control`)
     },
@@ -1164,7 +1165,7 @@ function StructureAssistModal({
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-indigo-600" />
-            <h2 className="text-lg font-bold text-slate-800">{tl("Suggerisci struttura con AI")}</h2>
+            <h2 className="text-lg font-semibold text-slate-800">{tl("Suggerisci struttura con AI")}</h2>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
@@ -1268,8 +1269,8 @@ function DuplicateForAudienceModal({
       <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-600">{tl("Duplica sessione")}</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">{tl("Duplica “")}{item.title}”</h2>
+            <p className="text-xs font-semibold text-violet-600">{tl("Duplica sessione")}</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-900">{tl("Duplica “")}{item.title}”</h2>
             <p className="mt-1 text-sm text-slate-500">{tl("Contenuti e impostazioni verranno copiati in una nuova bozza, senza risposte o risultati precedenti.")}</p>
           </div>
           <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
@@ -1279,7 +1280,7 @@ function DuplicateForAudienceModal({
           {!isLoading && audiences.map(audience => (
             <button key={audience.id} type="button" onClick={() => setTargetSessionId(audience.id)} className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition ${targetSessionId === audience.id ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-100' : 'border-slate-200 hover:border-violet-200'}`}>
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><UsersRound className="h-5 w-5" /></span>
-              <span className="min-w-0 flex-1"><span className="block break-words font-semibold text-slate-900">{audience.title}{audience.id === currentSessionId && <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase text-violet-700">{tl("Questa sessione")}</span>}</span><span className="mt-0.5 block break-words text-xs text-slate-500">{audience.className}</span></span>
+              <span className="min-w-0 flex-1"><span className="block break-words font-semibold text-slate-900">{audience.title}{audience.id === currentSessionId && <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">{tl("Questa sessione")}</span>}</span><span className="mt-0.5 block break-words text-xs text-slate-500">{audience.className}</span></span>
             </button>
           ))}
           {!isLoading && audiences.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">{tl("Non ci sono sessioni disponibili.")}</p>}
@@ -1323,22 +1324,22 @@ function EscapeRoomDraftEditor({
       <div className="mt-5 flex-1 space-y-5 overflow-y-auto border-y border-slate-100 px-6 py-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-bold text-slate-600">{tl("Titolo")}</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">{tl("Titolo")}</label>
             <Input value={draft.title} onChange={event => onChange({ ...draft, title: event.target.value })} placeholder={tl("Titolo dell’escape room")} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-600">{tl("Introduzione narrativa")}</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">{tl("Introduzione narrativa")}</label>
             <Textarea rows={4} value={draft.narrative_intro} onChange={event => onChange({ ...draft, narrative_intro: event.target.value })} placeholder={tl("L’ambientazione che accoglie gli studenti…")} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-600">{tl("Missione")}</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">{tl("Missione")}</label>
             <Textarea rows={4} value={draft.mission} onChange={event => onChange({ ...draft, mission: event.target.value })} placeholder={tl("L’obiettivo da completare…")} />
           </div>
         </div>
 
         {onRegenerate && (
           <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
-            <p className="text-sm font-bold text-violet-900">{tl("Rifai gli indizi con l’AI")}</p>
+            <p className="text-sm font-semibold text-violet-900">{tl("Rifai gli indizi con l’AI")}</p>
             <p className="mt-0.5 text-xs text-slate-500">{tl("Genera un nuovo set (diverso dall’attuale) con il numero di indizi che preferisci. Potrai ancora modificarlo.")}</p>
             <div className="mt-3 flex flex-wrap items-end gap-3">
               <div>
@@ -1361,7 +1362,7 @@ function EscapeRoomDraftEditor({
 
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-slate-900">{tl("Indizi e ricompense ·")} {draft.challenges.length}</h3>
+            <h3 className="font-semibold text-slate-900">{tl("Indizi e ricompense ·")} {draft.challenges.length}</h3>
             <p className="text-xs text-slate-500">{tl("Puoi cambiare testi, soluzioni accettate e oggetti conquistati.")}</p>
           </div>
           <Button tone="neutral" surface="outline" density="compact" onClick={() => onChange({ ...draft, challenges: [...draft.challenges, emptyEscapeChallenge()] })}>
@@ -1373,7 +1374,7 @@ function EscapeRoomDraftEditor({
           {draft.challenges.map((challenge, index) => (
             <section key={challenge.key} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <div className="mb-3 flex items-center justify-between">
-                <span className="flex h-7 items-center rounded-full bg-violet-100 px-3 text-xs font-black text-violet-700">INDIZIO {index + 1}</span>
+                <span className="flex h-7 items-center rounded-full bg-violet-100 px-3 text-xs font-semibold text-violet-700">INDIZIO {index + 1}</span>
                 <button type="button" disabled={draft.challenges.length === 1} onClick={() => onChange({ ...draft, challenges: draft.challenges.filter((_, current) => current !== index) })} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30" aria-label={tl("Elimina indizio {0}", index + 1)}><Trash2 className="h-4 w-4" /></button>
               </div>
               <div className="space-y-3">
@@ -1383,7 +1384,7 @@ function EscapeRoomDraftEditor({
                 </div>
                 <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={challenge.is_true} onChange={event => updateChallenge(index, { is_true: event.target.checked })} className="h-4 w-4 rounded border-slate-300" /> {tl("L’affermazione è interamente vera")} <span className="text-xs text-slate-400">{tl("(lo studente deve scrivere «è vero»)")}</span></label>
                 {!challenge.is_true && <div>
-                  <div className="mb-1 flex items-center justify-between"><label className="text-xs font-medium text-slate-600">{tl("Soluzioni accettate")}</label><button type="button" onClick={() => updateChallenge(index, { accepted_answers: [...challenge.accepted_answers, ''] })} className="text-xs font-bold text-violet-600 hover:text-violet-800">{tl("+ Variante")}</button></div>
+                  <div className="mb-1 flex items-center justify-between"><label className="text-xs font-medium text-slate-600">{tl("Soluzioni accettate")}</label><button type="button" onClick={() => updateChallenge(index, { accepted_answers: [...challenge.accepted_answers, ''] })} className="text-xs font-semibold text-violet-600 hover:text-violet-800">{tl("+ Variante")}</button></div>
                   <div className="space-y-2">
                     {challenge.accepted_answers.map((answer, answerIndex) => (
                       <div key={answerIndex} className="flex gap-2">
@@ -1484,8 +1485,8 @@ export function EscapeRoomEditDialog({ interactionId, onClose, onSaved }: {
       <div className="ds-popover flex max-h-[92vh] w-full max-w-3xl flex-col rounded-[var(--ds-radius-panel)]" onMouseDown={event => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4">
           <div className="px-6 pt-6">
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-600">Live Escape Room</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">{tl("Modifica escape room")}</h2>
+            <p className="text-xs font-semibold text-violet-600">Live Escape Room</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-900">{tl("Modifica escape room")}</h2>
             <p className="mt-1 text-sm text-slate-500">{tl("Fino all’avvio puoi cambiare testi, numero di indizi e rigenerare il set.")}</p>
           </div>
           <button onClick={onClose} className="mr-5 mt-5 rounded-lg p-1 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
@@ -1525,6 +1526,15 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
   const [showTutorial, setShowTutorial] = useState(false) // on demand only: opened with the «?» button
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
+  const [handoffTopic, setHandoffTopic] = useState('')
+  // Agentic hand-off from the support chat: the AI structure dialog opens with the topic (and source text) already written.
+  useEffect(() => {
+    const handoff = takeHandoff(['live_interaction'])
+    if (!handoff || !activeSessionId) return
+    setHandoffTopic([handoff.brief, handoff.source ? `\n\nMateriale di partenza:\n${handoff.source.slice(0, 3500)}` : ''].join(''))
+    setShowStructureModal(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [showEscapeModal, setShowEscapeModal] = useState(false)
   const [selectedEscapeBot, setSelectedEscapeBot] = useState('')
   const [escapeDraft, setEscapeDraft] = useState<EscapeRoomDraft | null>(null)
@@ -1611,7 +1621,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
   if (creating || editingId !== null) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <h2 className="text-xl font-bold text-slate-800 mb-6">
+        <h2 className="text-xl font-semibold text-slate-800 mb-6">
           {editingId ? tl("Modifica sessione live") : tl("Nuova sessione live")}
         </h2>
         <InteractionEditor
@@ -1634,14 +1644,14 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
         <div className="min-w-0 flex-1">
           <SectionHeading
             section="/teacher/live-interaction"
-            className="text-2xl font-black tracking-tight text-[var(--text-primary)]"
+            className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]"
             subtitle={<>
               {tl("Quiz, sondaggi, word wall ed escape room da proiettare in classe: gli studenti rispondono dal telefono e vedi i risultati in tempo reale.")}
               <span className="mt-1 flex items-center gap-2 font-semibold text-[var(--text-primary)]">
                 {storedSession ? tl("Classe: {0}", storedSession.name) : tl("Seleziona una sessione dalla navbar")}
                 <button
                   onClick={() => setShowTutorial(v => !v)}
-                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold text-[var(--text-secondary)] hover:bg-black/5 hover:text-[var(--text-primary)]"
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold text-[var(--text-secondary)] hover:bg-black/5 hover:text-[var(--text-primary)]"
                   title={showTutorial ? tl("Nascondi il tutorial") : tl("Come funziona: mostra il tutorial")}
                   aria-pressed={showTutorial}
                 >
@@ -1671,7 +1681,8 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       {showStructureModal && activeSessionId && (
         <StructureAssistModal
           sessionId={activeSessionId}
-          onClose={() => setShowStructureModal(false)}
+          initialTopic={handoffTopic}
+          onClose={() => { setShowStructureModal(false); setHandoffTopic('') }}
           onGenerated={(result) => {
             setPrefill({ title: result.title, slides: (result.slides || []).map(normalizeAiSlide) })
             setShowStructureModal(false)
@@ -1685,8 +1696,8 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
           <div className="ds-popover flex max-h-[92vh] w-full max-w-3xl flex-col rounded-[var(--ds-radius-panel)]" onMouseDown={event => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div className="px-6 pt-6">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-600">Live Escape Room</p>
-                <h2 className="mt-1 text-xl font-bold text-slate-900">{escapeDraft ? tl("Personalizza il quiz") : tl("Scegli un Teacherbot")}</h2>
+                <p className="text-xs font-semibold text-violet-600">Live Escape Room</p>
+                <h2 className="mt-1 text-xl font-semibold text-slate-900">{escapeDraft ? tl("Personalizza il quiz") : tl("Scegli un Teacherbot")}</h2>
                 <p className="mt-1 text-sm text-slate-500">{escapeDraft ? tl("Rivedi ogni testo, soluzione e premio prima di pubblicare.") : tl("Genera una bozza modificabile: nulla sarà pubblicato senza la tua conferma.")}</p>
               </div>
               <button onClick={() => { setShowEscapeModal(false); setEscapeDraft(null) }} className="mr-5 mt-5 rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
@@ -1761,7 +1772,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       {activeSessionId && !isLoading && interactions?.length === 0 && (
         <button type="button" onClick={() => setShowNewSessionModal(true)} className="ui-card flex w-full flex-col items-center gap-3 px-6 py-20 text-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ds-surface-muted)] text-[var(--app-accent)]"><CloudLightning className="h-6 w-6" /></span>
-          <span className="text-lg font-black text-[var(--text-primary)]">{tl("Crea la tua prima sessione live")}</span>
+          <span className="text-lg font-semibold text-[var(--text-primary)]">{tl("Crea la tua prima sessione live")}</span>
           <span className="max-w-md text-sm text-[var(--text-secondary)]">{tl("Scegli un quiz, un sondaggio o un’escape room e guarda l’anteprima prima di iniziare.")}</span>
         </button>
       )}

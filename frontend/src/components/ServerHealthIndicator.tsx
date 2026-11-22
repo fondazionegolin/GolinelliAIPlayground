@@ -82,7 +82,7 @@ export function ServerHealthIndicator() {
       <div className="pointer-events-none absolute left-0 top-full z-[80] mt-2 hidden w-72 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-xl group-hover/health:block group-focus-within/health:block">
         <div className="flex items-center gap-2">
           <span className={`h-2.5 w-2.5 rounded-full ${ACTIVE_CLASS[health.status]}`} />
-          <p className="text-sm font-black text-slate-900">{health.summary}</p>
+          <p className="text-sm font-semibold text-slate-900">{health.summary}</p>
         </div>
         <ul className="mt-2 space-y-1 text-xs text-slate-600">
           {health.reasons.map((reason) => <li key={reason}>• {reason}</li>)}

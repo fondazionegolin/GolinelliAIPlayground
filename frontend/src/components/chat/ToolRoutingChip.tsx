@@ -58,7 +58,7 @@ export function ToolRoutingChip({ routing, dark = false }: { routing: ToolRoutin
         <div className={`w-56 space-y-1 rounded-xl border p-2 ${tone}`}>
           {routing.actionAlternatives && routing.actionAlternatives.length > 0 && (
             <>
-              <div className="text-[9px] font-semibold uppercase tracking-wide opacity-70">{tl("Azione")}</div>
+              <div className="text-[9px] font-semibold opacity-70">{tl("Azione")}</div>
               {routing.actionAlternatives.map((alt) => (
                 <div key={`a-${alt.tool}`} className="flex items-center gap-2 text-[10px]">
                   <span className="w-24 shrink-0 truncate">{ACTION_LABELS[alt.tool] ?? alt.tool}</span>
@@ -68,7 +68,7 @@ export function ToolRoutingChip({ routing, dark = false }: { routing: ToolRoutin
                   <span className="w-8 shrink-0 text-right tabular-nums">{pct(alt.probability)}</span>
                 </div>
               ))}
-              <div className="pt-1 text-[9px] font-semibold uppercase tracking-wide opacity-70">{tl("Contenuto")}</div>
+              <div className="pt-1 text-[9px] font-semibold opacity-70">{tl("Contenuto")}</div>
             </>
           )}
           {routing.alternatives.map((alt) => (

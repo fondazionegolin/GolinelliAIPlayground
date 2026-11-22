@@ -1011,7 +1011,7 @@ function PeakRow({
         <p className="text-xs font-medium text-slate-700">{label}</p>
         <p className="text-[11px] text-slate-400">{period}</p>
       </div>
-      <p className="text-sm font-bold text-slate-900">{formatted}</p>
+      <p className="text-sm font-semibold text-slate-900">{formatted}</p>
     </div>
   )
 }

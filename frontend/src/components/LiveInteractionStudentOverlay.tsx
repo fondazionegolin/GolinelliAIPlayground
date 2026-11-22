@@ -112,7 +112,7 @@ function McqInput({ options, selected, onSelect, disabled, slideType }: {
             disabled={disabled}
             onClick={() => onSelect(i)}
             whileTap={!disabled ? { scale: 0.98 } : {}}
-            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition-all duration-150 font-medium text-base ${
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 text-left transition duration-150 font-medium text-base ${
               isSelected
                 ? selectedBg[slideType]
                 : disabled
@@ -120,7 +120,7 @@ function McqInput({ options, selected, onSelect, disabled, slideType }: {
                 : 'border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40 text-slate-700 bg-white'
             }`}
           >
-            <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors ${
+            <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-semibold flex-shrink-0 transition-colors ${
               isSelected ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
             }`}>
               {String.fromCharCode(65 + i)}
@@ -152,7 +152,7 @@ function WordwallInput({ maxWords, value, onChange, disabled }: {
             {!disabled && (
               <button
                 onClick={() => onChange(value.filter(x => x !== w))}
-                className="w-4 h-4 rounded-full bg-amber-300 hover:bg-amber-400 text-amber-900 text-xs flex items-center justify-center font-bold transition-colors"
+                className="w-4 h-4 rounded-full bg-amber-300 hover:bg-amber-400 text-amber-900 text-xs flex items-center justify-center font-semibold transition-colors"
               >
                 ×
               </button>
@@ -218,7 +218,7 @@ function FeedbackInput({ selected, onSelect, disabled }: {
             }`}
           >
             <span className="text-5xl leading-none">{emoji}</span>
-            <span className="text-sm font-bold">{label}</span>
+            <span className="text-sm font-semibold">{label}</span>
           </motion.button>
         )
       })}
@@ -414,10 +414,10 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
             {advanceCue !== null && (
               <motion.div initial={{ opacity: 0, scale: 0.5, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 1.15, y: -30 }} transition={{ type: 'spring', stiffness: 260, damping: 18 }} className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center">
                 <div className="relative rounded-3xl bg-gradient-to-br from-amber-300 via-orange-400 to-rose-500 px-8 py-6 text-center text-white shadow-2xl shadow-orange-500/30">
-                  {Array.from({ length: 12 }, (_, index) => <motion.span key={index} initial={{ opacity: 1, x: 0, y: 0, rotate: 0 }} animate={{ opacity: 0, x: Math.cos(index * Math.PI / 6) * 130, y: Math.sin(index * Math.PI / 6) * 130, rotate: 180 }} transition={{ duration: 1.2, delay: 0.08 }} className="absolute left-1/2 top-1/2 text-lg">{index % 2 ? '✦' : '●'}</motion.span>)}
+                  {Array.from({ length: 12 }, (_, index) => <motion.span key={index} initial={{ opacity: 1, x: 0, y: 0, rotate: 0 }} animate={{ opacity: 0, x: Math.cos(index * Math.PI / 6) * 130, y: Math.sin(index * Math.PI / 6) * 130, rotate: 180 }} transition={{ duration: 1.2, delay: 0.08 }} className="absolute left-1/2 top-1/2 text-lg">{index % 2 ?'' :'●'}</motion.span>)}
                   <Trophy className="mx-auto h-9 w-9" />
-                  <p className="mt-2 text-xs font-black uppercase tracking-[0.2em] text-white/80">{tl("Nuova sfida")}</p>
-                  <p className="text-2xl font-black">{tl("Livello")} {advanceCue}</p>
+                  <p className="mt-2 text-xs font-semibold text-white/80">{tl("Nuova sfida")}</p>
+                  <p className="text-2xl font-semibold">{tl("Livello")} {advanceCue}</p>
                 </div>
               </motion.div>
             )}
@@ -450,13 +450,13 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
               {!isClosed && remaining !== null && slide && (
                 <div className="flex items-center gap-3">
                   <Clock className={`h-5 w-5 flex-shrink-0 ${timerUrgent ? 'text-white animate-pulse' : 'text-white/70'}`} />
-                  <span className={`text-4xl font-black tabular-nums leading-none ${timerUrgent ? 'text-white' : 'text-white/95'}`}>
+                  <span className={`text-4xl font-semibold tabular-nums leading-none ${timerUrgent ? 'text-white' : 'text-white/95'}`}>
                     {remaining}
                     <span className="text-base font-medium ml-1 opacity-70">s</span>
                   </span>
                   <div className="flex-1 h-2.5 bg-white/20 rounded-full overflow-hidden ml-1">
                     <div
-                      className="h-full bg-white/80 rounded-full transition-all duration-1000"
+                      className="h-full bg-white/80 rounded-full transition duration-1000"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -477,7 +477,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
               {slide ? (
                 <>
                   {/* Question */}
-                  <p className="text-2xl font-bold text-slate-800 leading-snug mb-5">
+                  <p className="text-2xl font-semibold text-slate-800 leading-snug mb-5">
                     {slide.question || slide.prompt}
                   </p>
 
@@ -510,7 +510,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                       )}
                       <button
                         onClick={submit}
-                        className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-white text-lg bg-gradient-to-r shadow-xl transition-all duration-200 hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] ${submitGrad}`}
+                        className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-semibold text-white text-lg bg-gradient-to-r shadow-xl transition duration-200 hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] ${submitGrad}`}
                       >
                         {tl("Invia risposta")} <ArrowRight className="h-5 w-5" />
                       </button>
@@ -527,7 +527,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                       {/* Checkmark */}
                       <div className="flex flex-col items-center gap-3 py-3">
                         {isClosed ? (
-                          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-4xl">🎉</div>
+                          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-emerald-600"><CheckCircle2 className="h-8 w-8" /></div>
                         ) : (
                           <motion.div
                             initial={{ scale: 0 }}
@@ -539,12 +539,12 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                           </motion.div>
                         )}
                         <div className="text-center">
-                          <p className="text-lg font-bold text-slate-800">
-                            {isClosed ? tl("Sessione terminata!") : answered ? tl("Risposta inviata!") : tl("Tempo scaduto")}
+                          <p className="text-lg font-semibold text-slate-800">
+                            {isClosed ? tl("Sessione terminata") : answered ? tl("Risposta inviata") : tl("Tempo scaduto")}
                           </p>
-                          {answered && !isClosed && <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mt-1 flex items-center justify-center gap-1 text-sm font-bold text-amber-600"><Sparkles className="h-4 w-4" /> {tl("+1 partecipazione")}</motion.p>}
+                          {answered && !isClosed && <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mt-1 flex items-center justify-center gap-1 text-sm font-semibold text-amber-600"><Sparkles className="h-4 w-4" /> {tl("+1 partecipazione")}</motion.p>}
                           {isClosed && (
-                            <p className="text-sm text-slate-500 mt-0.5">{tl("Ottimo lavoro! 👏")}</p>
+                            <p className="text-sm text-slate-500 mt-0.5">{tl("Ottimo lavoro")}</p>
                           )}
                         </div>
                       </div>
@@ -556,7 +556,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                             slide.correct_option === mcqSelected ? (
                               <div className="flex items-center gap-2 text-emerald-700">
                                 <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-                                <span><strong>{tl("Risposta corretta!")}</strong> {(slide.options || [])[mcqSelected]}</span>
+                                <span><strong>{tl("Risposta corretta")}</strong> {(slide.options || [])[mcqSelected]}</span>
                               </div>
                             ) : (
                               <div className="text-slate-600">
@@ -578,13 +578,13 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                         <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 rounded-2xl">
                           <Users className="h-4 w-4 text-slate-400 flex-shrink-0" />
                           <span className="text-sm text-slate-600 flex-1">
-                            <span className="font-bold text-slate-800">{responseCount}</span>
+                            <span className="font-semibold text-slate-800">{responseCount}</span>
                             {totalStudents > 0 && <span className="text-slate-400"> {tl("di")} {totalStudents}</span>} {tl("hanno risposto")}
                           </span>
                           {totalStudents > 0 && (
                             <div className="w-20 h-2 rounded-full bg-slate-200 overflow-hidden">
                               <div
-                                className="h-full rounded-full bg-emerald-400 transition-all duration-700"
+                                className="h-full rounded-full bg-emerald-400 transition duration-700"
                                 style={{ width: `${Math.min(100, (responseCount / totalStudents) * 100)}%` }}
                               />
                             </div>

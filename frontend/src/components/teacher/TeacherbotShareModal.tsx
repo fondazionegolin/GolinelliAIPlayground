@@ -122,7 +122,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[85vh] flex flex-col">
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
-          <h3 className="text-lg font-bold text-slate-800 truncate">{tl("Condividi —")} {teacherbotName}</h3>
+          <h3 className="text-lg font-semibold text-slate-800 truncate">{tl("Condividi —")} {teacherbotName}</h3>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-5 w-5" />
           </Button>
@@ -177,7 +177,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                       key={cls.id}
                       type="button"
                       onClick={() => setSelectedClassId(cls.id)}
-                      className={`w-full text-left p-3 rounded-xl border transition-all ${selectedClassId === cls.id ? 'border-slate-900/40 bg-slate-900/5' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                      className={`w-full text-left p-3 rounded-xl border transition ${selectedClassId === cls.id ? 'border-slate-900/40 bg-slate-900/5' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
                     >
                       <div className="font-medium text-slate-800">{cls.name}</div>
                       {cls.role === 'invited' && <div className="text-xs text-slate-500">{tl("Classe di {0}: i suoi studenti e i docenti invitati vedranno il teacherbot", cls.owner_name || tl("un collega"))}</div>}

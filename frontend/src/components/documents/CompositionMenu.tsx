@@ -5,11 +5,28 @@ import { getCompositionPrefs, setCompositionPrefs, subscribeCompositionPrefs, ty
 import { tl } from '@/i18n/tl'
 
 const OPTIONS: Array<{ key: keyof CompositionPrefs; title: string; hint: string }> = [
-  { key: 'lists', title: tl("Elenchi automatici"), hint: tl("«- », «* », «• », «1. » o «1) » a inizio riga creano un elenco") },
-  { key: 'capitalize', title: tl("Maiuscola automatica"), hint: tl("A inizio paragrafo e dopo . ! ? (non dopo ecc., es., art. …)") },
+  { key: 'lists', title: tl("Elenchi automatici"), hint: tl("«- », «– », «• », «1. », «1) » o Tab a inizio riga creano un elenco") },
+  { key: 'capitalize', title: tl("Maiuscola automatica"), hint: tl("A inizio paragrafo e dopo . . ? (non dopo ecc., es., art. …)") },
   { key: 'typography', title: tl("Tipografia"), hint: tl("Virgolette “ ” e apostrofo ’, puntini “…”, trattino lungo “ – ”, niente doppi spazi") },
-  { key: 'indent', title: tl("Rientro sui nuovi paragrafi"), hint: tl("Il paragrafo creato con Invio dopo un testo parte con un piccolo rientro (non dopo i titoli)") },
 ]
+
+/** The composition switches as menu rows (used inside the toolbar's «Strumenti» section). */
+export function CompositionOptions() {
+  const prefs = useSyncExternalStore(subscribeCompositionPrefs, getCompositionPrefs)
+  return (
+    <>
+      {OPTIONS.map(({ key, title, hint }) => (
+        <label key={key} className="flex min-h-9 cursor-pointer items-start justify-between gap-3 rounded-[var(--control-radius)] px-3 py-1.5 hover:bg-[var(--ds-control-hover)]">
+          <span className="min-w-0">
+            <span className="block text-sm text-[var(--text-primary)]">{title}</span>
+            <span className="block text-[11px] leading-snug text-[var(--text-secondary)]">{hint}</span>
+          </span>
+          <Switch checked={prefs[key]} onCheckedChange={(checked) => setCompositionPrefs({ ...prefs, [key]: checked })} />
+        </label>
+      ))}
+    </>
+  )
+}
 
 /** Switches for the automatic composition features of the word processor (stored per browser). */
 export function CompositionMenu() {
@@ -37,7 +54,7 @@ export function CompositionMenu() {
       </button>
       {open && (
         <div className="absolute left-0 top-full z-40 mt-2 w-72 space-y-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl" onMouseDown={(event) => event.preventDefault()}>
-          <p className="px-2 pb-1 text-[10px] font-black uppercase tracking-wide text-slate-400">{tl("Composizione automatica")}</p>
+          <p className="px-2 pb-1 text-[10px] font-semibold text-slate-400">{tl("Composizione automatica")}</p>
           {OPTIONS.map(({ key, title, hint }) => (
             <label key={key} className="flex cursor-pointer items-start justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50">
               <span className="min-w-0">

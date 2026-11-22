@@ -70,7 +70,7 @@ export function PodcastPanel({ messageId, state, onUpdate }: { messageId: string
     <header className="flex items-start gap-3">
       <span className="ds-control flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--ds-radius-control)]"><Headphones className="h-5 w-5" /></span>
       <div className="min-w-0">
-        <h3 className="font-emphasis text-sm font-bold">{state.phase === 'ready' ? tl("Il tuo podcast") : tl("Crea un podcast audio")}</h3>
+        <h3 className="font-emphasis text-sm font-semibold">{state.phase === 'ready' ? tl("Il tuo podcast") : tl("Crea un podcast audio")}</h3>
         <p className={`mt-1 ${hintClass}`}>{state.prompt}</p>
       </div>
     </header>

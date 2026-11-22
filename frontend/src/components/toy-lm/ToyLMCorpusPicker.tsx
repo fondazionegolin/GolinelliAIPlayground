@@ -142,7 +142,7 @@ export default function ToyLMCorpusPicker({ value, onChange, onBusyChange }: {
   return (
     <section className="space-y-3" aria-label={tl("Testo per il training")}>
       <div className="flex flex-wrap items-center justify-between gap-1">
-        <h3 className="text-xs font-bold text-[var(--text-primary)]">{tl("1. Scegli un testo")}</h3>
+        <h3 className="text-xs font-semibold text-[var(--text-primary)]">{tl("1. Scegli un testo")}</h3>
         <span className="text-[11px] text-[var(--text-muted)]">{tl("Un libro intero · un solo corpus")}</span>
       </div>
 
@@ -151,7 +151,7 @@ export default function ToyLMCorpusPicker({ value, onChange, onBusyChange }: {
           <div className="flex items-start gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--control-radius)] bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)]"><CheckCircle2 className="h-5 w-5" /></span>
             <div className="min-w-0 flex-1">
-              <p className="break-words text-sm font-bold">{value.title}</p>
+              <p className="break-words text-sm font-semibold">{value.title}</p>
               {!!value.authors?.length && <p className="mt-1 text-xs text-[var(--text-secondary)]">{value.authors.join(', ')}</p>}
               <p className="mt-2 text-xs font-semibold text-[var(--app-accent-text)]">{value.sourceUrl ? tl("Libro integrale importato") : tl("Testo completo importato")}</p>
               <p className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">{value.text.length.toLocaleString('it-IT')} {tl("caratteri ·")} {(value.wordCount ?? value.text.trim().split(/\s+/).length).toLocaleString('it-IT')} {tl("parole ·")} {formatBytes(value.byteCount ?? new Blob([value.text]).size)}</p>
@@ -194,7 +194,7 @@ export default function ToyLMCorpusPicker({ value, onChange, onBusyChange }: {
             </>
           ) : (
             <Card surface="muted" className="space-y-4 p-4">
-              <div className="flex items-start gap-3"><BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-[var(--app-accent-text)]" /><div><p className="text-sm font-bold">{tl("Biblioteca di Project Gutenberg")}</p><p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{tl("Cerca un titolo o un autore e importa il libro intero in TXT.")}</p></div></div>
+              <div className="flex items-start gap-3"><BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-[var(--app-accent-text)]" /><div><p className="text-sm font-semibold">{tl("Biblioteca di Project Gutenberg")}</p><p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{tl("Cerca un titolo o un autore e importa il libro intero in TXT.")}</p></div></div>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <SearchPill aria-label={tl("Cerca un titolo o un autore")} value={query} maxLength={200} onValueChange={next => { setQuery(next); setPage(1) }} className="shrink-0 sm:flex-1" placeholder="Pinocchio, Dante, Austen…" disabled={isImporting} />
                 <div className="sm:w-36"><Select aria-label={tl("Lingua del testo")} value={language} onChange={event => { setLanguage(event.target.value); setPage(1) }} disabled={isImporting}><option value="">{tl("Tutte le lingue")}</option>{Object.entries(LANGUAGE_NAMES).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</Select></div>
@@ -204,7 +204,7 @@ export default function ToyLMCorpusPicker({ value, onChange, onBusyChange }: {
               {!isSearching && !searchError && results && <p className="text-[11px] text-[var(--text-muted)]">{results.total?.toLocaleString('it-IT') ?? results.results.length} {(results.total ?? results.results.length) === 1 ? tl("opera trovata") : tl("opere trovate")}{results.results.length === 0 ? tl(". Prova un altro titolo, autore o lingua.") : ''}</p>}
               {results && !searchError && <ul className={`max-h-72 space-y-2 overflow-y-auto ${isSearching ? 'opacity-50' : ''}`}>
                 {results.results.map(book => <li key={book.id} className="flex items-center gap-3 rounded-[var(--control-radius)] bg-[var(--ds-surface)] p-3">
-                  <div className="min-w-0 flex-1"><p className="break-words text-xs font-bold">{book.title}</p><p className="mt-1 text-[11px] leading-4 text-[var(--text-muted)]">{book.authors.join(', ') || tl("Autore anonimo")} · {book.languages.map(code => LANGUAGE_NAMES[code] ?? code).join(', ')}</p></div>
+                  <div className="min-w-0 flex-1"><p className="break-words text-xs font-semibold">{book.title}</p><p className="mt-1 text-[11px] leading-4 text-[var(--text-muted)]">{book.authors.join(', ') || tl("Autore anonimo")} · {book.languages.map(code => LANGUAGE_NAMES[code] ?? code).join(', ')}</p></div>
                   <Button tone="accent" surface="soft" density="compact" disabled={isImporting || isSearching} onClick={() => void importBook(book)} aria-label={tl("Importa il libro completo: {0}", book.title)}>{importingId === book.id ? <RefreshCw className="animate-spin" /> : <Download />}<span className="hidden sm:inline">{tl("Importa")}</span></Button>
                 </li>)}
               </ul>}
@@ -215,7 +215,7 @@ export default function ToyLMCorpusPicker({ value, onChange, onBusyChange }: {
         </>
       )}
       {isImporting && <Card surface="muted" className="space-y-3 p-4" role="status" aria-live="polite">
-        <div className="flex items-start gap-3"><RefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-[var(--app-accent-text)]" /><div className="min-w-0 flex-1"><p className="text-xs font-bold">{phase}</p><p className="mt-1 break-words text-xs text-[var(--text-secondary)]">{importTitle}</p></div><Button tone="neutral" surface="ghost" density="compact" aria-label={tl("Annulla download del testo")} onClick={() => { importRef.current?.abort(); fileReaderRef.current?.abort() }}>{tl("Annulla")}</Button></div>
+        <div className="flex items-start gap-3"><RefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-[var(--app-accent-text)]" /><div className="min-w-0 flex-1"><p className="text-xs font-semibold">{phase}</p><p className="mt-1 break-words text-xs text-[var(--text-secondary)]">{importTitle}</p></div><Button tone="neutral" surface="ghost" density="compact" aria-label={tl("Annulla download del testo")} onClick={() => { importRef.current?.abort(); fileReaderRef.current?.abort() }}>{tl("Annulla")}</Button></div>
         <div role="progressbar" aria-label={tl("Avanzamento download del libro")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage} aria-valuetext={percentage === undefined ? phase : `${percentage}%`} className="h-1.5 overflow-hidden rounded-full bg-[var(--ds-control)]"><div className={`h-full rounded-full bg-[var(--app-accent)] transition-[width] duration-200 ${percentage === undefined ? 'w-1/3 animate-pulse' : ''}`} style={percentage === undefined ? undefined : { width: `${percentage}%` }} /></div>
         <div className="flex justify-between gap-2 text-[11px] text-[var(--text-muted)]"><span>{progress?.receivedBytes !== undefined ? `${formatBytes(received)}${total ? ` di ${formatBytes(total)} · ${percentage}%` : ' ricevuti'}` : tl("In attesa della biblioteca")} · {elapsed} s</span><span>{tl("TXT integrale")}</span></div>
         {elapsed >= 10 && <p className="text-[11px] leading-5 text-[var(--text-secondary)]">{tl("La biblioteca sta rispondendo lentamente. Il download continua; puoi annullarlo e riprovare.")}</p>}

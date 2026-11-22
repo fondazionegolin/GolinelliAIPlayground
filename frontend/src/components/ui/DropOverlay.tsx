@@ -9,7 +9,7 @@ export function DropOverlay({ active, label = tl("Rilascia qui i file"), hint }:
       <div className="absolute inset-2 rounded-2xl border-2 border-dashed border-primary/60" />
       <div className="relative flex flex-col items-center gap-2 rounded-2xl bg-[var(--ds-popover-solid)] px-6 py-4 text-center shadow-[var(--ds-shadow-popover)]">
         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/15 text-primary"><Upload className="h-5 w-5" /></span>
-        <p className="text-sm font-extrabold text-foreground">{label}</p>
+        <p className="text-sm font-semibold text-foreground">{label}</p>
         {hint && <p className="max-w-[16rem] text-[11px] text-muted-foreground">{hint}</p>}
       </div>
     </div>

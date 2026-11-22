@@ -433,7 +433,7 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
     <div className="mt-4 border border-violet-200 rounded-xl bg-white overflow-hidden shadow-sm">
       {/* ── header / controls ── */}
       <div className="bg-violet-50 px-4 py-3 border-b border-violet-100 space-y-3">
-        <p className="text-xs font-semibold text-violet-800 tracking-wide uppercase">
+        <p className="text-xs font-semibold text-violet-800">
           {tl("Esplorazione Dati —")} {rows.length} {tl("campioni ·")} {numericCols.length} num
           {catCols.length > 0 && ` · ${catCols.length} cat`}
           {encodedSet.size > 0 && ` · ${encodedSet.size} codificate`}

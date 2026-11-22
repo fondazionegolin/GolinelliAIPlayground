@@ -90,7 +90,7 @@ export default function MlModelPicker({ attachedIds, onApply, onClose }: { attac
           <div className="flex gap-3">
             <span className="ds-squircle flex h-11 w-11 shrink-0 items-center justify-center text-white" style={{ background: '#7b69c9' }}><Brain className="h-5 w-5" /></span>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">{tl("Modelli ML del progetto")}</h2>
+              <h2 className="text-lg font-semibold text-slate-900">{tl("Modelli ML del progetto")}</h2>
               <p className="mt-0.5 text-xs leading-5 text-slate-500">{tl("Scegli i modelli del Lab ML (immagini, pose, gesti delle mani) che l'app può usare. L'IA saprà come richiamarli e li troverai in")} <code>ml-models.md</code>.</p>
             </div>
           </div>
@@ -108,10 +108,10 @@ export default function MlModelPicker({ attachedIds, onApply, onClose }: { attac
                 className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition disabled:opacity-50 ${checked ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-100 dark:bg-violet-500/10' : 'border-slate-200 hover:border-violet-200 dark:border-white/10'}`}>
                 <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${checked ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-300'}`}>{checked && <Check className="h-4 w-4" />}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-bold text-slate-900">{project.name}</span>
+                  <span className="block truncate text-sm font-semibold text-slate-900">{project.name}</span>
                   <span className="block truncate text-xs text-slate-500">{MODE_LABEL[mode]} · {project.classes.map((c) => c.name).join(', ')}{project.has_model === false ? tl(" · verrà preparato") : ''}</span>
                 </span>
-                {project.accuracy !== null && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-white/10">~{Math.round(project.accuracy * 100)}%</span>}
+                {project.accuracy !== null && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-white/10">~{Math.round(project.accuracy * 100)}%</span>}
               </button>
             )
           })}

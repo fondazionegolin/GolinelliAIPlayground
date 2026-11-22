@@ -546,46 +546,46 @@ function BoardPreview({ values, live, state }: { values: Record<string, string>;
         <div className="mt-3 grid w-full grid-cols-3 gap-2 text-center">
           <Metric label="Temp" value={live ? `${temp || 0}` : '--'} />
           <Metric label={tl("Luce")} value={live ? `${luce || 0}` : '--'} />
-          <Metric label={tl("Mov.")} value={live ? `${movimento || 0}` : '--'} />
-          <div className="col-span-3 rounded-lg bg-white/10 px-2 py-2 text-xs text-slate-300">
-            {live ? tl("Dati seriali realtime") : state === 'bootloader' ? tl("Bootloader UF2: pronto per firmware") : tl("In attesa della seriale del firmware")}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+          <Metric label={tl("Mov.")} value={live ? `${movimento || 0}`: '--'} />
+ <div className="col-span-3 rounded-lg bg-white/10 px-2 py-2 text-xs text-slate-300">
+ {live ? tl("Dati seriali realtime") : state === 'bootloader'? tl("Bootloader UF2: pronto per firmware") : tl("In attesa della seriale del firmware")}
+ </div>
+ </div>
+ </div>
+ </div>
+ )
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-white/10 px-2 py-2">
-      <p className="text-[10px] font-bold uppercase text-slate-400">{label}</p>
-      <p className="font-mono text-sm">{value}</p>
-    </div>
-  )
+ return (
+ <div className="rounded-lg bg-white/10 px-2 py-2">
+ <p className="text-[10px] font-semibold text-slate-400">{label}</p>
+ <p className="font-mono text-sm">{value}</p>
+ </div>
+ )
 }
 
 export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }: Props) {
-  const [state, setState] = useState<ConnectionState>('idle')
-  const [message, setMessage] = useState<string | null>(null)
-  const [lines, setLines] = useState<SerialLine[]>([])
-  const [command, setCommand] = useState('')
-  const [baudRate, setBaudRate] = useState(115200)
-  const [running, setRunning] = useState(false)
-  const [compiledFirmware, setCompiledFirmware] = useState<CircuitPlaygroundCompileResult | null>(null)
-  const portRef = useRef<SerialPortLike | null>(null)
-  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
-  const writerRef = useRef<WritableStreamDefaultWriter<Uint8Array> | null>(null)
-  const keepReadingRef = useRef(false)
+ const [state, setState] = useState<ConnectionState>('idle')
+ const [message, setMessage] = useState<string | null>(null)
+ const [lines, setLines] = useState<SerialLine[]>([])
+ const [command, setCommand] = useState('')
+ const [baudRate, setBaudRate] = useState(115200)
+ const [running, setRunning] = useState(false)
+ const [compiledFirmware, setCompiledFirmware] = useState<CircuitPlaygroundCompileResult | null>(null)
+ const portRef = useRef<SerialPortLike | null>(null)
+ const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
+ const writerRef = useRef<WritableStreamDefaultWriter<Uint8Array> | null>(null)
+ const keepReadingRef = useRef(false)
 
-  const serialSupported = typeof navigator !== 'undefined' && !!(navigator as DeviceNavigator).serial
-  const usbSupported = typeof navigator !== 'undefined' && !!(navigator as DeviceNavigator).usb
-  const hidSupported = typeof navigator !== 'undefined' && !!(navigator as DeviceNavigator).hid
-  const values = useMemo(() => parseSerialValues(lines), [lines])
-  const serialReady = state === 'serial-ready'
+ const serialSupported = typeof navigator !== 'undefined'&& !!(navigator as DeviceNavigator).serial
+ const usbSupported = typeof navigator !== 'undefined'&& !!(navigator as DeviceNavigator).usb
+ const hidSupported = typeof navigator !== 'undefined'&& !!(navigator as DeviceNavigator).hid
+ const values = useMemo(() => parseSerialValues(lines), [lines])
+ const serialReady = state === 'serial-ready'
 
-  const appendLine = useCallback((text: string) => {
-    setLines((prev) => [...prev.slice(-159), { id: `${Date.now()}-${Math.random()}`, text, ts: Date.now() }])
+ const appendLine = useCallback((text: string) => {
+ setLines((prev) => [...prev.slice(-159), { id:`${Date.now()}-${Math.random()}`, text, ts: Date.now() }])
   }, [])
 
   const disconnectSerial = useCallback(async () => {
@@ -890,51 +890,51 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
           <Zap className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-extrabold text-slate-900">Circuit Playground Express</p>
+          <p className="text-sm font-semibold text-slate-900">Circuit Playground Express</p>
           <p className="truncate text-[11px] text-slate-500">{tl("MakeCode UF2, seriale e sensori realtime")}</p>
         </div>
-        <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${badge[1]}`}>{badge[0]}</span>
-      </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${badge[1]}`}>{badge[0]}</span>
+ </div>
 
-      <BoardPreview values={values} live={serialReady} state={state} />
+ <BoardPreview values={values} live={serialReady} state={state} />
 
-      <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-3">
-        <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
-          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-            {tl("Runtime supportato: MakeCode UF2")}
-          </div>
-          <p className="mt-1 text-xs leading-5 text-slate-600">
-            {tl("Il codice viene compilato fuori da React con PXT/MakeCode. La seriale serve al cruscotto quando il firmware sta gia girando sulla scheda.")}
-          </p>
-          {compiledFirmware && (
-          <button
-            onClick={() => downloadUf2(compiledFirmware)}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
-          >
-            <Download className="h-3.5 w-3.5" />
-            {tl("Scarica UF2 compilato")}
-          </button>
-          )}
-        </div>
+ <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-3">
+ <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+ <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+ <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600"/>
+ {tl("Runtime supportato: MakeCode UF2")}
+ </div>
+ <p className="mt-1 text-xs leading-5 text-slate-600">
+ {tl("Il codice viene compilato fuori da React con PXT/MakeCode. La seriale serve al cruscotto quando il firmware sta gia girando sulla scheda.")}
+ </p>
+ {compiledFirmware && (
+ <button
+ onClick={() => downloadUf2(compiledFirmware)}
+ className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
+ >
+ <Download className="h-3.5 w-3.5"/>
+ {tl("Scarica UF2 compilato")}
+ </button>
+ )}
+ </div>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2">
-          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-            Baud
-            <select
-              value={baudRate}
-              disabled={serialReady || state === 'connecting'}
-              onChange={(event) => setBaudRate(Number(event.target.value))}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none"
-            >
-              <option value={115200}>115200</option>
-              <option value={9600}>9600</option>
-            </select>
-          </label>
-          <button
-            onClick={() => void connect()}
-            disabled={state === 'connecting' || running}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
+ <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2">
+ <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+ Baud
+ <select
+ value={baudRate}
+ disabled={serialReady || state === 'connecting'}
+ onChange={(event) => setBaudRate(Number(event.target.value))}
+ className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none"
+ >
+ <option value={115200}>115200</option>
+ <option value={9600}>9600</option>
+ </select>
+ </label>
+ <button
+ onClick={() => void connect()}
+ disabled={state === 'connecting'|| running}
+ className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
               serialReady
                 ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
                 : 'bg-sky-600 text-white hover:bg-sky-500'
@@ -979,7 +979,7 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
         {Object.keys(values).length > 0 ? (
           Object.entries(values).slice(0, 8).map(([key, value]) => (
             <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{key}</p>
+              <p className="truncate text-[10px] font-semibold text-slate-400">{key}</p>
               <p className="mt-1 truncate font-mono text-sm font-semibold text-slate-900">{value}</p>
             </div>
           ))

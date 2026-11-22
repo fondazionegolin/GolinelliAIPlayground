@@ -25,7 +25,7 @@ function SchoolSummary({ school }: { school: RegistrySchool }) {
       <div className="flex items-start gap-3">
         <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
         <div className="min-w-0">
-          <p className="font-bold text-slate-900">{school.name}</p>
+          <p className="font-semibold text-slate-900">{school.name}</p>
           <p className="text-slate-600">
             {[school.address, school.cap, school.comune, school.province && `(${school.province})`].filter(Boolean).join(' ')}
           </p>
@@ -42,7 +42,7 @@ function SchoolSummary({ school }: { school: RegistrySchool }) {
 function StepTitle({ n, icon: Icon, title }: { n: number; icon: typeof Building2; title: string }) {
   return (
     <CardTitle className="flex items-center gap-3 text-base">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--logo-pink)] text-xs font-bold text-white">{n}</span>
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--logo-pink)] text-xs font-semibold text-white">{n}</span>
       <Icon className="h-4 w-4 text-muted-foreground" />
       {title}
     </CardTitle>
@@ -67,13 +67,13 @@ function ContractBlock({ doc, school, checked, onChange }: {
       <div className="flex items-start gap-3 border-b border-[var(--logo-pink)]/20 px-4 py-3">
         <Scale className="mt-0.5 h-5 w-5 shrink-0 text-[var(--logo-pink)]" />
         <div className="min-w-0">
-          <p className="text-sm font-bold text-gray-900">{doc.title}</p>
+          <p className="text-sm font-semibold text-gray-900">{doc.title}</p>
           <p className="text-xs text-gray-600">
             {tl("Contratto con cui l'istituto adotta la piattaforma e assume il ruolo di")} <em>deployer</em> {tl("e di titolare del trattamento dei dati degli studenti (informativa privacy v2.0). Va accettato dal Dirigente in qualità di legale rappresentante · v.")} {doc.version}
           </p>
         </div>
       </div>
-      <div className="max-h-64 overflow-y-auto bg-white px-4 py-3 text-sm leading-relaxed text-gray-700 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_li]:mb-1 [&_p]:my-1.5 [&_ul]:ml-5 [&_ul]:list-disc">
+      <div className="max-h-64 overflow-y-auto bg-white px-4 py-3 text-sm leading-relaxed text-gray-700 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_li]:mb-1 [&_p]:my-1.5 [&_ul]:ml-5 [&_ul]:list-disc">
         {isLoading
           ? <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
           : <div dangerouslySetInnerHTML={{ __html: data?.html ?? '' }} />}
@@ -97,7 +97,7 @@ function OrganizationSummary({ org }: { org: { name: string; comune: string | nu
       <div className="flex items-start gap-3">
         <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
         <div className="min-w-0">
-          <p className="font-bold text-slate-900">{org.name}</p>
+          <p className="font-semibold text-slate-900">{org.name}</p>
           {(org.comune || org.province) && <p className="text-slate-600">{[org.comune, org.province && `(${org.province})`].filter(Boolean).join(' ')}</p>}
           <p className="mt-1 text-xs text-slate-500">{tl("Organizzazione fuori dal registro MIM")}</p>
         </div>
@@ -277,8 +277,8 @@ export default function SchoolInvitePage() {
           <div className="mb-2 flex items-center justify-center gap-4">
             <LogoMark className="h-12 w-12" />
             <span className="pb-[1px] text-left text-[28px] leading-[1.15] tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
-              <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
-              <span className="font-black text-[var(--logo-pink)]">.ai</span>
+              <span className="font-semibold text-[var(--logo-ink)]">Golinelli</span>
+              <span className="font-semibold text-[var(--logo-pink)]">.ai</span>
             </span>
           </div>
         </div>
@@ -309,7 +309,7 @@ export default function SchoolInvitePage() {
   return shell(
     <>
       <div className="text-center">
-        <h1 className="text-3xl font-bold text-gray-900">{tl("Invito alla sperimentazione")}</h1>
+        <h1 className="text-3xl font-semibold text-gray-900">{tl("Invito alla sperimentazione")}</h1>
         <p className="mt-2 text-gray-600">
           {invite.first_name ? `Gentile ${invite.first_name} ${invite.last_name ?? ''}, ` : ''}
           {tl("attiva Golinelli.ai per")} {invite.school ? <strong>{invite.school.name}</strong> : fixedOrganization ? <strong>{fixedOrganization.name}</strong> : tl("il tuo istituto")}.

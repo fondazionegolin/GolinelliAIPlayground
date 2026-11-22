@@ -1060,29 +1060,53 @@ html:not(#x) :is(.ui-search, .ds-field):has(:is(input, textarea):focus-visible) 
   background: color-mix(in srgb, var(--logo-violet) 16%, transparent);
 }
 
-/* Word-processor sheet typography. Single source of truth shared with the DOCX/PDF export
-   (backend docx_writer: Arial 12 pt body leading at 21 pt, headings 20/16/14/12 pt at 1.2×,
-   no implicit paragraph spacing), so what the sheet shows is what the exported file contains. */
+/* Word-processor sheet typography on a baseline grid. --doc-row is the document line spacing
+   (Interlinea, 16 px × factor, set on the sheet); every line and every gap is a whole number of rows, so the
+   text always sits on the ruling, on every page. Single source of truth shared with the DOCX/PDF export
+   (backend docx_writer: Arial 12 pt, exact leading = row, one blank row after paragraphs and lists). */
+.document-sheet { --doc-row: 28px; }
 .document-sheet .ProseMirror {
   font-family: 'Arial', 'Arimo', Helvetica, sans-serif;
   font-size: 16px;
-  line-height: 28px;
+  line-height: var(--doc-row);
 }
+/* The grid wins over per-paragraph line heights (old documents, imports): the Interlinea menu sets it for the
+   whole document. */
+.document-sheet .ProseMirror :is(p, li, blockquote, td, th) { line-height: var(--doc-row) !important; }
 .document-sheet .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
   font-family: inherit;
   font-weight: 700;
   letter-spacing: 0;
-  line-height: 1.2;
+  line-height: var(--doc-row) !important;
+  /* A heading takes as many whole rows as its size needs. */
+  line-height: round(up, 1em, var(--doc-row)) !important;
 }
+.document-sheet .ProseMirror :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote) { margin: 0; }
+/* One blank row between paragraphs (a paragraph's own "space after" overrides it; the pagination rounds any
+   space up to whole rows). */
+.document-sheet .ProseMirror > :is(p, ul, ol, blockquote) { margin-bottom: var(--doc-row); }
+.document-sheet .ProseMirror li > p { margin-bottom: 0 !important; }
+/* Elegant automatic line breaking: Italian hyphenation of long words only. (No text-wrap: pretty: it may
+   re-break the last lines of a paragraph that continues on the next page.) */
+.document-sheet .ProseMirror :is(p, li) {
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  hyphenate-limit-chars: 7 3 3;
+  overflow-wrap: break-word;
+}
+.document-sheet .ProseMirror :is(h1, h2, h3, h4, h5, h6) { text-wrap: balance; hyphens: manual; }
 .document-sheet .ProseMirror h1 { font-size: 20pt; }
 .document-sheet .ProseMirror h2 { font-size: 16pt; }
 .document-sheet .ProseMirror h3 { font-size: 14pt; }
 .document-sheet .ProseMirror :is(h4, h5, h6) { font-size: 12pt; }
 
-/* Ruled mode: every line (headings included) takes one 28 px row so text sits on the ruling. */
-.document-ruled .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
-  line-height: 28px;
-}
+/* Pagination widgets (lib/documentPagination). Between blocks: a block; inside a paragraph that continues on the
+   next page: a full-width inline-block line, so the last line of the page stays justified and hyphenated. The
+   block after a widget drops its "space before" (Word does the same at the top of a page). */
+.document-sheet .ProseMirror :is(.document-page-separator, .document-grid-spacer) { display: block; pointer-events: none; user-select: none; }
+.document-sheet .ProseMirror .document-page-separator.is-inline { display: inline-block; width: 100%; vertical-align: top; }
+.document-sheet .ProseMirror :is(.document-page-separator, .document-grid-spacer) + * { margin-top: 0 !important; }
+.document-sheet .ProseMirror .document-page-hyphen { pointer-events: none; user-select: none; }
 
 /* Lists on the sheet: Tailwind's reset removes markers, so draw them (and match the DOCX export's hanging indent). */
 .document-sheet .ProseMirror ul { list-style: disc; padding-left: 1.5em; }

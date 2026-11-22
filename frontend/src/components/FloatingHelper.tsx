@@ -164,7 +164,7 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
             if (consumeDragClick()) return
             setOpen(v => !v)
           }}
-          className={`fixed z-[65] flex h-12 w-12 touch-none select-none items-center justify-center rounded-2xl transition-all duration-200 hover:scale-105 ${
+          className={`fixed z-[65] flex h-12 w-12 touch-none select-none items-center justify-center rounded-2xl transition duration-200 hover:scale-105 ${
             open
               ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
               : 'bg-white/70 backdrop-blur-md border-2 border-orange-400 text-orange-500 shadow-md shadow-orange-100 hover:bg-orange-50/80'
@@ -186,7 +186,7 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
               <MessageSquarePlus className="h-3.5 w-3.5" style={{ color: '#e85c8d' }} />
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-bold text-slate-900 leading-tight">{tl("Segnala un problema")}</h2>
+              <h2 className="text-sm font-semibold text-slate-900 leading-tight">{tl("Segnala un problema")}</h2>
               <p className="text-[11px] text-slate-400">{tl("Descrivi il comportamento inatteso")}</p>
             </div>
             <button
@@ -203,7 +203,7 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
           {status === 'success' ? (
             <div className="flex flex-col items-center justify-center py-8 gap-2">
               <CheckCircle className="h-10 w-10 text-green-500" />
-              <p className="text-sm font-semibold text-slate-800">{tl("Grazie per il feedback!")}</p>
+              <p className="text-sm font-semibold text-slate-800">{tl("Grazie per il feedback")}</p>
               <p className="text-xs text-slate-400">{tl("La segnalazione è stata inviata.")}</p>
             </div>
           ) : (
@@ -216,7 +216,7 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
                 onPaste={handlePaste}
                 placeholder={tl("Descrivi cosa è successo... (Ctrl+Invio per inviare)")}
                 rows={4}
-                className="w-full text-sm text-slate-800 placeholder:text-slate-300 border border-slate-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-300 transition-all"
+                className="w-full text-sm text-slate-800 placeholder:text-slate-300 border border-slate-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-300 transition"
                 disabled={status === 'loading'}
               />
 
@@ -251,7 +251,7 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
                 <button
                   onClick={handleSubmit}
                   disabled={!message.trim() || status === 'loading'}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ backgroundColor: '#e85c8d' }}
                 >
                   {status === 'loading' ? (

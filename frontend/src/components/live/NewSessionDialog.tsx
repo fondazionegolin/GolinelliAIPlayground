@@ -72,7 +72,7 @@ export default function NewSessionDialog({ onClose, onManual, onAi, onEscape }: 
       <div role="dialog" aria-modal="true" aria-label={tl("Nuova sessione")} className="ds-popover flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[var(--ds-radius-panel)]" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 px-6 pb-3 pt-6">
           <div>
-            <h2 className="text-xl font-bold text-[var(--text-primary)]">{tl("Nuova sessione")}</h2>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)]">{tl("Nuova sessione")}</h2>
             <p className="mt-1 text-sm text-[var(--text-secondary)]">{tl("Scegli come iniziare: ogni percorso crea una bozza modificabile prima della pubblicazione.")}</p>
           </div>
           <button type="button" onClick={onClose} aria-label={tl("Chiudi")} className="rounded-xl p-2 text-[var(--text-secondary)] hover:bg-black/5"><X className="h-5 w-5" /></button>
@@ -84,14 +84,14 @@ export default function NewSessionDialog({ onClose, onManual, onAi, onEscape }: 
               <button key={id} type="button" role="radio" aria-checked={selected === id} onClick={() => pick(id)}
                 className={`flex w-full items-start gap-3 rounded-2xl p-3 text-left transition ${selected === id ? 'ds-selected' : 'ds-control'}`}>
                 <span className="ds-squircle flex h-10 w-10 shrink-0 items-center justify-center text-white" style={{ background: color }} aria-hidden><Icon className="h-5 w-5" /></span>
-                <span className="min-w-0"><span className="block text-sm font-bold text-[var(--text-primary)]">{title}</span><span className="mt-0.5 block text-xs leading-5 text-[var(--text-secondary)]">{description}</span></span>
+                <span className="min-w-0"><span className="block text-sm font-semibold text-[var(--text-primary)]">{title}</span><span className="mt-0.5 block text-xs leading-5 text-[var(--text-secondary)]">{description}</span></span>
               </button>
             ))}
           </div>
 
           <div className="flex min-w-0 flex-col gap-3 rounded-3xl bg-[var(--ds-well)] p-4">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--text-secondary)]">{tl("Anteprima")}</p>
+              <p className="text-xs font-semibold text-[var(--text-secondary)]">{tl("Anteprima")}</p>
               {choice.samples.length > 1 && (
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label={tl("Esempi di slide")}>
                   {choice.samples.map((entry, index) => {

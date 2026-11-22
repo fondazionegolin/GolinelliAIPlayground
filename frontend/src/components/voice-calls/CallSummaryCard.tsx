@@ -13,7 +13,7 @@ export function CallSummaryCard({ data }: { data: Record<string, any> }) {
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#181b1e] text-white">{data.language ? <Languages className="h-4 w-4" /> : <FileText className="h-4 w-4" />}</div>
         <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-bold uppercase text-neutral-900">{tl("Dalla videochiamata")}</div>
+          <div className="text-[10px] font-semibold text-neutral-900">{tl("Dalla videochiamata")}</div>
           <p className="truncate text-xs font-semibold text-slate-800">{String(data.title || tl("Riassunto"))}</p>
           {data.recording_title && <p className="truncate text-[11px] text-slate-500">{String(data.recording_title)}</p>}
         </div>

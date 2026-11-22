@@ -8,6 +8,7 @@ import { CookieBanner } from '@/components/CookieBanner'
 import { LegalConsentGate } from '@/components/LegalConsentGate'
 import { LicenseGate } from '@/components/LicenseGate'
 import { Loader2 } from '@/components/icons'
+import AppErrorBoundary from '@/components/AppErrorBoundary'
 
 import LandingPage from '@/pages/LandingPage'
 import StudentJoinPage from '@/pages/StudentJoinPage'
@@ -48,7 +49,8 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
 
 function App() {
   const { user, studentSession } = useAuthStore()
-  useUiThemeRouteGuard(useLocation().pathname)
+  const { pathname } = useLocation()
+  useUiThemeRouteGuard(pathname)
   useShellFullscreenSync()
   
   const getDefaultRoute = (): string | null => {
@@ -63,6 +65,7 @@ function App() {
   
   return (
     <BackgroundAudioProvider>
+      <AppErrorBoundary resetKey={pathname}>
       <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="h-8 w-8 animate-spin text-white/70" /></div>}>
         <Routes>
           <Route path="/login" element={<LandingPage />} />
@@ -116,6 +119,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      </AppErrorBoundary>
       <LegalConsentGate />
       <LicenseGate />
       <Toaster />

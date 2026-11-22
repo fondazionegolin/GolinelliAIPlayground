@@ -34,7 +34,7 @@ export default function TeacherMemoryModal({ onClose }: { onClose: () => void })
           <div className="flex gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Brain className="h-5 w-5" /></span>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">{tl("Memoria dell'assistente")}</h2>
+              <h2 className="text-lg font-semibold text-slate-900">{tl("Memoria dell'assistente")}</h2>
               <p className="mt-0.5 text-xs leading-5 text-slate-500">
                 {tl("L'assistente impara dalle tue conversazioni e conosce le tue sessioni e attività, così in ogni nuova chat parte già sapendo chi sei e cosa stai facendo. Qui vedi tutto ciò che ricorda: puoi correggerlo, fissarlo o cancellarlo. Non memorizza dati degli studenti.")}
               </p>
@@ -50,7 +50,7 @@ export default function TeacherMemoryModal({ onClose }: { onClose: () => void })
             onClick={() => data && toggle.mutate(!data.enabled)}
             className={`relative h-6 w-11 rounded-full transition-colors ${data?.enabled ? 'bg-violet-600' : 'bg-slate-300'}`}
           >
-            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${data?.enabled ? 'left-[22px]' : 'left-0.5'}`} />
+            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${data?.enabled ? 'left-[22px]' : 'left-0.5'}`} />
           </button>
         </div>
 
@@ -63,12 +63,12 @@ export default function TeacherMemoryModal({ onClose }: { onClose: () => void })
             <div key={item.id} className="group flex items-start gap-3 rounded-2xl border border-slate-200 p-3">
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-slate-800">{item.text}</p>
-                <p className="mt-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                <p className="mt-1 flex items-center gap-2 text-[10px] font-semibold text-slate-400">
                   <span>{KIND_LABEL[item.kind] ?? item.kind}</span><span>·</span><span>{item.source === 'manual' ? tl("scritta da te") : tl("appresa dalle chat")}</span>
                 </p>
               </div>
               <button onClick={() => pin.mutate({ id: item.id, pinned: !item.pinned })} title={item.pinned ? tl("Fissata: non verrà modificata automaticamente") : tl("Fissa: impedisce modifiche automatiche")}
-                className={`rounded-lg px-2 py-1 text-[10px] font-bold ${item.pinned ? 'bg-violet-100 text-violet-700' : 'text-slate-400 hover:bg-slate-100'}`}>{item.pinned ? tl("Fissata") : tl("Fissa")}</button>
+                className={`rounded-lg px-2 py-1 text-[10px] font-semibold ${item.pinned ? 'bg-violet-100 text-violet-700' : 'text-slate-400 hover:bg-slate-100'}`}>{item.pinned ? tl("Fissata") : tl("Fissa")}</button>
               <button onClick={() => remove.mutate(item.id)} className="rounded-lg p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-600" aria-label={tl("Elimina")}><Trash2 className="h-4 w-4" /></button>
             </div>
           ))}

@@ -137,7 +137,7 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
         ) : (
           <CheckCircle2 className="h-4 w-4" />
         )}
-        {running.length > 1 && <span className="text-[10px] font-black tabular-nums">{running.length}</span>}
+        {running.length > 1 && <span className="text-[10px] font-semibold tabular-nums">{running.length}</span>}
         {!running.length && finished.length > 0 && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full" style={{ backgroundColor: color }} />}
       </button>
 
@@ -145,13 +145,13 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
         <div className="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-24px)] max-md:fixed max-md:right-3 max-md:top-[4.25rem] max-md:mt-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100">
           <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
             <div>
-              <p className="text-sm font-black text-slate-900">{tl("Generazioni in background")}</p>
+              <p className="text-sm font-semibold text-slate-900">{tl("Generazioni in background")}</p>
               <p className="mt-0.5 text-xs font-medium text-slate-500">
                 {tl("Continuano anche se cambi pagina o ricarichi")}{student ? '' : tl(" il browser")}.
               </p>
             </div>
             {finished.length > 0 && (
-              <button type="button" onClick={() => void dismiss(finished.map((job) => job.id))} className="shrink-0 rounded-md px-2 py-1 text-[11px] font-bold text-slate-500 hover:bg-slate-100">
+              <button type="button" onClick={() => void dismiss(finished.map((job) => job.id))} className="shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100">
                 {tl("Pulisci")}
               </button>
             )}
@@ -171,8 +171,8 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="min-w-0 flex-1 truncate text-xs font-black text-slate-900" title={job.title}>{job.title}</p>
-                        <span className="shrink-0 text-[10px] font-bold tabular-nums text-slate-400">
+                        <p className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-900" title={job.title}>{job.title}</p>
+                        <span className="shrink-0 text-[10px] font-semibold tabular-nums text-slate-400">
                           {isRunning ? `${Math.round(value * 100)}% · ` : ''}{elapsedLabel(job)}
                         </span>
                       </div>
@@ -189,7 +189,7 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
                       </p>
                       <div className="mt-1.5 flex items-center gap-1">
                         {job.route && (
-                          <button type="button" onClick={() => openJob(job)} className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-700 hover:bg-slate-100">
+                          <button type="button" onClick={() => openJob(job)} className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-100">
                             <ExternalLink className="h-3 w-3" /> {tl("Apri")}
                           </button>
                         )}
@@ -197,7 +197,7 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
                           <button
                             type="button"
                             onClick={() => { if (window.confirm(tl("Annullare \"{0}\"?", job.title))) void cancelJob(job.id) }}
-                            className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-red-50 hover:text-red-600"
+                            className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600"
                           >
                             <Square className="h-3 w-3" /> {tl("Annulla")}
                           </button>

@@ -97,7 +97,7 @@ function FaqRow({ item, id, open, onToggle }: { item: FaqItem; id: string; open:
           aria-expanded={open}
           aria-controls={panelId}
           onClick={onToggle}
-          className="flex w-full items-start justify-between gap-4 rounded-md py-4 text-left text-base font-bold text-[var(--logo-ink)] transition-colors hover:text-[var(--logo-pink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--logo-pink)]"
+          className="flex w-full items-start justify-between gap-4 rounded-md py-4 text-left text-base font-semibold text-[var(--logo-ink)] transition-colors hover:text-[var(--logo-pink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--logo-pink)]"
         >
           <span>{item.q}</span>
           <ChevronDown
@@ -125,8 +125,8 @@ export function LandingFaq() {
   return (
     <section id="landing-faq" aria-labelledby={`${baseId}-title`} className="scroll-mt-28 text-left">
       <div className="border-t border-slate-200 py-10">
-        <span className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--logo-pink)]">{tl("Domande frequenti")}</span>
-        <h2 id={`${baseId}-title`} className="mt-2 text-2xl font-black tracking-tight text-[var(--logo-ink)] md:text-3xl">
+        <span className="text-xs font-semibold text-[var(--logo-pink)]">{tl("Domande frequenti")}</span>
+        <h2 id={`${baseId}-title`} className="mt-2 text-2xl font-semibold tracking-tight text-[var(--logo-ink)] md:text-3xl">
           {tl("Prima di iniziare")}
         </h2>
         <ul className="mt-6 max-w-3xl border-t border-slate-200">

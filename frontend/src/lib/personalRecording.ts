@@ -15,6 +15,8 @@ type State = {
   status: 'idle' | 'starting' | 'recording' | 'stopping'
   source: RecordingSource
   recordingId: string | null
+  /** Live audio being recorded (mic, system audio): feeds the spectrum feedback in the popover. */
+  liveStreams: MediaStream[]
   startedAt: number | null
   error: string | null
   /** Last recording closed by this browser: lets the UI open it right away. */
@@ -50,6 +52,7 @@ export const usePersonalRecording = create<State>((set, get) => ({
   status: 'idle',
   source: 'mic',
   recordingId: null,
+  liveStreams: [],
   startedAt: null,
   error: null,
   lastClosed: null,
@@ -89,7 +92,7 @@ export const usePersonalRecording = create<State>((set, get) => ({
       try { wakeLock = await (navigator as any).wakeLock?.request('screen') ?? null } catch { wakeLock = null } // phones: keep the screen on
       beforeUnload = (event) => { event.preventDefault(); event.returnValue = '' }
       window.addEventListener('beforeunload', beforeUnload)
-      set({ status: 'recording', recordingId: data.id, startedAt: data.started_at ? Date.parse(data.started_at) : Date.now() })
+      set({ status: 'recording', recordingId: data.id, liveStreams: [mic, ...(system ? [system] : [])], startedAt: data.started_at ? Date.parse(data.started_at) : Date.now() })
     } catch (err: any) {
       releaseCapture()
       const denied = err?.name === 'NotAllowedError'
@@ -112,7 +115,7 @@ export const usePersonalRecording = create<State>((set, get) => ({
       set({ error: err?.response?.data?.detail || tl("Impossibile chiudere la registrazione") })
     } finally {
       releaseCapture()
-      set({ status: 'idle', recordingId: null, startedAt: null })
+      set({ status: 'idle', recordingId: null, startedAt: null, liveStreams: [] })
     }
   },
 }))

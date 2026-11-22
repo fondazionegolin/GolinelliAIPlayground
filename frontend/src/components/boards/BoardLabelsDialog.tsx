@@ -22,7 +22,7 @@ export default function BoardLabelsDialog({ labels, pending, onClose, onSave }: 
       <div className="ds-popover flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-[var(--ds-radius-card)]" role="dialog" aria-modal="true" aria-labelledby="board-labels-title">
         <div className="flex items-start justify-between gap-4 px-6 pt-6">
           <div>
-            <h3 id="board-labels-title" className="flex items-center gap-2 text-lg font-black text-slate-900"><Tags className="h-5 w-5" /> {tl("Etichette")}</h3>
+            <h3 id="board-labels-title" className="flex items-center gap-2 text-lg font-semibold text-slate-900"><Tags className="h-5 w-5" /> {tl("Etichette")}</h3>
             <p className="mt-1 text-sm text-slate-500">{tl("Le etichette distinguono la natura dei task. Eliminandone una la rimuovi da tutti i task.")}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}>
@@ -63,19 +63,19 @@ export default function BoardLabelsDialog({ labels, pending, onClose, onSave }: 
             <button
               type="button"
               onClick={() => setDraft((current) => [...current, { name: '', color: LABEL_COLORS[current.length % LABEL_COLORS.length] }])}
-              className="inline-flex h-9 items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 text-xs font-bold text-slate-600 hover:border-slate-400"
+              className="inline-flex h-9 items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 text-xs font-semibold text-slate-600 hover:border-slate-400"
             >
               <Plus className="h-4 w-4" /> {tl("Nuova etichetta")}
             </button>
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
-          <button type="button" onClick={onClose} className="h-10 rounded-lg px-4 text-sm font-bold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
+          <button type="button" onClick={onClose} className="h-10 rounded-lg px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
           <button
             type="button"
             disabled={pending}
             onClick={() => onSave(draft.filter((label) => label.name.trim()).map((label) => ({ ...label, name: label.name.trim() })))}
-            className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:opacity-40"
+            className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-semibold text-[var(--selection-active-text)] disabled:opacity-40"
           >
             {pending ? tl("Salvataggio…") : tl("Salva etichette")}
           </button>

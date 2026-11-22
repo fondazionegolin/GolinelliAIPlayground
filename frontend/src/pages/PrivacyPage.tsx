@@ -11,8 +11,8 @@ export default function PrivacyPage() {
           <Link to="/" className="flex items-center gap-3">
             <img src="/logo_new.png" alt={tl("Golinelli AI")} className="h-9 w-auto rounded-md" />
             <span className="text-xl tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
-              <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
-              <span className="font-black text-[var(--logo-pink)]">.ai</span>
+              <span className="font-semibold text-[var(--logo-ink)]">Golinelli</span>
+              <span className="font-semibold text-[var(--logo-pink)]">.ai</span>
             </span>
           </Link>
           <Link to="/" className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
@@ -22,7 +22,7 @@ export default function PrivacyPage() {
       </nav>
       <main className="mx-auto max-w-6xl space-y-5 px-4 py-8 sm:px-6">
         <header className="space-y-3">
-          <h1 className="flex items-center gap-3 text-2xl font-bold sm:text-3xl">
+          <h1 className="flex items-center gap-3 text-2xl font-semibold sm:text-3xl">
             <FileText className="h-7 w-7 shrink-0 text-[var(--logo-pink)]" />
             {tl("Informativa sul trattamento dei dati personali")}
           </h1>

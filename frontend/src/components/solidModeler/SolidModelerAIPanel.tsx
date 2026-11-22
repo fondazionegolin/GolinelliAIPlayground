@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { takeHandoff } from '@/lib/platformHandoff'
 import { cancelJob, findActiveJob, followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
 import { AlertTriangle, Bot, CheckCircle2, Loader2, Send, Sparkles, Square, XCircle } from '@/components/icons'
 import type { AgentStepEvent, SceneObject } from './types'
@@ -60,7 +61,8 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
     { value: '', label: scoped?.default_name ? tl("Predefinito · {0}", scoped.default_name) : tl("Modello predefinito piattaforma") },
     ...(scoped?.models || []).map(m => ({ value: modelValue(m.provider, m.model), label: m.name })),
   ]
-  const [prompt, setPrompt] = useState('')
+  // Agentic hand-off from the support chat (teachers): the first instruction arrives already written.
+  const [prompt, setPrompt] = useState(() => (student ? null : takeHandoff(['models3d']))?.brief.slice(0, 1500) ?? '')
   const [model, setModel] = useState('')
   const [maxSteps, setMaxSteps] = useState(6)
   const [turns, setTurns] = useState<ChatTurn[]>([])
@@ -175,7 +177,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
       <div ref={logRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {turns.length === 0 && (
           <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3 text-xs leading-5 text-violet-900">
-            <p className="flex items-center gap-1.5 font-black"><Sparkles className="h-3.5 w-3.5" /> {tl("Costruttore agentico")}</p>
+            <p className="flex items-center gap-1.5 font-semibold"><Sparkles className="h-3.5 w-3.5" /> {tl("Costruttore agentico")}</p>
             <p className="mt-1">
               {tl("Descrivi un oggetto: l'agente lo scompone in primitive, le posiziona, verifica contatti e fori sui bounding box reali e si corregge in più passi. Puoi anche selezionare oggetti e chiedere modifiche.")}
             </p>
@@ -193,7 +195,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
             <div className="ml-6 rounded-xl rounded-tr-sm bg-slate-900 px-3 py-2 text-xs font-semibold text-white">{turn.prompt}</div>
             {turn.steps.map(step => (
               <div key={step.step} className="rounded-xl border border-slate-200 bg-white/90 p-2.5 text-[11px] leading-5 text-slate-700">
-                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold text-slate-400">
                   <Bot className="h-3 w-3" /> {tl("Passo")} {step.step}
                 </p>
                 {step.thought && <p className="whitespace-pre-wrap text-slate-800">{step.thought}</p>}
@@ -245,11 +247,11 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
             {[3, 4, 6, 8, 10].map(n => <option key={n} value={n}>{n} passi</option>)}
           </select>
           {running ? (
-            <button type="button" onClick={stop} className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700">
+            <button type="button" onClick={stop} className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">
               <Square className="h-3 w-3" /> Stop
             </button>
           ) : (
-            <button type="button" disabled={!prompt.trim()} onClick={() => run()} className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-40">
+            <button type="button" disabled={!prompt.trim()} onClick={() => run()} className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40">
               <Send className="h-3 w-3" /> {tl("Crea")}
             </button>
           )}

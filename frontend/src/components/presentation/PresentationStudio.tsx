@@ -81,7 +81,7 @@ function GenerationProgress({ progress, onStop }: { progress: GenProgress; onSto
     <div className="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm" role="status" aria-live="polite">
       <div className="flex items-center gap-2">
         <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
-        <p className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900">{progress.label}</p>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">{progress.label}</p>
         <button type="button" onClick={onStop} className="rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100">{tl("Ferma")}</button>
       </div>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
@@ -424,7 +424,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
       <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><MonitorPlay className="h-5 w-5" /></span>
         <div className="min-w-0">
-          <h2 className="truncate text-base font-bold text-slate-900">{tl("Presentation Studio")}</h2>
+          <h2 className="truncate text-base font-semibold text-slate-900">{tl("Presentation Studio")}</h2>
           <p className="hidden text-xs text-slate-500 sm:block">{tl("Prima i contenuti, poi lo stile: rivedi tutto prima di creare le slide.")}</p>
         </div>
         <nav className="mx-auto hidden items-center gap-1 rounded-full bg-slate-100 p-1 md:flex" aria-label={tl("Passaggi")}>
@@ -436,7 +436,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
                 type="button"
                 disabled={!reachable || Boolean(busy)}
                 onClick={() => (item.key === 'style' ? void goToStyle() : setStep(item.key))}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${step === item.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800 disabled:opacity-40'}`}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${step === item.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800 disabled:opacity-40'}`}
               >{item.label}</button>
             )
           })}
@@ -457,14 +457,14 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
               <section className="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-4 shadow-sm" aria-labelledby="studio-manual-title">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><MonitorPlay className="h-5 w-5" /></span>
                 <div className="min-w-0 flex-1">
-                  <h3 id="studio-manual-title" className="text-sm font-bold text-slate-900">{tl("Preferisci fare da solo?")}</h3>
+                  <h3 id="studio-manual-title" className="text-sm font-semibold text-slate-900">{tl("Preferisci fare da solo?")}</h3>
                   <p className="text-xs text-[var(--text-secondary)]">{tl("Puoi creare la presentazione senza la guida dell'AI: parti da una presentazione vuota e scrivi tu le slide.")}</p>
                 </div>
                 <Button tone="neutral" surface="outline" onClick={onBlank}>{tl("Inizia senza AI")}</Button>
               </section>
             )}
             <section>
-              <label className="text-sm font-bold text-slate-900" htmlFor="studio-topic">{tl("Di cosa parla la presentazione?")}</label>
+              <label className="text-sm font-semibold text-slate-900" htmlFor="studio-topic">{tl("Di cosa parla la presentazione?")}</label>
               <textarea
                 id="studio-topic"
                 value={brief.topic}
@@ -475,7 +475,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
               />
             </section>
             <section>
-              <label className="text-sm font-bold text-slate-900" htmlFor="studio-source">{tl("Materiali di partenza")} <span className="font-normal text-slate-500">(facoltativo)</span></label>
+              <label className="text-sm font-semibold text-slate-900" htmlFor="studio-source">{tl("Materiali di partenza")} <span className="font-normal text-slate-500">(facoltativo)</span></label>
               <p id="studio-source-hint" className="mt-1 text-xs text-[var(--text-secondary)]">{tl("Incolla appunti o carica un file: titoli, elenchi e note docente guideranno la scaletta. Il testo resta modificabile.")}</p>
               <input ref={sourceInputRef} type="file" multiple accept={STUDIO_SOURCE_ACCEPT} className="hidden" aria-label={tl("Carica materiali di partenza")}
                 onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ''; void importSources(files) }} />
@@ -502,26 +502,26 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
             <section className="grid gap-5 sm:grid-cols-2">
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-bold text-slate-900">{tl("Numero di slide:")} {brief.slide_count === 0 ? tl("lo decide l'IA") : brief.slide_count}</span>
+                  <span className="text-sm font-semibold text-slate-900">{tl("Numero di slide:")} {brief.slide_count === 0 ? tl("lo decide l'IA") : brief.slide_count}</span>
                   <button type="button" onClick={() => setBrief({ ...brief, slide_count: brief.slide_count === 0 ? EMPTY_BRIEF.slide_count : 0 })}
-                    className={`rounded-full px-2.5 py-1 text-xs font-bold ${brief.slide_count === 0 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{tl("Automatico")}</button>
+                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${brief.slide_count === 0 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{tl("Automatico")}</button>
                 </div>
                 <input type="range" min={4} max={60} value={brief.slide_count || 8} disabled={brief.slide_count === 0} onChange={(event) => setBrief({ ...brief, slide_count: Number(event.target.value) })} className="mt-3 w-full accent-indigo-600 disabled:opacity-40" aria-label={tl("Numero di slide")} />
               </div>
               <div>
-                <span className="text-sm font-bold text-slate-900">{tl("Quanto testo per slide")}</span>
+                <span className="text-sm font-semibold text-slate-900">{tl("Quanto testo per slide")}</span>
                 <div className="mt-2 grid grid-cols-3 gap-1.5">
                   {DENSITIES.map(item => (
                     <button key={item.value} type="button" onClick={() => setBrief({ ...brief, density: item.value })}
                       className={`rounded-lg border px-2 py-1.5 text-left text-xs ${brief.density === item.value ? 'border-indigo-400 bg-indigo-50 text-indigo-900' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}>
-                      <span className="block font-bold">{item.label}</span><span className="block text-[11px] text-slate-500">{item.hint}</span>
+                      <span className="block font-semibold">{item.label}</span><span className="block text-[11px] text-slate-500">{item.hint}</span>
                     </button>
                   ))}
                 </div>
               </div>
             </section>
             <section>
-              <label className="text-sm font-bold text-slate-900" htmlFor="studio-tone">{tl("Tono")} <span className="font-normal text-slate-500">(facoltativo)</span></label>
+              <label className="text-sm font-semibold text-slate-900" htmlFor="studio-tone">{tl("Tono")} <span className="font-normal text-slate-500">(facoltativo)</span></label>
               <input id="studio-tone" value={brief.tone} onChange={(event) => setBrief({ ...brief, tone: event.target.value })} placeholder={tl("Es. coinvolgente, con domande alla classe")}
                 className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
             </section>
@@ -543,7 +543,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
             <input value={outline.title} onChange={(event) => setOutline({ ...outline, title: event.target.value })} aria-label={tl("Titolo della presentazione")}
-              className="min-w-[12rem] flex-1 rounded-lg border border-transparent px-2 py-1 text-sm font-bold text-slate-900 hover:border-slate-200 focus:border-indigo-300 focus:outline-none" />
+              className="min-w-[12rem] flex-1 rounded-lg border border-transparent px-2 py-1 text-sm font-semibold text-slate-900 hover:border-slate-200 focus:border-indigo-300 focus:outline-none" />
             <form className="flex min-w-[18rem] flex-[2] items-center gap-1.5" onSubmit={(event) => { event.preventDefault(); if (reviseText.trim()) void runOutline('revise') }}>
               <input value={reviseText} onChange={(event) => setReviseText(event.target.value)} disabled={Boolean(busy)}
                 placeholder={tl("Chiedi all'IA di cambiare la scaletta (es. aggiungi un esempio pratico, accorcia a 6 slide…)")}
@@ -567,7 +567,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
                     <li key={slide.id}>
                       <button type="button" onClick={() => setSelectedIndex(index)}
                         className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left ${selectedIndex === index ? 'bg-indigo-50 ring-1 ring-indigo-200' : 'hover:bg-slate-50'}`}>
-                        <span className="mt-0.5 w-5 shrink-0 text-right text-xs font-bold text-slate-400">{index + 1}</span>
+                        <span className="mt-0.5 w-5 shrink-0 text-right text-xs font-semibold text-slate-400">{index + 1}</span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-semibold text-slate-900">{slide.title || slide.stat_value || slide.quote || tl("Senza titolo")}</span>
                           <span className="block text-[11px] text-slate-500">{LAYOUT_LABELS[slide.layout]}</span>
@@ -586,7 +586,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
               {selectedSlide && (
                 <div className="mx-auto max-w-3xl space-y-4 px-5 py-5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-bold text-slate-900">Slide {selectedIndex + 1}</span>
+                    <span className="text-sm font-semibold text-slate-900">Slide {selectedIndex + 1}</span>
                     <select value={selectedSlide.layout} onChange={(event) => updateSlide(selectedIndex, { layout: event.target.value as StudioLayout })} aria-label="Layout"
                       className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700">
                       {(Object.keys(LAYOUT_LABELS) as StudioLayout[]).map(key => <option key={key} value={key}>{LAYOUT_LABELS[key]}</option>)}
@@ -603,7 +603,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
                   )}
                   <OutlineSlideFields slide={selectedSlide} onChange={(patch) => updateSlide(selectedIndex, patch)} />
                   <label className="block">
-                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">{tl("Note per chi presenta")}</span>
+                    <span className="text-xs font-semibold text-slate-500">{tl("Note per chi presenta")}</span>
                     <textarea value={selectedSlide.notes} onChange={(event) => updateSlide(selectedIndex, { notes: event.target.value })} rows={4}
                       className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
                   </label>
@@ -638,7 +638,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
               <div className="grid gap-4 md:grid-cols-3">
                 {STYLE_QUESTIONS.map(question => (
                   <div key={question.key}>
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{question.question}</p>
+                    <p className="text-xs font-semibold text-slate-500">{question.question}</p>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {question.options.map(option => {
                         const active = answers[question.key] === option.value
@@ -653,7 +653,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
                   </div>
                 ))}
               </div>
-              <h3 className="mt-6 text-sm font-bold text-slate-900">{tl("Template consigliati")}</h3>
+              <h3 className="mt-6 text-sm font-semibold text-slate-900">{tl("Template consigliati")}</h3>
               {previewLoading && <p className="mt-2 flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("Preparo le anteprime con le tue slide…")}</p>}
               <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {rankedThemes.slice(0, 3).map(theme => (
@@ -661,7 +661,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
                     reason={reasonFor(theme.id)} onSelect={() => setThemeId(theme.id)} large />
                 ))}
               </div>
-              <h3 className="mt-6 text-sm font-bold text-slate-900">{tl("Altri template")}</h3>
+              <h3 className="mt-6 text-sm font-semibold text-slate-900">{tl("Altri template")}</h3>
               <div className="mt-2 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
                 {rankedThemes.slice(3).map(theme => (
                   <ThemeCard key={theme.id} theme={theme} slides={galleryPreviews[theme.id] || []} format={format} selected={themeId === theme.id}
@@ -670,18 +670,18 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
               </div>
             </main>
             <aside className="w-full shrink-0 overflow-y-auto border-t border-slate-200 bg-white p-4 lg:w-[22rem] lg:border-l lg:border-t-0">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{tl("Anteprima")}</p>
+              <p className="text-xs font-semibold text-slate-500">{tl("Anteprima")}</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {selectedPreview.map(slide => <StudioSlidePreview key={slide.id} slide={slide} format={format} />)}
               </div>
               <div className="mt-5 space-y-3">
-                <label className="block text-xs font-bold text-slate-700">{tl("Caratteri")}
+                <label className="block text-xs font-semibold text-slate-700">{tl("Caratteri")}
                   <select value={options.font} onChange={(event) => setOptions({ ...options, font: event.target.value as ThemeOptions['font'] })}
                     className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-normal">
                     {FONT_OPTIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
                   </select>
                 </label>
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
                   {tl("Colore d'accento")}
                   <ColorPicker value={options.accent || themes.find(t => t.id === themeId)?.colors.accent || '#0891B2'} onChange={(color) => setOptions({ ...options, accent: color })} title={tl("Colore d'accento")} />
                   {options.accent && <button type="button" onClick={() => setOptions({ ...options, accent: null })} className="text-[11px] font-semibold text-indigo-600">{tl("del template")}</button>}
@@ -692,7 +692,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
                   onChange={(dark) => setOptions({ ...options, dark })} disabled={themes.find(t => t.id === themeId)?.brightness === 'dark'} />
                 <Toggle label={tl("Slide con immagini")} checked={options.images} onChange={(images) => setOptions({ ...options, images })} />
                 <Toggle label={tl("Genera le immagini con l'IA")} checked={generateImages && options.images} disabled={!options.images} onChange={setGenerateImages} />
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
                   {tl("Formato")}
                   {(['16:9', '4:3'] as Format[]).map(value => (
                     <button key={value} type="button" onClick={() => setFormat(value)}
@@ -727,7 +727,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
 function ChipField({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
   return (
     <div>
-      <span className="text-sm font-bold text-slate-900">{label}</span>
+      <span className="text-sm font-semibold text-slate-900">{label}</span>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {options.map(option => (
           <button key={option} type="button" onClick={() => onChange(value === option ? '' : option)}
@@ -751,7 +751,7 @@ function IconAction({ label, onClick, disabled, children }: { label: string; onC
 
 function Toggle({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
   return (
-    <label className={`flex cursor-pointer items-center justify-between gap-3 text-xs font-bold text-slate-700 ${disabled ? 'opacity-50' : ''}`}>
+    <label className={`flex cursor-pointer items-center justify-between gap-3 text-xs font-semibold text-slate-700 ${disabled ? 'opacity-50' : ''}`}>
       {label}
       <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 shrink-0 accent-indigo-600" />
     </label>
@@ -764,7 +764,7 @@ const parseList = (text: string) => text.split('\n').map(line => line.replace(/^
 function OutlineSlideFields({ slide, onChange }: { slide: OutlineSlide; onChange: (patch: Partial<OutlineSlide>) => void }) {
   const fields = LAYOUT_FIELDS[slide.layout]
   const input = 'mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100'
-  const label = 'text-xs font-bold uppercase tracking-wide text-slate-500'
+  const label = 'text-xs font-semibold text-slate-500'
   const pointsHint = ['cards', 'icon_cards', 'editorial'].includes(slide.layout) ? tl("una scheda per riga, nel formato «Concetto: spiegazione»")
     : slide.layout === 'timeline' ? tl("un passaggio per riga, nel formato «Data o fase: spiegazione»") : tl("un punto per riga")
   return (
@@ -844,7 +844,7 @@ function ThemeCard({ theme, slides, format, selected, reason, onSelect, large }:
       </div>
       <div className="flex flex-1 flex-col gap-1 p-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-slate-900">{theme.name}</span>
+          <span className="text-sm font-semibold text-slate-900">{theme.name}</span>
           <span className="ml-auto flex gap-0.5">
             {['background', 'primary', 'accent', 'text'].map(role => <span key={role} className="h-3.5 w-3.5 rounded-full border border-slate-200" style={{ background: theme.colors[role] }} />)}
           </span>

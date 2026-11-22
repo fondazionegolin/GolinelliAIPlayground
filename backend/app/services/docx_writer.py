@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from bs4 import BeautifulSoup, NavigableString, Tag
+from docx.table import _Cell
 from docx import Document
 from docx.enum.section import WD_ORIENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -27,15 +28,31 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Emu, Inches, Mm, Pt, RGBColor
 from PIL import Image
+import math
 
 PX_PER_INCH = 96
 DEFAULT_FONT = "Arial"
 DEFAULT_FONT_PT = 12
 HEADING_PT = {1: 20, 2: 16, 3: 14, 4: 12, 5: 12, 6: 12}
-# Typography shared with the editor sheet (.document-sheet in index.css) so PDF/DOCX match the page:
-# body text leads at 28 px (21 pt), headings at 1.2 × their size, no implicit paragraph spacing.
-BODY_LINE_PT = 21
-HEADING_LINE_FACTOR = 1.2
+# Typography shared with the editor sheet (.document-sheet in index.css) so PDF/DOCX match the page: a baseline
+# grid whose row is the document line spacing (page.lineSpacing × 16 px, default 1.75 → 28 px = 21 pt). Body lines
+# lead at one row, headings at the whole rows their size needs; top-level paragraphs and lists are followed by one
+# blank row, nothing inside lists, tables or quotes. Per-paragraph line heights give way to the grid, as on the sheet.
+DOC_BODY_PX = 16
+DEFAULT_LINE_SPACING = 1.75
+BODY_LINE_PT = 21  # default row (28 px)
+PARAGRAPH_SPACE_PT = 21
+
+
+def grid_row_px(page: dict[str, Any] | None) -> int:
+    """Row of the baseline grid in CSS px, exactly like documentRow() in the editor."""
+    try:
+        spacing = float((page or {}).get("lineSpacing") or DEFAULT_LINE_SPACING)
+    except (TypeError, ValueError):
+        spacing = DEFAULT_LINE_SPACING
+    if not 1 <= spacing <= 4:
+        spacing = DEFAULT_LINE_SPACING
+    return max(16, int(math.floor(DOC_BODY_PX * spacing + 0.5)))
 ALIGNMENTS = {
     "left": WD_ALIGN_PARAGRAPH.LEFT,
     "center": WD_ALIGN_PARAGRAPH.CENTER,
@@ -224,6 +241,8 @@ class DocxWriter:
         self._bullet_abstract: int | None = None
         self._number_abstract: int | None = None
         self._last_link: tuple[Any, str] | None = None  # (w:hyperlink element, href) for run merging
+        self._row_px = grid_row_px(page)
+        self._row_pt = round(self._row_px * 0.75, 2)
         self._setup_page(margins_px, page)
         self._setup_styles()
         if title:
@@ -255,7 +274,7 @@ class DocxWriter:
         normal.paragraph_format.space_after = Pt(0)
         normal.paragraph_format.space_before = Pt(0)
         normal.paragraph_format.line_spacing_rule = WD_LINE_SPACING.AT_LEAST
-        normal.paragraph_format.line_spacing = Pt(BODY_LINE_PT)
+        normal.paragraph_format.line_spacing = Pt(self._row_pt)
         # Same page-break rule as the editor: never leave a single line of a paragraph alone at a page edge.
         normal.paragraph_format.widow_control = True
         for level, size in HEADING_PT.items():
@@ -269,7 +288,9 @@ class DocxWriter:
             heading.paragraph_format.space_before = Pt(0)
             heading.paragraph_format.space_after = Pt(0)
             heading.paragraph_format.line_spacing_rule = WD_LINE_SPACING.AT_LEAST
-            heading.paragraph_format.line_spacing = Pt(round(size * HEADING_LINE_FACTOR, 1))
+            # A heading takes the whole rows its size needs (CSS: round(up, 1em, row)).
+            rows = max(1, math.ceil(size * 4 / 3 / self._row_px - 1e-6))
+            heading.paragraph_format.line_spacing = Pt(round(rows * self._row_pt, 2))
             heading.paragraph_format.keep_with_next = True  # the editor keeps a heading with its first lines
 
     @staticmethod
@@ -622,10 +643,14 @@ class DocxWriter:
             self._write_children_inline(node, paragraph, base)
         elif name == "p":
             paragraph = container.add_paragraph()
+            if not isinstance(container, _Cell):  # inline margin-bottom overrides it below
+                paragraph.paragraph_format.space_after = Pt(self._row_pt)
             self._apply_paragraph_style(paragraph, node)
             self._write_children_inline(node, paragraph, base)
         elif name in {"ul", "ol"}:
             self._write_list(node, container, level=0, base=base)
+            if not isinstance(container, _Cell) and container.paragraphs:
+                container.paragraphs[-1].paragraph_format.space_after = Pt(self._row_pt)
         elif name == "table":
             self._write_table(node, container, base)
         elif name == "blockquote":
@@ -706,31 +731,24 @@ class DocxWriter:
         alignment = ALIGNMENTS.get(style.get("text-align", "").lower())
         if alignment is not None:
             paragraph.alignment = alignment
-        line_height = style.get("line-height")
-        if line_height:
-            base_pt = self._paragraph_font_pt(node)
-            try:
-                # CSS unitless line-height scales with the font size (not with the font's own metrics like
-                # Word's "multiple"), so convert to an at-least value in points.
-                paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.AT_LEAST
-                paragraph.paragraph_format.line_spacing = Pt(round(float(line_height) * base_pt, 1))
-            except ValueError:
-                size = parse_font_size_pt(line_height)
-                if size:
-                    paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.AT_LEAST
-                    paragraph.paragraph_format.line_spacing = Pt(size)
+        # Line spacing comes from the document grid (page.lineSpacing), never from a per-paragraph line-height.
         indent = parse_length_px(style.get("margin-left") or style.get("padding-left"))
         if indent:
             paragraph.paragraph_format.left_indent = Inches(indent / PX_PER_INCH)
         first_line = parse_length_px(style.get("text-indent"))
         if first_line:
             paragraph.paragraph_format.first_line_indent = Inches(first_line / PX_PER_INCH)
+        # Spaces round up to whole grid rows, as the sheet's pagination does.
         space_before = parse_length_px(style.get("margin-top"))
         if space_before is not None:
-            paragraph.paragraph_format.space_before = Pt(space_before * 0.75)
+            paragraph.paragraph_format.space_before = Pt(self._grid_rows_pt(space_before))
         space_after = parse_length_px(style.get("margin-bottom"))
         if space_after is not None:
-            paragraph.paragraph_format.space_after = Pt(space_after * 0.75)
+            paragraph.paragraph_format.space_after = Pt(self._grid_rows_pt(space_after))
+
+    def _grid_rows_pt(self, px: float) -> float:
+        rows = max(0, math.ceil(px / self._row_px - 0.01))
+        return round(rows * self._row_pt, 2)
 
     @staticmethod
     def _bottom_border(paragraph: Any) -> None:

@@ -874,7 +874,7 @@ export default function TeachersPage() {
                   : <ChevronDown className="h-4 w-4 text-slate-400 ml-2" />}
               </button>
               <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-accent)] animate-pulse" />
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-accent)]" />
                 {tl("aggiornamento automatico")}
               </span>
             </div>

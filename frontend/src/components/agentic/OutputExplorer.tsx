@@ -40,7 +40,7 @@ export function OutputExplorerModal({ target, onClose, onOpenTable, onAxesChange
     <div className="flex h-[96vh] w-[98vw] max-w-[1800px] flex-col overflow-hidden rounded-2xl bg-neutral-100 shadow-2xl">
       <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><Icon className="h-5 w-5" /></span>
-        <div className="min-w-0 flex-1"><h2 className="truncate text-sm font-black">{target.title}</h2><p className="text-[10px] text-slate-500">{subtitle} {tl("· Esc per chiudere")}</p></div>
+        <div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold">{target.title}</h2><p className="text-[10px] text-slate-500">{subtitle} {tl("· Esc per chiudere")}</p></div>
         <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-4 w-4" /></button>
       </header>
       <div className="min-h-0 flex-1">
@@ -262,68 +262,68 @@ function PlotExplorer({ title, plot: initialPlot, table, initialAxes, onAxesChan
           <Stat label={tl("Intervallo X")} value={xs.length ? `${formatCompact(Math.min(...xs))} – ${formatCompact(Math.max(...xs))}` : '—'} />
           <Stat label={tl("Correlazione")} value={correlation === null ? '—' : correlation} />
           {regression && <Stat label={tl("Retta")} value={`y = ${formatCompact(regression.slope)}x ${regression.intercept >= 0 ? '+' : '−'} ${formatCompact(Math.abs(regression.intercept))}`} hint={`R² ${regression.r2.toFixed(3)}`} />}
-        </>}
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-2xl bg-white shadow-[var(--ds-shadow-1)]">
-        <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-slate-400">{tl("Caricamento explorer…")}</div>}>
-          <Plot data={traces as never} layout={layout as never} config={{ displaylogo: false, responsive: true, toImageButtonOptions: { filename: settings.title || tl("grafico"), scale: 2 } }} style={{ width: '100%', height: '100%' }} useResizeHandler />
-        </Suspense>
-      </div>
-    </section>
-  </div>
+ </>}
+ </div>
+ <div className="min-h-0 flex-1 overflow-hidden rounded-2xl bg-white shadow-[var(--ds-shadow-1)]">
+ <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-slate-400">{tl("Caricamento explorer…")}</div>}>
+ <Plot data={traces as never} layout={layout as never} config={{ displaylogo: false, responsive: true, toImageButtonOptions: { filename: settings.title || tl("grafico"), scale: 2 } }} style={{ width: '100%', height: '100%'}} useResizeHandler />
+ </Suspense>
+ </div>
+ </section>
+ </div>
 }
 
 function MetricsExplorer({ metrics }: { metrics: Record<string, unknown> }) {
-  const scalars = Object.entries(metrics).filter(([, value]) => value === null || ['string', 'number', 'boolean'].includes(typeof value))
-  const nested = Object.entries(metrics).filter(([, value]) => value !== null && typeof value === 'object')
-  return <div className="h-full overflow-y-auto p-5">
-    {scalars.length > 0 && <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">{scalars.map(([key, value]) => <div key={key} className="rounded-2xl bg-white p-4 shadow-[var(--ds-shadow-1)]"><p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{METRIC_LABELS[key] || key.replace(/_/g, ' ')}</p><p className="mt-1 break-words text-2xl font-black text-slate-900">{formatCompact(value)}</p></div>)}</div>}
-    {nested.map(([key, value]) => <div key={key} className="mt-5 rounded-2xl bg-white p-4 shadow-[var(--ds-shadow-1)]"><p className="mb-3 text-[10px] font-black uppercase tracking-wider text-slate-400">{METRIC_LABELS[key] || key.replace(/_/g, ' ')}</p><StructuredValue value={value} /></div>)}
-    {!scalars.length && !nested.length && <p className="text-sm text-slate-400">{tl("Nessuna metrica disponibile.")}</p>}
-  </div>
+ const scalars = Object.entries(metrics).filter(([, value]) => value === null || ['string', 'number', 'boolean'].includes(typeof value))
+ const nested = Object.entries(metrics).filter(([, value]) => value !== null && typeof value === 'object')
+ return <div className="h-full overflow-y-auto p-5">
+ {scalars.length > 0 && <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">{scalars.map(([key, value]) => <div key={key} className="rounded-2xl bg-white p-4 shadow-[var(--ds-shadow-1)]"><p className="text-[10px] font-semibold text-slate-400">{METRIC_LABELS[key] || key.replace(/_/g, '')}</p><p className="mt-1 break-words text-2xl font-semibold text-slate-900">{formatCompact(value)}</p></div>)}</div>}
+ {nested.map(([key, value]) => <div key={key} className="mt-5 rounded-2xl bg-white p-4 shadow-[var(--ds-shadow-1)]"><p className="mb-3 text-[10px] font-semibold text-slate-400">{METRIC_LABELS[key] || key.replace(/_/g, '')}</p><StructuredValue value={value} /></div>)}
+ {!scalars.length && !nested.length && <p className="text-sm text-slate-400">{tl("Nessuna metrica disponibile.")}</p>}
+ </div>
 }
 
 /** Renders matrices as grids, arrays of records as tables, objects as key/value lists. */
 function StructuredValue({ value }: { value: unknown }): ReactNode {
-  if (Array.isArray(value) && value.length && value.every(Array.isArray)) {
-    return <div className="overflow-auto"><table className="text-xs"><tbody>{(value as unknown[][]).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex} className="border border-slate-100 px-3 py-2 text-center font-mono font-bold text-slate-700">{formatCompact(cell)}</td>)}</tr>)}</tbody></table></div>
-  }
-  if (Array.isArray(value) && value.length && value.every((item) => item && typeof item === 'object' && !Array.isArray(item))) {
-    const columns = [...new Set((value as Record<string, unknown>[]).flatMap((row) => Object.keys(row)))]
-    return <div className="overflow-auto"><table className="w-full text-xs"><thead className="bg-slate-50"><tr>{columns.map((column) => <th key={column} className="px-3 py-2 text-left font-bold text-slate-500">{column}</th>)}</tr></thead><tbody>{(value as Record<string, unknown>[]).map((row, index) => <tr key={index} className="border-t border-slate-100">{columns.map((column) => <td key={column} className="px-3 py-2 text-slate-700">{formatCompact(row[column])}</td>)}</tr>)}</tbody></table></div>
-  }
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1.5 text-xs">{Object.entries(value as Record<string, unknown>).map(([key, item]) => <Fragment key={key}><dt className="font-bold text-slate-500">{key}</dt><dd className="min-w-0 break-words font-mono text-slate-800">{item && typeof item === 'object' ? JSON.stringify(item) : formatCompact(item)}</dd></Fragment>)}</dl>
-  }
-  return <pre className="whitespace-pre-wrap font-mono text-xs text-slate-800">{JSON.stringify(value, null, 2)}</pre>
+ if (Array.isArray(value) && value.length && value.every(Array.isArray)) {
+ return <div className="overflow-auto"><table className="text-xs"><tbody>{(value as unknown[][]).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex} className="border border-slate-100 px-3 py-2 text-center font-mono font-semibold text-slate-700">{formatCompact(cell)}</td>)}</tr>)}</tbody></table></div>
+ }
+ if (Array.isArray(value) && value.length && value.every((item) => item && typeof item === 'object'&& !Array.isArray(item))) {
+ const columns = [...new Set((value as Record<string, unknown>[]).flatMap((row) => Object.keys(row)))]
+ return <div className="overflow-auto"><table className="w-full text-xs"><thead className="bg-slate-50"><tr>{columns.map((column) => <th key={column} className="px-3 py-2 text-left font-semibold text-slate-500">{column}</th>)}</tr></thead><tbody>{(value as Record<string, unknown>[]).map((row, index) => <tr key={index} className="border-t border-slate-100">{columns.map((column) => <td key={column} className="px-3 py-2 text-slate-700">{formatCompact(row[column])}</td>)}</tr>)}</tbody></table></div>
+ }
+ if (value && typeof value === 'object'&& !Array.isArray(value)) {
+ return <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1.5 text-xs">{Object.entries(value as Record<string, unknown>).map(([key, item]) => <Fragment key={key}><dt className="font-semibold text-slate-500">{key}</dt><dd className="min-w-0 break-words font-mono text-slate-800">{item && typeof item === 'object'? JSON.stringify(item) : formatCompact(item)}</dd></Fragment>)}</dl>
+ }
+ return <pre className="whitespace-pre-wrap font-mono text-xs text-slate-800">{JSON.stringify(value, null, 2)}</pre>
 }
 
 function RawExplorer({ value }: { value: unknown }) {
-  const [copied, setCopied] = useState(false)
-  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
-  const copy = async () => { try { await navigator.clipboard.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 1500) } catch { /* clipboard blocked */ } }
-  return <div className="flex h-full flex-col gap-3 p-5">
-    <div className="flex justify-end"><Button type="button" onClick={copy} tone="neutral" surface="outline" density="compact" className="rounded-full">{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? tl("Copiato") : tl("Copia")}</Button></div>
-    {value && typeof value === 'object'
-      ? <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-white p-4 shadow-[var(--ds-shadow-1)]"><StructuredValue value={value} /></div>
-      : <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-950 p-5 font-mono text-xs leading-6 text-slate-100">{text}</pre>}
-  </div>
+ const [copied, setCopied] = useState(false)
+ const text = typeof value === 'string'? value : JSON.stringify(value, null, 2)
+ const copy = async () => { try { await navigator.clipboard.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 1500) } catch { /* clipboard blocked */ } }
+ return <div className="flex h-full flex-col gap-3 p-5">
+ <div className="flex justify-end"><Button type="button"onClick={copy} tone="neutral"surface="outline"density="compact"className="rounded-full">{copied ? <Check className="h-4 w-4"/> : <Copy className="h-4 w-4"/>} {copied ? tl("Copiato") : tl("Copia")}</Button></div>
+ {value && typeof value === 'object'
+ ? <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-white p-4 shadow-[var(--ds-shadow-1)]"><StructuredValue value={value} /></div>
+ : <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-950 p-5 font-mono text-xs leading-6 text-slate-100">{text}</pre>}
+ </div>
 }
 
 const INPUT = 'h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs outline-none focus:border-slate-400'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
-  return <div className="space-y-2"><p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">{title}</p>{children}</div>
+ return <div className="space-y-2"><p className="text-xs font-semibold text-[var(--text-secondary)]">{title}</p>{children}</div>
 }
 function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="block space-y-1"><span className="block text-xs font-semibold text-[var(--text-secondary)]">{label}</span>{children}</label>
+ return <label className="block space-y-1"><span className="block text-xs font-semibold text-[var(--text-secondary)]">{label}</span>{children}</label>
 }
 function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
-  return <button type="button" role="switch" aria-checked={value} onClick={() => onChange(!value)} className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left font-semibold text-slate-600 hover:bg-slate-50"><span>{label}</span><span className={`relative h-5 w-9 rounded-full transition-colors ${value ? 'bg-slate-900' : 'bg-slate-200'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${value ? 'left-[18px]' : 'left-0.5'}`} /></span></button>
+ return <button type="button"role="switch"aria-checked={value} onClick={() => onChange(!value)} className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left font-semibold text-slate-600 hover:bg-slate-50"><span>{label}</span><span className={`relative h-5 w-9 rounded-full transition-colors ${value ? 'bg-slate-900' : 'bg-slate-200'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${value ? 'left-[18px]' : 'left-0.5'}`} /></span></button>
 }
 function Range({ label, min, max, step, value, onChange }: { label: string; min: number; max: number; step: number; value: number; onChange: (value: number) => void }) {
-  return <label className="block space-y-1"><span className="flex justify-between text-[10px] font-bold text-slate-500"><span>{label}</span><span>{value}</span></span><input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} className="w-full accent-slate-900" /></label>
+  return <label className="block space-y-1"><span className="flex justify-between text-[10px] font-semibold text-slate-500"><span>{label}</span><span>{value}</span></span><input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} className="w-full accent-slate-900" /></label>
 }
 function Stat({ label, value, hint }: { label: string; value: unknown; hint?: string }) {
-  return <div className="rounded-xl bg-white px-3 py-2 shadow-[var(--ds-shadow-1)]"><p className="truncate text-[9px] font-black uppercase tracking-wider text-slate-400">{label}</p><p className="mt-0.5 truncate text-sm font-black text-slate-800">{formatCompact(value)}</p>{hint && <p className="truncate text-[9px] font-semibold text-slate-400">{hint}</p>}</div>
+  return <div className="rounded-xl bg-white px-3 py-2 shadow-[var(--ds-shadow-1)]"><p className="truncate text-[9px] font-semibold text-slate-400">{label}</p><p className="mt-0.5 truncate text-sm font-semibold text-slate-800">{formatCompact(value)}</p>{hint && <p className="truncate text-[9px] font-semibold text-slate-400">{hint}</p>}</div>
 }

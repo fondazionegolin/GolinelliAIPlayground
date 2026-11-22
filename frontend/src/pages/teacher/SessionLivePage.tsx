@@ -207,7 +207,7 @@ export default function SessionLivePage() {
     mutationFn: (status: string) => teacherApi.updateSession(sessionId!, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-live', sessionId] })
-      toast({ title: tl("Stato aggiornato!") })
+      toast({ title: tl("Stato aggiornato") })
     },
   })
 
@@ -225,7 +225,7 @@ export default function SessionLivePage() {
       teacherApi.updateSession(sessionId!, { default_llm_provider: provider, default_llm_model: model }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-live', sessionId] })
-      toast({ title: tl("Modello di default aggiornato!") })
+      toast({ title: tl("Modello di default aggiornato") })
     },
   })
 
@@ -234,7 +234,7 @@ export default function SessionLivePage() {
 
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code)
-    toast({ title: tl("Codice copiato!") })
+    toast({ title: tl("Codice copiato") })
   }
 
 
@@ -327,7 +327,7 @@ export default function SessionLivePage() {
               <span className="text-slate-300">/</span>
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-start gap-2">
-                  <SectionHeading section="/teacher/classes" compact className="min-w-0 flex-1 break-words text-lg font-bold leading-tight text-slate-900" titleClassName="line-clamp-2" title={session.title}>{session.title}</SectionHeading>
+                  <SectionHeading section="/teacher/classes" compact className="min-w-0 flex-1 break-words text-lg font-semibold leading-tight text-slate-900" titleClassName="line-clamp-2" title={session.title}>{session.title}</SectionHeading>
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${sc.badge}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                     {sc.label}
@@ -345,7 +345,7 @@ export default function SessionLivePage() {
               <span className="text-xs text-slate-500">{tl("Codice:")}</span>
               {joinCodeAvailable ? (
                 <>
-                  <code className="font-mono font-bold text-base text-slate-800 tracking-wider">{session.join_code}</code>
+                  <code className="font-mono font-semibold text-base text-slate-800 tracking-wider">{session.join_code}</code>
                   <button
                     onClick={() => copyCode(session.join_code)}
                     className="ml-1 text-slate-400 hover:text-slate-700 transition-colors"
@@ -423,7 +423,7 @@ export default function SessionLivePage() {
                         backdropFilter: 'var(--ds-choice-blur)',
                         WebkitBackdropFilter: 'var(--ds-choice-blur)',
                       } : undefined}
-                      className={`min-h-[var(--selection-height)] gap-2 rounded-[var(--selection-radius)] border-0 px-[var(--selection-padding-x)] py-1.5 text-xs font-bold transition-all duration-150 ${activeTab === tab.key ? '' : 'bg-transparent text-slate-600 shadow-none hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] hover:shadow-[var(--ds-shadow-1)]'}`}
+                      className={`min-h-[var(--selection-height)] gap-2 rounded-[var(--selection-radius)] border-0 px-[var(--selection-padding-x)] py-1.5 text-xs font-semibold transition-all duration-150 ${activeTab === tab.key ? '' : 'bg-transparent text-slate-600 shadow-none hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] hover:shadow-[var(--ds-shadow-1)]'}`}
                     >
                       <tab.icon className="h-4 w-4" />
                       <span>{tab.label}</span>
@@ -441,10 +441,10 @@ export default function SessionLivePage() {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-4 shadow-[inset_0_-1px_0_var(--ds-frame-divider)] sm:px-6">
                       <Brain className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
                       <div className="min-w-0 flex-1">
-                        <h2 className="text-base font-black text-slate-900">{tl("Moduli visibili agli studenti")}</h2>
+                        <h2 className="text-base font-semibold text-slate-900">{tl("Moduli visibili agli studenti")}</h2>
                         <p className="text-xs text-slate-500">{tl("Attiva gli strumenti che gli studenti vedono nella sessione.")}</p>
                       </div>
-                      <span className="rounded-full bg-[color-mix(in_srgb,var(--logo-violet)_10%,var(--mix-base))] px-2.5 py-1 text-[11px] font-bold text-[var(--logo-violet)]">
+                      <span className="rounded-full bg-[color-mix(in_srgb,var(--logo-violet)_10%,var(--mix-base))] px-2.5 py-1 text-[11px] font-semibold text-[var(--logo-violet)]">
                         {displayModules.filter((mod) => mod.is_enabled).length} {tl("di")} {displayModules.length} {tl("attivi")}
                       </span>
                     </div>
@@ -563,11 +563,11 @@ export default function SessionLivePage() {
                               </div>
                             </div>
                             <div className="mt-3 min-w-0">
-                              <p className={`text-sm font-black ${mod.is_enabled ? 'text-slate-900' : 'text-slate-600'}`}>{c.label}</p>
+                              <p className={`text-sm font-semibold ${mod.is_enabled ? 'text-slate-900' : 'text-slate-600'}`}>{c.label}</p>
                               <p className={`text-xs font-semibold ${mod.is_enabled ? 'text-[var(--logo-violet)]' : 'text-slate-400'}`}>{c.subtitle}</p>
                             </div>
                             <p className="mt-2 line-clamp-3 text-xs leading-[1.4] text-slate-500">{c.desc}</p>
-                            <p className={`mt-auto pt-2 text-[10px] font-bold uppercase tracking-wide ${mod.is_enabled ? 'text-[var(--logo-violet)]' : 'text-slate-400'}`}>
+                            <p className={`mt-auto pt-2 text-[10px] font-semibold ${mod.is_enabled ? 'text-[var(--logo-violet)]': 'text-slate-400'}`}>
                               {mod.is_enabled ? tl("Visibile agli studenti") : tl("Nascosto")}
                             </p>
                           </div>
@@ -581,7 +581,7 @@ export default function SessionLivePage() {
                     <div className="flex items-center gap-3 px-5 py-4 shadow-[inset_0_-1px_0_var(--ds-frame-divider)] sm:px-6">
                       <Bot className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
                       <div className="min-w-0">
-                        <h2 className="text-base font-black text-slate-900">{tl("Modello AI predefinito")}</h2>
+                        <h2 className="text-base font-semibold text-slate-900">{tl("Modello AI predefinito")}</h2>
                         <p className="text-xs text-slate-500">{tl("Usato dagli strumenti AI degli studenti in questa sessione.")}</p>
                       </div>
                     </div>
@@ -692,7 +692,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
       key={doc.id}
       type="button"
       onClick={() => openDocument(doc)}
-      className="group rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+      className="group rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
     >
       <div className="flex items-start gap-3">
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${doc.source === 'student' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
@@ -717,7 +717,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
       <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
         <FileText className="h-4 w-4 text-slate-500" />
         <span className="text-sm font-semibold text-slate-800">{tl("Documenti")}</span>
-        <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
+        <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
           {visibleDocuments.length === documents.length
             ? documents.length
             : `${visibleDocuments.length}/${documents.length}`}
@@ -772,13 +772,13 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
             <section className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">{tl("Condivisi dagli studenti")}</h3>
+                  <h3 className="text-[10px] font-semibold text-emerald-700">{tl("Condivisi dagli studenti")}</h3>
                   <p className="mt-1 text-xs text-emerald-700/70">{studentDocuments.length} {tl("documenti ricevuti")}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setStudentDocsCollapsed(value => !value)}
-                  className="rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-100 transition-colors hover:bg-white"
+                  className="rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 shadow-sm ring-1 ring-emerald-100 transition-colors hover:bg-white"
                 >
                   {studentDocsCollapsed ? tl("Espandi") : tl("Comprimi")}
                 </button>
@@ -798,7 +798,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
                       className="flex h-9 max-w-56 shrink-0 items-center gap-2 rounded-lg bg-emerald-100 px-2.5 text-emerald-800 shadow-sm transition-transform hover:-translate-y-0.5"
                     >
                       <FileText className="h-3.5 w-3.5" />
-                      <span className="min-w-0 truncate text-left text-[11px] font-bold">{doc.title}</span>
+                      <span className="min-w-0 truncate text-left text-[11px] font-semibold">{doc.title}</span>
                       <span className="max-w-20 truncate text-[10px] text-emerald-700/70">{doc.author_name}</span>
                     </button>
                   ))}
@@ -812,7 +812,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
             )}
             {sourceFilter !== 'student' && visibleDocuments.length > 0 && (
             <section>
-              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">{tl("Condivisi dal docente")}</h3>
+              <h3 className="mb-2 text-[10px] font-semibold text-slate-400">{tl("Condivisi dal docente")}</h3>
               {teacherDocuments.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-400">
                   {tl("Nessun documento docente in questa sessione.")}
@@ -826,7 +826,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
             )}
             {visibleDocuments.length > 0 && (
             <section>
-              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">{tl("Tutti i documenti")}</h3>
+              <h3 className="mb-2 text-[10px] font-semibold text-slate-400">{tl("Tutti i documenti")}</h3>
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 {visibleDocuments.map((doc) => (
                   <button
@@ -970,7 +970,7 @@ function AnalyticsPanel({ sessionId, socket }: { sessionId: string; socket: Sock
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Student activity ranking */}
           <div>
-            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">{tl("Studenti più attivi")}</h4>
+            <h4 className="text-xs font-semibold text-slate-500 mb-3">{tl("Studenti più attivi")}</h4>
             <div className="space-y-2.5">
               {studentActivity.map((s, i) => (
                 <div key={s.nickname} className="flex items-center gap-2">
@@ -994,7 +994,7 @@ function AnalyticsPanel({ sessionId, socket }: { sessionId: string; socket: Sock
 
           {/* Argomenti frequenti (tag cloud) */}
           <div>
-            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">{tl("Argomenti frequenti")}</h4>
+            <h4 className="text-xs font-semibold text-slate-500 mb-3">{tl("Argomenti frequenti")}</h4>
             <div className="flex flex-wrap gap-1.5">
               {topWords.map(([word, count]) => (
                 <span
@@ -1210,14 +1210,14 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
         <div className="flex items-center gap-2 px-4 pb-1 pt-4">
           <Search className="h-4 w-4 text-slate-400" />
           <div>
-            <p className="text-sm font-bold text-slate-800">{tl("Esplora conversazioni")}</p>
+            <p className="text-sm font-semibold text-slate-800">{tl("Esplora conversazioni")}</p>
             <p className="text-[11px] text-slate-400">{tl("Seleziona uno studente e apri una chat")}</p>
           </div>
         </div>
 
         {/* Conversation type dropdown */}
         <div className="m-3 flex-shrink-0">
-          <label htmlFor="history-conversation-type" className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+          <label htmlFor="history-conversation-type" className="mb-1.5 block text-[10px] font-semibold text-slate-400">
             {tl("Tipo di conversazione")}
           </label>
           <div className="relative">
@@ -1257,7 +1257,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                           onClick={() => toggleStudent(studentId)}
                           className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${hasSelected ? 'bg-[var(--brand-pill-lavender)]/45' : ''}`}
                         >
-                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-600 to-slate-700 text-xs font-bold text-white">
+                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-600 to-slate-700 text-xs font-semibold text-white">
                             {nickname.charAt(0).toUpperCase()}
                           </div>
                           <span className="flex-1 truncate text-sm font-semibold text-slate-800">{nickname}</span>
@@ -1303,7 +1303,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                           onClick={() => toggleStudent(studentId)}
                           className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${hasSelected ? 'bg-slate-100' : 'hover:bg-slate-100'}`}
                         >
-                          <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-slate-700 to-slate-900 text-[10px] font-bold text-white">
+                          <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-slate-700 to-slate-900 text-[10px] font-semibold text-white">
                             {nickname.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -1343,7 +1343,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                                 <div className="flex items-center gap-2">
                                   <p className="truncate text-[11px] font-semibold text-slate-700">{conv.teacherbot_name}</p>
                                   {isActive && (
-                                    <span className="rounded-full bg-violet-600 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
+                                    <span className="rounded-full bg-violet-600 px-1.5 py-0.5 text-[8px] font-semibold text-white">
                                       {tl("Aperta")}
                                     </span>
                                   )}
@@ -1435,7 +1435,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                           <div className="flex items-center gap-1.5">
                             <span className="text-[10px] text-slate-400">{time}</span>
                             <span className="text-[11px] font-semibold text-slate-500">{activeName}</span>
-                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0">
+                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center text-[9px] font-semibold text-white flex-shrink-0">
                               {activeName?.charAt(0).toUpperCase() ?? 'S'}
                             </div>
                           </div>

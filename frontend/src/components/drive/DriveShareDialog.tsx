@@ -104,7 +104,7 @@ export function DriveShareDialog({ item, onClose, onChanged }: { item: DriveItem
           ) : (
             <>
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-wider text-slate-400">{tl("Classe o sessione")}</label>
+                <label className="text-[11px] font-semibold text-slate-400">{tl("Classe o sessione")}</label>
                 <div className="flex gap-2">
                   <select
                     value={pick}
@@ -127,7 +127,7 @@ export function DriveShareDialog({ item, onClose, onChanged }: { item: DriveItem
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-wider text-slate-400">{tl("Colleghi docenti")}</label>
+                <label className="text-[11px] font-semibold text-slate-400">{tl("Colleghi docenti")}</label>
                 <div className="flex gap-2">
                   <div className="ds-control flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl px-3">
                     <Mail className="h-4 w-4 shrink-0 text-slate-400" />
@@ -145,7 +145,7 @@ export function DriveShareDialog({ item, onClose, onChanged }: { item: DriveItem
               </div>
 
               <div className="space-y-1.5">
-                <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">{tl("Persone con accesso")}</p>
+                <p className="text-[11px] font-semibold text-slate-400">{tl("Persone con accesso")}</p>
                 <div className="flex items-center gap-3 rounded-xl px-2 py-2">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--app-accent-soft)] text-[var(--app-accent-text)]"><Users className="h-4 w-4" /></span>
                   <span className="flex-1 text-sm font-semibold text-slate-700">Tu</span>

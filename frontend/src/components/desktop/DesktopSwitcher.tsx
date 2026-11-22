@@ -54,7 +54,7 @@ export default function DesktopSwitcher({
       {desktops.map(d => (
         <div
           key={d.id}
-          className={`group/tab flex items-center gap-1.5 h-7 px-3 rounded-full cursor-pointer transition-all
+          className={`group/tab flex items-center gap-1.5 h-7 px-3 rounded-full cursor-pointer transition
             ${d.id === activeId
               ? 'bg-white/15 text-white/90'
               : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/70'}

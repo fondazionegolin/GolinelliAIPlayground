@@ -98,8 +98,8 @@ function AgentRow({ agent, depth }: { agent: ResearchAgent; depth: number }) {
         <Icon className="h-4 w-4 shrink-0 text-slate-500" />
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{label}</span>
-            <span className="truncate text-xs font-bold text-slate-800">{agent.label}</span>
+            <span className="text-[10px] font-semibold text-slate-400">{label}</span>
+            <span className="truncate text-xs font-semibold text-slate-800">{agent.label}</span>
           </span>
           {agent.detail && <span className="mt-0.5 block truncate text-[11px] text-slate-500">{agent.detail}</span>}
         </span>
@@ -132,8 +132,8 @@ function ActivityTab({ run }: { run: ResearchRun }) {
       <div className="grid grid-cols-3 gap-2 text-center">
         {[['Agent', run.agents.length], [tl("Attivi"), running], [tl("Fonti"), run.sources || '—']].map(([name, value]) => (
           <div key={name as string} className="ds-control rounded-[var(--ds-radius-control)] px-2 py-2">
-            <div className="text-base font-extrabold text-slate-800">{value}</div>
-            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{name}</div>
+            <div className="text-base font-semibold text-slate-800">{value}</div>
+            <div className="text-[10px] font-semibold text-slate-400">{name}</div>
           </div>
         ))}
       </div>
@@ -183,7 +183,7 @@ function DocumentTab({ doc, onChange }: { doc: GeneratedDoc; onChange: (content:
     a.click()
     URL.revokeObjectURL(url)
   }
-  const pill = 'ds-control inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-bold text-slate-600 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]'
+  const pill = 'ds-control inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-slate-600 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]'
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -205,7 +205,7 @@ function DocumentTab({ doc, onChange }: { doc: GeneratedDoc; onChange: (content:
             className="h-full min-h-[24rem] w-full resize-none rounded-[var(--ds-radius-control)] bg-transparent p-3 font-mono text-xs leading-relaxed text-slate-800 outline-none focus:shadow-[var(--ds-shadow-focus)]"
           />
         ) : (
-          <article className="prose prose-sm prose-slate max-w-none prose-headings:font-bold prose-a:text-[var(--selection-text)]">
+          <article className="prose prose-sm prose-slate max-w-none prose-headings:font-semibold prose-a:text-[var(--selection-text)]">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer">{children}</a> }}>{draft}</ReactMarkdown>
           </article>
         )}
@@ -236,20 +236,20 @@ export default function ResearchPanel({ doc, run, onClose, onStop, onDocChange }
   useEffect(() => { if (view.status === 'done' && doc) setTab('document') }, [view.status, doc?.version]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabClass = (active: boolean) =>
-    `inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-bold outline-none focus-visible:shadow-[var(--ds-shadow-focus)] ${active ? 'ds-selected' : 'ds-control text-slate-600'}`
+    `inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold outline-none focus-visible:shadow-[var(--ds-shadow-focus)] ${active ? 'ds-selected' : 'ds-control text-slate-600'}`
 
   return (
     <div className="flex h-full flex-col bg-white/60">
       <div className="flex items-center gap-2 px-4 pb-1 pt-3">
         <Sparkles className="h-4 w-4 text-slate-500" />
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-extrabold text-slate-800">{doc?.title || 'Deep Research'}</h2>
+          <h2 className="truncate text-sm font-semibold text-slate-800">{doc?.title || 'Deep Research'}</h2>
           <p className="truncate text-[11px] text-slate-500">
             {running ? (view.statusText || tl("Ricerca in corso…")) : view.status === 'error' ? tl("Ricerca interrotta") : doc ? tl("v{0} · {1} fonti", doc.version, doc.sources?.length ?? 0) : tl("In attesa")}
           </p>
         </div>
         {running && (
-          <button type="button" onClick={onStop} className="ds-control inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-rose-600 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]">
+          <button type="button" onClick={onStop} className="ds-control inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-rose-600 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]">
             <Square className="h-3 w-3" />{tl("Ferma")}
           </button>
         )}

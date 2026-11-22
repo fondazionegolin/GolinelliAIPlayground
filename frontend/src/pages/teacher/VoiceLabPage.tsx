@@ -10,6 +10,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import { useToast } from '@/components/ui/use-toast'
 import { voiceLabApi, type LabItem } from '@/lib/voiceLab'
 import { jobsApi, type BackgroundJob } from '@/lib/api'
+import { takeHandoff } from '@/lib/platformHandoff'
 import { cancelJob, notifyJobsChanged, useTicker, waitForJob } from '@/lib/backgroundJobs'
 import { AudioPlayer, type AudioLoader } from '@/components/voice-lab/AudioPlayer'
 import { AudioCover } from '@/components/voice-lab/AudioCover'
@@ -67,6 +68,22 @@ export default function VoiceLabPage() {
   const [sharing, setSharing] = useState(false)
   const [renaming, setRenaming] = useState<LabItem | null>(null)
   const [playlistCandidate, setPlaylistCandidate] = useState('')
+
+  // Agentic hand-off from the support chat: the first descriptive field arrives filled (voice-over text or music prompt).
+  useEffect(() => {
+    const handoff = takeHandoff(['audio_lab'])
+    if (!handoff) return
+    if (handoff.hints.kind === 'voice') {
+      changeWorkspace('voice'); setSource('text')
+      setText((handoff.source || handoff.brief).slice(0, 5000))
+      if (handoff.title) setVoiceTitle(handoff.title)
+    } else {
+      changeWorkspace('music')
+      setMusicPrompt(handoff.brief.slice(0, 1500))
+      if (handoff.title) setMusicTitle(handoff.title)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [librarySearch, setLibrarySearch] = useState('')
   const [job, setJob] = useState<BackgroundJob | null>(null)
   const leaving = useRef(new AbortController())
@@ -163,7 +180,7 @@ export default function VoiceLabPage() {
 
   return <div className="voice-lab-workspace mx-auto max-w-[1160px] space-y-3 p-3 sm:p-4">
     <header className="voice-lab-header flex flex-wrap items-center justify-between gap-3">
-      <SectionHeading compact section="/teacher/audio-lab" className="text-xl font-bold text-[var(--text-primary)]">Audio Lab</SectionHeading>
+      <SectionHeading compact section="/teacher/audio-lab" className="text-xl font-semibold text-[var(--text-primary)]">Audio Lab</SectionHeading>
       <nav aria-label={tl('Strumenti Audio Lab')} className="voice-lab-tabs flex gap-1 p-1" style={buildAccentNavClusterStyle()}>
         {WORKSPACES.map(tab => <Button key={tab.id} density="compact" tone="neutral" surface="ghost" disabled={busy} aria-current={workspace === tab.id ? 'page' : undefined}
           className={workspace === tab.id ? 'ds-selected' : ''} onClick={() => changeWorkspace(tab.id)}><tab.icon className="h-4 w-4" />{tl(tab.label)}</Button>)}
@@ -173,11 +190,11 @@ export default function VoiceLabPage() {
     {config.data && !configured && <p role="status" className={`${panel} ${hint}`}>{tl('La generazione audio non è ancora attiva. Chiedi all’amministratore di configurare ElevenLabs. La tua libreria e le playlist restano disponibili.')}</p>}
     {config.isError && <p role="alert" className={hint}>{tl('Impossibile verificare la connessione.')} <Button surface="ghost" onClick={() => void config.refetch()}>{tl('Riprova')}</Button></p>}
     {workspace === 'voice' && (voices.isError || models.isError) && <p role="alert" className={hint}>{tl('Impossibile caricare le voci.')} <Button surface="ghost" onClick={() => { void voices.refetch(); void models.refetch() }}>{tl('Riprova')}</Button></p>}
-    <div className={`grid items-start gap-3 ${workspace === 'voice' || workspace === 'music' ? 'lg:grid-cols-[minmax(0,1fr)_320px]' : ''}`}>
+    <div className={`grid items-start gap-3 ${workspace === 'voice' || workspace === 'music' ? 'lg:grid-cols-[minmax(0,1fr)_380px]' : ''}`}>
       <div className="min-w-0 space-y-3"><section className={`${panel} ${workspace === 'voice' ? 'voice-lab-composer space-y-4' : workspace === 'music' ? 'voice-lab-music-composer space-y-3' : 'space-y-4'}`}>
         {workspace === 'voice' ? <>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-bold">{tl('Crea il tuo audio')}</h2>
+            <h2 className="text-lg font-semibold">{tl('Crea il tuo audio')}</h2>
             <div role="group" aria-label={tl('Tipo di input')} className="inline-flex gap-1 p-1" style={buildAccentNavClusterStyle()}>
               <Button density="compact" tone="neutral" surface="ghost" disabled={busy} aria-pressed={source === 'text'} onClick={() => setSource('text')} className={source === 'text' ? 'ds-selected' : ''}>{tl('Da testo')}</Button>
               <Button density="compact" tone="neutral" surface="ghost" disabled={busy} aria-pressed={source === 'recording'} onClick={() => setSource('recording')} className={source === 'recording' ? 'ds-selected' : ''}>{tl('Da registrazione')}</Button>
@@ -209,7 +226,7 @@ export default function VoiceLabPage() {
             <Field label={tl('Titolo (facoltativo)')}><Input maxLength={200} value={voiceTitle} onChange={e => setVoiceTitle(e.target.value)} placeholder={tl('Nuovo audio')} /></Field>
           </fieldset>
         </> : workspace === 'music' ? <>
-          <h2 className="text-xl font-bold">{tl('Crea musica')}</h2>
+          <h2 className="text-xl font-semibold">{tl('Crea musica')}</h2>
           <fieldset disabled={busy} className="min-w-0 space-y-4">
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
               <Field label={tl('Titolo (facoltativo)')}><Input maxLength={200} value={musicTitle} onChange={e => setMusicTitle(e.target.value)} placeholder={tl('Nuovo brano')} /></Field>
@@ -225,7 +242,7 @@ export default function VoiceLabPage() {
             </div></details>
           </fieldset>
         </> : <>
-          <div><h2 className="text-xl font-bold">{tl('La mia libreria')}</h2><p className={`mt-1 ${hint}`}>{tl('Ritrova le tue voci e gli audio salvati.')}</p></div>
+          <div><h2 className="text-xl font-semibold">{tl('La mia libreria')}</h2><p className={`mt-1 ${hint}`}>{tl('Ritrova le tue voci e gli audio salvati.')}</p></div>
           <SearchPill aria-label={tl('Cerca nella libreria')} placeholder={tl('Cerca un audio o una voce…')} value={librarySearch} onValueChange={setLibrarySearch} />
           {library.isLoading && <p role="status">{tl('Carico la libreria…')}</p>}
           {library.isError && <p role="alert">{tl('Impossibile caricare la libreria.')} <Button surface="ghost" onClick={() => void library.refetch()}>{tl('Riprova')}</Button></p>}
@@ -252,7 +269,7 @@ export default function VoiceLabPage() {
       </div>
       {workspace === 'music' && <MusicPlaylistPanel items={library.data || []} candidate={playlistCandidate} onCandidateAdded={() => setPlaylistCandidate('')} />}
       {workspace === 'voice' && <aside ref={resultPanel} className={`${panel} voice-lab-result space-y-3 lg:sticky lg:top-5`} aria-label={tl('Risultato Audio Lab')}>
-        <div className="flex items-center justify-between gap-3"><h2 className="font-bold">{tl('Il tuo audio')}</h2>{selectedId && <IconButton tone="neutral" surface="ghost" aria-label={tl('Aggiorna risultato')} onClick={() => void selected.refetch()}><RefreshCw className={`h-4 w-4 ${selected.isFetching ? 'animate-spin' : ''}`} /></IconButton>}</div>
+        <div className="flex items-center justify-between gap-3"><h2 className="font-semibold">{tl('Il tuo audio')}</h2>{selectedId && <IconButton tone="neutral" surface="ghost" aria-label={tl('Aggiorna risultato')} onClick={() => void selected.refetch()}><RefreshCw className={`h-4 w-4 ${selected.isFetching ? 'animate-spin' : ''}`} /></IconButton>}</div>
         {generating && <GenerationProgress job={job} />}
         {selected.isLoading && <Loader2 aria-label={tl('Caricamento audio')} className="h-5 w-5 animate-spin" />}
         {selected.isError && <p role="alert" className={hint}>{tl('Audio non disponibile. Prova ad aprirlo dalla libreria.')}</p>}

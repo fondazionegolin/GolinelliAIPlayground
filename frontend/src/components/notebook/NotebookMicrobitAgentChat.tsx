@@ -1,12 +1,14 @@
 import { storedModelChoice } from '@/components/models/ScopedModelSelect'
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Check, GitCompare, History, ImagePlus, Loader2, Send, X } from '@/components/icons'
+import { AlertTriangle, Bot, Check, GitCompare, History, ImagePlus, Loader2, Send, ShieldCheck, X } from '@/components/icons'
 import { Textarea } from '@/design/primitives/Textarea'
 import { IconButton } from '@/design/primitives/IconButton'
 import axios from 'axios'
 import { notebooksApi } from '@/lib/api'
 import { findActiveJob, followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
 import type { NotebookCodeProposal, NotebookTutorMessage } from './types'
+import { describeVerification, verifyP5Sketch } from './p5Verify'
+import type { MlRuntimeModel } from '@/lib/mlRuntimeStub'
 import { tl } from '@/i18n/tl'
 
 interface Props {
@@ -20,12 +22,22 @@ interface Props {
   onApplyProposal: (proposalId: string) => void
   onRejectProposal: (proposalId: string) => void
   onOpenVersions?: () => void
+  /** p5.js: run every proposal in a hidden preview before showing it, and let the agent fix what fails. */
+  verify?: {
+    /** All sketch files with the active cell replaced by the candidate source. */
+    buildFiles: (candidate: string) => { name: string; source: string }[]
+    libraries: string[]
+    mlModels: MlRuntimeModel[]
+  }
 }
+
+/** Verification + automatic repair rounds before a p5.js proposal is shown. */
+const MAX_REPAIR_ROUNDS = 2
 
 const CREDIT_EXHAUSTED_MESSAGE = tl("Crediti AI esauriti. Attendi il rinnovo del plafond o contatta il docente/amministratore.")
 
 // Agent pipeline stages, in the order the backend runs them.
-const PIPELINE_STEPS = ['Prompt Analyst', tl("Architetto"), tl("File Writer"), 'Reviewer', 'Coding Builder'] as const
+const PIPELINE_STEPS = ['Prompt Analyst', tl("Architetto"), tl("File Writer"), 'Reviewer', 'Coding Builder', tl("Verifica")] as const
 
 interface ActiveStage { agent: string; label: string }
 
@@ -39,7 +51,7 @@ function formatElapsed(seconds: number) {
 function PipelineProgress({ done, active, elapsed }: { done: string[]; active: ActiveStage | null; elapsed: number }) {
   return (
     <div className="rounded-xl bg-sky-500/10 px-3 py-2.5">
-      <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-sky-700">
+      <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-semibold text-sky-700">
         <span>{tl("Agenti al lavoro")}</span>
         <span className="font-mono normal-case tabular-nums">{formatElapsed(elapsed)}</span>
       </div>
@@ -92,7 +104,7 @@ function AgentMessageBubble({ message }: { message: NotebookTutorMessage }) {
         : { border: 'bg-slate-500/5', label: 'text-slate-500' }
     return (
       <div className={`rounded-xl px-3 py-2.5 ${tone.border}`}>
-        <div className={`mb-1 text-[10px] font-bold uppercase tracking-wide ${tone.label}`}>{label}</div>
+        <div className={`mb-1 text-[10px] font-semibold ${tone.label}`}>{label}</div>
         <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
           {message.content}
         </p>
@@ -119,7 +131,7 @@ function AgentMessageBubble({ message }: { message: NotebookTutorMessage }) {
           ? 'rounded-tr-sm bg-slate-900 text-white'
           : 'rounded-tl-sm border border-slate-200 bg-slate-50 text-slate-700'
       }`}>
-        <div className={`mb-0.5 text-[10px] font-bold uppercase tracking-wide ${isUser ? 'text-slate-300' : 'text-slate-500'}`}>
+        <div className={`mb-0.5 text-[10px] font-semibold ${isUser ? 'text-slate-300': 'text-slate-500'}`}>
           {label}
         </div>
         <p className="whitespace-pre-wrap leading-6">{message.content}</p>
@@ -343,6 +355,7 @@ export default function NotebookMicrobitAgentChat({
   onApplyProposal,
   onRejectProposal,
   onOpenVersions,
+  verify,
 }: Props) {
   const copy = DEVICE_COPY[device]
   const [messages, setMessages] = useState<NotebookTutorMessage[]>(initialMessages)
@@ -423,7 +436,7 @@ export default function NotebookMicrobitAgentChat({
   // (microbit/circuitplayground) restano sulla POST JSON: una sola chiamata veloce.
   const useStreaming = device === 'python' || device === 'p5js'
 
-  const sendStreaming = async (text: string, image: string | null) => {
+  const sendStreaming = async (text: string, image: string | null, extra: Record<string, unknown> = {}) => {
     // Auth: cookie per i docenti (credentials include), student-token per gli studenti —
     // stessa logica dell'interceptor axios (niente student-token se c'è auth docente).
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -442,17 +455,72 @@ export default function NotebookMicrobitAgentChat({
       method: 'POST',
       headers,
       credentials: 'include',
-      body: JSON.stringify({ message: text, current_cell_source: currentCellSource, last_output: lastOutput, ...(image ? { image } : {}), ...storedModelChoice('notebook') }),
+      body: JSON.stringify({ message: text, current_cell_source: currentCellSource, last_output: lastOutput, ...(image ? { image } : {}), ...storedModelChoice('notebook'), ...extra }),
     })
     if (response.status === 402) throw new Error('CREDIT_LIMIT_EXCEEDED')
     if (!response.ok || !response.body) throw new Error(tl("stream non partito"))
     notifyJobsChanged()
-    await consumeAssistStream(response)
+    return consumeAssistStream(response)
+  }
+
+  const pushAgentNote = (agent: string, content: string, kind: 'agent_feedback' | 'agent_reasoning' = 'agent_feedback') => {
+    setMessages((prev) => [...prev, { role: 'assistant', agent_name: agent, content, metadata: { kind } } as NotebookTutorMessage])
+  }
+
+  /**
+   * p5.js: before the diff reaches the user, run it (synthetic webcam, then a full-screen-like resize). When it
+   * throws, the errors go back to the agent, which fixes its own proposal; up to MAX_REPAIR_ROUNDS rounds.
+   * Without the original request (a replayed background job) it only verifies.
+   */
+  const deliverVerified = async (summary: string, proposals: NotebookCodeProposal[], requestText?: string) => {
+    if (device !== 'p5js' || !verify || proposals.length === 0) { onProposals(summary, proposals); return }
+    const verifyLabel = tl("Verifica")
+    let proposal = proposals[0]
+    let finalSummary = summary
+    let rounds = 0
+    let seconds = 0
+    for (;;) {
+      setActiveStage({ agent: verifyLabel, label: tl("Eseguo la proposta con una webcam simulata, poi la porto a schermo intero…") })
+      const libraries = Array.from(new Set([...verify.libraries, ...(proposal.required_libraries ?? [])]))
+      const result = await verifyP5Sketch({ files: verify.buildFiles(proposal.replacement), libraries, mlModels: verify.mlModels })
+      seconds += result.seconds
+      if (result.errors.length === 0) {
+        const drew = result.framesSmall + result.framesLarge > 0
+        proposal = { ...proposal, verification: { status: 'passed', seconds, rounds } }
+        pushAgentNote(verifyLabel, drew
+          ? tl("Eseguita per {0} s, in finestra e a schermo intero: nessun errore.", Math.round(result.seconds))
+          : tl("Nessun errore in {0} s, ma draw() non ha disegnato frame: controlla che lo sketch parta davvero.", Math.round(result.seconds)))
+        break
+      }
+      const report = describeVerification(result)
+      if (rounds >= MAX_REPAIR_ROUNDS || !requestText) {
+        proposal = { ...proposal, severity: 'warning', verification: { status: 'failed', seconds, rounds, errors: result.errors } }
+        pushAgentNote(verifyLabel, `${tl("Errori ancora presenti dopo la verifica:")}\n${report}`)
+        break
+      }
+      rounds += 1
+      setActiveStage({ agent: verifyLabel, label: tl("Errori in esecuzione: l'agente corregge la sua proposta (giro {0} di {1})…", rounds, MAX_REPAIR_ROUNDS) })
+      const repaired = await sendStreaming(requestText, null, {
+        candidate_source: proposal.replacement,
+        runtime_errors: report,
+        repair_round: rounds,
+        candidate_libraries: proposal.required_libraries ?? [],
+      })
+      if (!repaired.proposals.length) {
+        proposal = { ...proposal, severity: 'warning', verification: { status: 'failed', seconds, rounds, errors: result.errors } }
+        break
+      }
+      const next = repaired.proposals[0]
+      proposal = { ...next, required_libraries: Array.from(new Set([...(proposal.required_libraries ?? []), ...(next.required_libraries ?? [])])) }
+      finalSummary = repaired.summary || finalSummary
+    }
+    onProposals(finalSummary, [proposal])
   }
 
   // Bubbles and proposals from the assistant stream (a new request or the replay of a background job).
-  const consumeAssistStream = async (response: Response) => {
+  const consumeAssistStream = async (response: Response): Promise<{ summary: string; proposals: NotebookCodeProposal[] }> => {
     let finished = false
+    let result: { summary: string; proposals: NotebookCodeProposal[] } = { summary: '', proposals: [] }
     await readEventStream(response, 'sse', (event) => {
       if (event.type === 'stage' && event.message) {
         // Ogni bolla d'agente compare appena lo stadio finisce.
@@ -463,9 +531,7 @@ export default function NotebookMicrobitAgentChat({
         // The agent that has just taken over, and what it is doing right now.
         setActiveStage({ agent: String(event.agent_name || ''), label: String(event.label || '') })
       } else if (event.type === 'done') {
-        const summary = event.summary || tl("Modifica pronta.")
-        const proposals = (event.proposals || []) as NotebookCodeProposal[]
-        onProposals(summary, proposals)
+        result = { summary: event.summary || tl("Modifica pronta."), proposals: (event.proposals || []) as NotebookCodeProposal[] }
         if (Array.isArray(event.history)) setMessages(event.history as NotebookTutorMessage[])
         finished = true
         return true
@@ -475,6 +541,7 @@ export default function NotebookMicrobitAgentChat({
       // 'ping' (heartbeat) ignorato.
     })
     if (!finished) throw new Error(tl("stream interrotto"))
+    return result
   }
 
   // La pipeline gira sul server come job in background: tornando sul notebook si riaggancia
@@ -487,7 +554,10 @@ export default function NotebookMicrobitAgentChat({
       setLoading(true)
       try {
         const response = await followJobStream(job.id)
-        if (response.ok) await consumeAssistStream(response)
+        if (response.ok) {
+          const done = await consumeAssistStream(response)
+          await deliverVerified(done.summary, done.proposals)
+        }
       } catch {
         // l'indicatore in navbar continua a seguire il job
       } finally {
@@ -530,7 +600,8 @@ export default function NotebookMicrobitAgentChat({
 
     try {
       if (useStreaming) {
-        await sendStreaming(text, image)
+        const done = await sendStreaming(text, image)
+        await deliverVerified(done.summary, done.proposals, text)
       } else {
         const response = await notebooksApi.assist(notebookId, {
           message: text,
@@ -565,7 +636,7 @@ export default function NotebookMicrobitAgentChat({
           <Bot className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-extrabold text-slate-900">{copy.title}</p>
+          <p className="text-sm font-semibold text-slate-900">{copy.title}</p>
           <p className="truncate text-[11px] text-slate-500">{copy.subtitle}</p>
         </div>
         {onOpenVersions && (
@@ -607,7 +678,7 @@ export default function NotebookMicrobitAgentChat({
 
           {pendingProposals.length > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+              <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
                 <GitCompare className="h-3.5 w-3.5" />
                 {tl("Diff da approvare")}
               </div>
@@ -616,6 +687,21 @@ export default function NotebookMicrobitAgentChat({
                   <div className="mb-2">
                     <p className="text-sm font-semibold text-slate-900">{proposal.message}</p>
                     {proposal.explanation && <p className="mt-1 text-xs leading-5 text-slate-600">{proposal.explanation}</p>}
+                    {proposal.verification?.status === 'passed' && (
+                      <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        {tl("Verificata: eseguita in finestra e a schermo intero senza errori")}
+                        {proposal.verification.rounds > 0 && ` · ${tl("{0} correzioni automatiche", proposal.verification.rounds)}`}
+                      </p>
+                    )}
+                    {proposal.verification?.status === 'failed' && (
+                      <div className="mt-1.5 rounded-lg bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-800">
+                        <p className="flex items-center gap-1.5 font-semibold"><AlertTriangle className="h-3.5 w-3.5" />{tl("La verifica ha trovato errori che l'agente non ha risolto")}</p>
+                        {(proposal.verification.errors ?? []).slice(0, 2).map((error) => (
+                          <p key={error} className="mt-1 line-clamp-3 font-mono text-[10px] leading-4">{error}</p>
+                        ))}
+                      </div>
+                    )}
                     {proposal.required_libraries && proposal.required_libraries.length > 0 && (
                       <p className="mt-1.5 text-[11px] text-indigo-600">
                         {tl("Richiede librerie:")} {proposal.required_libraries.join(', ')} {tl("(abilitate automaticamente all'applicazione)")}
@@ -646,7 +732,7 @@ export default function NotebookMicrobitAgentChat({
 
           {contextualSuggestions.length > 0 && !loading && (
             <div className="rounded-xl bg-indigo-500/5 p-3">
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-indigo-600">
+              <p className="mb-2 text-[10px] font-semibold text-indigo-600">
                 {tl("Puoi chiedere anche")}
               </p>
               <div className="space-y-2">

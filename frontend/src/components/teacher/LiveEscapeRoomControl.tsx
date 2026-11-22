@@ -116,7 +116,7 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /> {tl("Lista")}</button>
-        <h1 className="min-w-0 flex-1 truncate text-xl font-bold text-slate-900">{interaction.title}</h1>
+        <h1 className="min-w-0 flex-1 truncate text-xl font-semibold text-slate-900">{interaction.title}</h1>
         {interaction.status === 'CLOSED' && (
           <button
             type="button"
@@ -144,19 +144,19 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
             </div>
             <div className="text-center md:text-left">
               <LockKeyhole className="mx-auto h-10 w-10 text-violet-200 md:mx-0" />
-              <h2 className="mt-3 text-3xl font-black">{tl("La stanza è pronta")}</h2>
+              <h2 className="mt-3 text-3xl font-semibold">{tl("La stanza è pronta")}</h2>
               <p className="mt-2 max-w-xl text-white/70">{interaction.escape_config?.mission || tl("{0} indizi con inventario e classifica finale.", interaction.slides_json.length)}</p>
-              {publicCode && <p className="mt-4 text-xs font-bold uppercase tracking-widest text-white/50">{tl("Codice Live")} <span className="ml-2 text-2xl font-black tracking-[0.18em] text-amber-300">{publicCode}</span></p>}
+              {publicCode && <p className="mt-4 text-xs font-semibold text-white/50">{tl("Codice Live")} <span className="ml-2 text-2xl font-semibold tracking-[0.18em] text-amber-300">{publicCode}</span></p>}
               {publicUrl && <p className="mt-1 break-all font-mono text-sm text-violet-200">{publicUrl}</p>}
               <div className="mt-5 rounded-2xl bg-white/10 p-4 ring-1 ring-white/15">
-                <p className="flex items-center justify-center gap-2 text-sm font-bold md:justify-start"><Users className="h-4 w-4" /> {participants.length} {participants.length === 1 ? tl("studente pronto") : tl("studenti pronti")}</p>
+                <p className="flex items-center justify-center gap-2 text-sm font-semibold md:justify-start"><Users className="h-4 w-4" /> {participants.length} {participants.length === 1 ? tl("studente pronto") : tl("studenti pronti")}</p>
                 <div className="mt-3 flex max-h-40 flex-wrap justify-center gap-2 overflow-y-auto md:justify-start">
                   {participants.map(item => <span key={item.student_id} className="rounded-full bg-white/15 px-3 py-1 text-sm font-semibold">{item.student_nickname}</span>)}
                   {participants.length === 0 && <span className="text-sm text-white/60">{tl("In attesa che gli studenti scansionino il QR…")}</span>}
                 </div>
               </div>
               <button onClick={() => setShowEdit(true)} className="mt-5 block text-sm font-semibold text-white/80 underline-offset-2 hover:text-white hover:underline md:text-left">{tl("Modifica indizi o rigenera il set (")}{interaction.slides_json.length})</button>
-              <button onClick={() => start.mutate()} disabled={start.isPending} className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-7 py-3.5 font-bold text-violet-700 shadow-lg disabled:opacity-60">{start.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />} {tl("Via! Avvia l'escape room")}</button>
+              <button onClick={() => start.mutate()} disabled={start.isPending} className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-7 py-3.5 font-semibold text-violet-700 shadow-lg disabled:opacity-60">{start.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />} {tl("Via. Avvia l'escape room")}</button>
             </div>
           </div>
           {showEdit && <EscapeRoomEditDialog interactionId={interaction.id} onClose={() => setShowEdit(false)} />}
@@ -171,16 +171,16 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
             <Metric icon={PackageOpen} label={tl("Indizi")} value={String(results?.total_steps || interaction.slides_json.length)} />
           </section>
 
-          {interaction.status === 'ACTIVE' && <div className="flex justify-end"><button onClick={() => setConfirmEnd(true)} disabled={end.isPending} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white"><Square className="h-4 w-4" /> {tl("Chiudi e calcola classifica")}</button></div>}
+          {interaction.status === 'ACTIVE' && <div className="flex justify-end"><button onClick={() => setConfirmEnd(true)} disabled={end.isPending} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white"><Square className="h-4 w-4" /> {tl("Chiudi e calcola classifica")}</button></div>}
 
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><Trophy className="h-5 w-5 text-amber-500" /><h2 className="font-bold text-slate-900">{interaction.status === 'CLOSED' ? tl("Classifica finale") : tl("Avanzamento in tempo reale")}</h2></div>
+            <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><Trophy className="h-5 w-5 text-amber-500" /><h2 className="font-semibold text-slate-900">{interaction.status === 'CLOSED' ? tl("Classifica finale") : tl("Avanzamento in tempo reale")}</h2></div>
             <div className="divide-y divide-slate-100">
               {participants.map((item, index) => (
                 <div key={item.student_id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-4">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 font-bold text-slate-600">{item.completed ? item.rank || index + 1 : '—'}</span>
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 font-semibold text-slate-600">{item.completed ? item.rank || index + 1 : '—'}</span>
                   <div className="min-w-0"><div className="flex items-center gap-2"><span className="truncate font-semibold text-slate-800">{item.student_nickname}</span>{item.completed && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}</div><div className="mt-1 flex items-center gap-3 text-xs text-slate-500"><span>{item.current_step}/{item.total_steps} indizi</span><span>{item.attempts} tentativi</span><span className="flex gap-1">{item.inventory.map((object, i) => <AchievementIcon key={i} icon={object.icon} index={i} size={18} title={object.name} />)}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500" style={{ width: `${item.total_steps ? item.current_step / item.total_steps * 100 : 0}%` }} /></div></div>
-                  <span className="font-mono text-sm font-bold text-slate-700">{formatTime(item.duration_seconds)}</span>
+                  <span className="font-mono text-sm font-semibold text-slate-700">{formatTime(item.duration_seconds)}</span>
                   {interaction.status === 'CLOSED' && (
                     <details className="group col-span-3 mt-1 rounded-xl border border-slate-200 bg-slate-50/70">
                       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2.5 text-sm font-semibold text-violet-700 marker:hidden">
@@ -191,7 +191,7 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
                           const answers = (item.answers || []).filter(answer => answer.step_index === stepIndex)
                           return (
                             <div key={stepIndex} className="rounded-xl border border-slate-200 bg-white p-3">
-                              <p className="text-xs font-bold uppercase tracking-wide text-violet-700">{tl("Indizio")} {stepIndex + 1}</p>
+                              <p className="text-xs font-semibold text-violet-700">{tl("Indizio")} {stepIndex + 1}</p>
                               <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{challenge.false_statement}</p>
                               {challenge.prompt && <p className="mt-1 text-xs text-slate-500">{challenge.prompt}</p>}
                               {answers.length > 0 ? (
@@ -222,5 +222,5 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
 }
 
 function Metric({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
-  return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><Icon className="h-5 w-5 text-violet-600" /><p className="mt-3 text-2xl font-black text-slate-900">{value}</p><p className="text-xs text-slate-500">{label}</p></div>
+  return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><Icon className="h-5 w-5 text-violet-600" /><p className="mt-3 text-2xl font-semibold text-slate-900">{value}</p><p className="text-xs text-slate-500">{label}</p></div>
 }

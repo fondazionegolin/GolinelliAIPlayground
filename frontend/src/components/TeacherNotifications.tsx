@@ -62,7 +62,7 @@ const getNotificationIcon = (type: string) => {
     case 'quiz_completed':
       return <CheckCircle2 className="h-3 w-3 text-emerald-500" />
     case 'content_alert':
-      return <ShieldAlert className="h-3 w-3 text-red-600 animate-pulse" />
+      return <ShieldAlert className="h-3 w-3 text-red-600" />
     default:
       return <Bell className="h-3 w-3 text-gray-500" />
   }
@@ -148,9 +148,9 @@ export default function TeacherNotifications({
         className={`${inNavCluster ? 'navbar-inline-control h-9 w-9' : 'navbar-widget-control navbar-widget-control-inset h-10 w-10'} relative flex items-center justify-center rounded-xl p-0`}
         onClick={() => setIsOpen(!isOpen)}
       >
-        <Bell className={`h-4 w-4 ${hasUnreadAlerts ? 'text-red-600 animate-bounce' : ''}`} />
+        <Bell className={`h-4 w-4 ${hasUnreadAlerts ? 'text-red-600' : ''}`} />
         {unreadCount > 0 && (
-          <span className={`absolute -top-1 -right-1 text-white text-[10px] px-1 py-0.5 rounded-full min-w-[16px] text-center animate-pulse ${hasUnreadAlerts ? 'bg-red-600 shadow-[0_0_6px_2px_rgba(220,38,38,0.7)]' : 'bg-red-500'}`}>
+          <span className={`absolute -top-1 -right-1 text-white text-[10px] px-1 py-0.5 rounded-full min-w-[16px] text-center ${hasUnreadAlerts ? 'bg-red-600 shadow-[0_0_6px_2px_rgba(220,38,38,0.7)]' : 'bg-red-500'}`}>
             {unreadCount}
           </span>
         )}
@@ -195,7 +195,7 @@ export default function TeacherNotifications({
                     <div
                       key={notification.id}
                       className={`
-                          p-2 rounded text-xs transition-all duration-300
+                          p-2 rounded text-xs transition duration-300
                           ${isAlert
                             ? 'border border-red-200 bg-red-50 cursor-default'
                             : `cursor-pointer ${isNew ? 'bg-red-50 animate-notification' : 'hover:bg-gray-50'}`
@@ -222,7 +222,7 @@ export default function TeacherNotifications({
 
                           {/* Alert type badge */}
                           {isAlert && notification.alert_type && (
-                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-red-100 text-red-700 uppercase tracking-wide">
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-red-100 text-red-700">
                               {ALERT_TYPE_LABELS[notification.alert_type] ?? notification.alert_type}
                               {notification.risk_score !== undefined && notification.risk_score > 0 && (
                                 <span className="ml-1 opacity-70">· {Math.round(notification.risk_score * 100)}%</span>
@@ -232,7 +232,7 @@ export default function TeacherNotifications({
 
                           {notification.session_name && (
                             <p className="text-gray-400 text-[10px] mt-0.5">
-                              📍 {notification.class_name || tl("Classe")} - {notification.session_name}
+                              {notification.class_name || tl("Classe")} - {notification.session_name}
                             </p>
                           )}
                           {notification.preview && !hasQuizDetails && (
@@ -255,9 +255,9 @@ export default function TeacherNotifications({
                               notification.alertStatus === 'accepted' ? 'bg-green-100 text-green-700' :
                               'bg-gray-100 text-gray-600'
                             }`}>
-                              {notification.alertStatus === 'blocked' ? tl("🚫 Bloccato") :
+                              {notification.alertStatus === 'blocked' ? tl("Bloccato") :
                                notification.alertStatus === 'accepted' ? tl("Accettato") :
-                               tl("👁 Visto")}
+                               tl("Visto")}
                             </span>
                           ) : (
                             <>

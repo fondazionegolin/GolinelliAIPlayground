@@ -40,7 +40,7 @@ export default function DocumentCard({ title, type, contentJson, meta, status, o
       <DocumentThumbnail className="w-full shrink-0" contentJson={contentJson} type={type} title={title} />
       <div className="min-w-0 px-1.5 pb-1 pt-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          <p className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800" title={title}>{title}</p>
+          <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-800" title={title}>{title}</p>
           {status && <span className="shrink-0">{status}</span>}
         </div>
         {meta && <div className="mt-0.5 space-y-0.5 text-[11px] leading-4 text-slate-500">{meta}</div>}
@@ -55,7 +55,7 @@ export default function DocumentCard({ title, type, contentJson, meta, status, o
           onClick={(event) => { event.stopPropagation(); onDelete() }}
           aria-label={`${deleteLabel}: ${title}`}
           title={deleteLabel}
-          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-lg bg-white/95 text-slate-500 shadow-sm ring-1 ring-black/5 transition-all hover:text-red-600 focus-visible:opacity-100 md:h-8 md:w-8 md:opacity-0 md:group-hover:opacity-100"
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-lg bg-white/95 text-slate-500 shadow-sm ring-1 ring-black/5 transition hover:text-red-600 focus-visible:opacity-100 md:h-8 md:w-8 md:opacity-0 md:group-hover:opacity-100"
         >
           <Trash2 className="h-4 w-4" />
         </button>

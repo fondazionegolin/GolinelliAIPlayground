@@ -299,7 +299,7 @@ export default function DesignSystemStudio({ onApply, onClose }: StudioProps) {
         <header className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
           <div className="flex items-center gap-2">
             <Palette className="h-5 w-5 text-indigo-600" />
-            <h2 className="text-base font-bold text-slate-800">Design System</h2>
+            <h2 className="text-base font-semibold text-slate-800">Design System</h2>
             <span className="hidden text-xs text-slate-400 sm:inline">— coerenza visiva riutilizzabile</span>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
@@ -377,7 +377,7 @@ export default function DesignSystemStudio({ onApply, onClose }: StudioProps) {
             </div>
             {/* right: live preview */}
             <div className="min-h-0 w-1/2 overflow-y-auto bg-slate-100 p-5">
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">{tl("Anteprima coerenza")}</p>
+              <p className="mb-3 text-xs font-semibold text-slate-400">{tl("Anteprima coerenza")}</p>
               <LivePreview tokens={tokens} />
             </div>
           </div>
@@ -393,7 +393,7 @@ function Stepper({ step }: { step: number }) {
       {STEPS.map((label, i) => (
         <div key={label} className="flex items-center gap-1">
           <span
-            className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
               i === step ? 'bg-indigo-600 text-white' : i < step ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'
             }`}
           >
@@ -434,7 +434,7 @@ function LibraryView({ systems, loading, onNew, onEdit, onApply, onDelete }: {
             <div key={ds.id} className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div>
-                  <p className="font-bold text-slate-800">{ds.name}</p>
+                  <p className="font-semibold text-slate-800">{ds.name}</p>
                   {ds.tokens_json?.mood && <p className="text-xs text-slate-400">{ds.tokens_json.mood}</p>}
                 </div>
                 <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
@@ -499,7 +499,7 @@ function StepIdentity({ name, setName, description, setDescription, mood, sugges
           {MOODS.map((m) => (
             <button key={m.key} onClick={() => onSuggest(m.key)} disabled={suggesting}
               className={`rounded-lg border p-2.5 text-left text-xs transition disabled:opacity-50 ${mood === m.key ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300'}`}>
-              <span className="block font-bold text-slate-700">{m.label}</span>
+              <span className="block font-semibold text-slate-700">{m.label}</span>
               <span className="block text-slate-400">{m.hint}</span>
             </button>
           ))}
@@ -543,7 +543,7 @@ function StepPalette({ tokens, patch, checks, rationale }: {
         {pairs.map(([k, label]) => <ColorInput key={k} label={label} value={tokens.palette[k]} onChange={set(k)} />)}
       </div>
       <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">{tl("Controllo contrasto (AA ≥ 4.5)")}</p>
+        <p className="mb-2 text-xs font-semibold text-slate-400">{tl("Controllo contrasto (AA ≥ 4.5)")}</p>
         <div className="space-y-1">
           {checks.map((c) => (
             <div key={c.label} className="flex items-center justify-between text-xs">
@@ -688,7 +688,7 @@ function StepSummary({ name, score, warnings, compiling, markdown }: {
           <p className="inline-flex items-center gap-1.5 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> {tl("Calcolo…")}</p>
         ) : (
           <div className="flex items-center gap-3">
-            <div className={`flex h-14 w-14 items-center justify-center rounded-full text-lg font-bold ${pct != null && pct >= 80 ? 'bg-green-100 text-green-700' : pct != null && pct >= 60 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+            <div className={`flex h-14 w-14 items-center justify-center rounded-full text-lg font-semibold ${pct != null && pct >= 80 ? 'bg-green-100 text-green-700' : pct != null && pct >= 60 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
               {pct == null ? '—' : `${pct}`}
             </div>
             <p className="text-sm text-slate-600">{pct != null && pct >= 80 ? tl("Ottima coerenza e leggibilità.") : tl("Migliorabile: vedi le note sotto.")}</p>
@@ -697,7 +697,7 @@ function StepSummary({ name, score, warnings, compiling, markdown }: {
       </Field>
       {warnings.length > 0 && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-amber-700">{tl("Da migliorare")}</p>
+          <p className="mb-1 text-xs font-semibold text-amber-700">{tl("Da migliorare")}</p>
           <ul className="list-disc space-y-1 pl-4 text-xs text-amber-800">{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
         </div>
       )}

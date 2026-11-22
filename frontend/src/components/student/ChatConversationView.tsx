@@ -393,7 +393,7 @@ export function ChatConversationView({
             }}
             placeholder={attachedFiles.length > 0 ? tl("Aggiungi una descrizione...") : tl("Scrivi un messaggio...")}
             disabled={isLoading}
-            className="min-h-11 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-[16px] leading-7 text-slate-900 transition-all focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="min-h-11 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-[16px] leading-7 text-slate-900 transition focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
           />
 
           {/* Send button */}
@@ -401,7 +401,7 @@ export function ChatConversationView({
             onClick={handleSend}
             disabled={(!input.trim() && attachedFiles.length === 0) || isLoading}
             size="sm"
-            className="h-10 w-10 p-0 rounded-xl border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)] shadow-md transition-all disabled:opacity-50"
+            className="h-10 w-10 p-0 rounded-xl border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)] shadow-md transition disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
           </Button>

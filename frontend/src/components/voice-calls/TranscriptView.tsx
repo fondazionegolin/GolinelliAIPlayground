@@ -29,7 +29,7 @@ export function TranscriptView({ lines, colors, highlighter, highlight, filter }
         return (
           <article key={index} className="rounded-2xl bg-[var(--ds-field-bg)] px-4 py-3 text-[14px] leading-6 text-[var(--text-primary)]">
             <p>
-              <span className="mr-2 font-bold" style={{ color }} title={clock(line.start)}>{line.speaker}</span>
+              <span className="mr-2 font-semibold" style={{ color }} title={clock(line.start)}>{line.speaker}</span>
               <HighlightedText text={first} highlighter={highlighter} search={needle} questions enabled={highlight} />
             </p>
             {rest.map((paragraph, p) => (

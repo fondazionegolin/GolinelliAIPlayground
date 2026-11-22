@@ -1466,18 +1466,9 @@ def _resolve_coding_model(model_key: str | None, *, is_student: bool = False) ->
 
 
 async def _resolve_vibelab_model(db: AsyncSession, model_key: str | None, *, is_student: bool) -> tuple[str, str]:
-    """Vibe Lab generation model: the user's "provider|model" choice if the admin enabled it for Vibe Lab
-    (Admin → Modelli, separate lists for teachers and students), otherwise the section default.
-    Legacy short keys saved in older projects are mapped first."""
-    scope = "vibelab_students" if is_student else "vibelab"
-    key = (model_key or "").strip()
-    pair = tuple(key.split("|", 1)) if "|" in key else CODING_MODEL_CHOICES.get(key)
-    if pair:
-        try:
-            return await model_selection.resolve_scoped(db, scope, *pair)
-        except HTTPException:
-            pass
-    return model_selection.default_pair(scope)
+    """Vibe Lab generation model: always the role assigned by the admin (Admin → Modelli → funzioni).
+    Users no longer pick a model, so any legacy ``model_key`` is ignored."""
+    return model_roles.pair_for("coding.student" if is_student else "coding.teacher")
 
 
 async def _vibe_team(db, is_student):

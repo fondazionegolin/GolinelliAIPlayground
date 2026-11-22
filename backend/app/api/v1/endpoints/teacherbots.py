@@ -277,6 +277,7 @@ async def list_teacherbots(
             is_proactive=bot.is_proactive,
             enable_reporting=bot.enable_reporting,
             enable_escape_room=bot.enable_escape_room,
+            enable_math_editor=bot.enable_math_editor,
             created_at=bot.created_at,
             updated_at=bot.updated_at,
             publication_count=pub_count,
@@ -386,6 +387,7 @@ async def create_teacherbot(
         enable_inquiry=request.enable_inquiry,
         inquiry_config=request.inquiry_config.model_dump() if request.inquiry_config else None,
         enable_escape_room=request.enable_escape_room,
+        enable_math_editor=request.enable_math_editor,
         enable_reporting=request.enable_reporting,
         report_prompt=request.report_prompt,
         llm_provider=request.llm_provider,
@@ -461,6 +463,8 @@ async def update_teacherbot(
         bot.inquiry_config = request.inquiry_config.model_dump()
     if request.enable_escape_room is not None:
         bot.enable_escape_room = request.enable_escape_room
+    if request.enable_math_editor is not None:
+        bot.enable_math_editor = request.enable_math_editor
     if request.enable_reporting is not None:
         bot.enable_reporting = request.enable_reporting
     if request.report_prompt is not None:
@@ -868,6 +872,7 @@ async def list_session_teacherbots(
             is_proactive=bot.is_proactive,
             enable_reporting=bot.enable_reporting,
             enable_escape_room=bot.enable_escape_room,
+            enable_math_editor=bot.enable_math_editor,
             created_at=bot.created_at,
             updated_at=bot.updated_at,
             publication_count=1,
@@ -1663,6 +1668,7 @@ async def list_available_teacherbots(
             enable_live_voice=bot.enable_live_voice,
             enable_inquiry=bot.enable_inquiry,
             enable_escape_room=bot.enable_escape_room,
+            enable_math_editor=bot.enable_math_editor,
             is_studentbot=bot.creator_student_id == student.id,
         )
         for bot in bots

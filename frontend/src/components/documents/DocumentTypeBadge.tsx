@@ -52,7 +52,7 @@ export default function DocumentTypeBadge({ kind, extension, className = '' }: D
   const label = isEnglish ? meta.en : meta.it
   const ext = extension?.replace(/^\./, '').toUpperCase()
   return (
-    <span className={`inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-bold leading-none shadow-sm ${meta.badge} ${className}`}>
+    <span className={`inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold leading-none shadow-sm ${meta.badge} ${className}`}>
       <Icon className="h-3 w-3 shrink-0" aria-hidden />
       <span className="truncate">{ext && ext !== label.toUpperCase() ? `${label} · ${ext}` : label}</span>
     </span>

@@ -108,7 +108,7 @@ export function CalendarShareDropdown({ targets, onChange, shareTargets, loading
               const Icon = group.icon
               return (
                 <div key={group.title} className="mb-1">
-                  <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-[var(--text-secondary)]"><Icon className="h-3 w-3" />{group.title}</div>
+                  <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-[10px] font-semibold text-[var(--text-secondary)]"><Icon className="h-3 w-3" />{group.title}</div>
                   {options.map((option) => {
                     const isSelected = targets.has(option.key)
                     return (

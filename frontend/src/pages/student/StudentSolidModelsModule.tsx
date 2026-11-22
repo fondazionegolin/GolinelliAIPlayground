@@ -52,7 +52,7 @@ function SharedModelsGallery({ onBack }: { onBack?: () => void }) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex items-center gap-2 border-b border-slate-200 bg-white/80 px-3 py-2">
-          <button type="button" onClick={() => setOpenId(null)} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100">
+          <button type="button" onClick={() => setOpenId(null)} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
             <ArrowLeft className="h-4 w-4" /> {tl("Tutti i modelli")}
           </button>
         </div>
@@ -73,12 +73,12 @@ function SharedModelsGallery({ onBack }: { onBack?: () => void }) {
     <div className="h-full overflow-y-auto p-4 lg:p-6">
       <div className="mx-auto max-w-5xl">
         {onBack && (
-          <button type="button" onClick={onBack} className="mb-4 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100">
+          <button type="button" onClick={onBack} className="mb-4 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
             <ArrowLeft className="h-4 w-4" /> {tl("Torna al 3D Lab")}
           </button>
         )}
-        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">3D Lab</p>
-        <h2 className="mt-1 text-2xl font-black text-slate-950">{tl("Modelli 3D della classe")}</h2>
+        <p className="text-[11px] font-semibold text-slate-400">3D Lab</p>
+        <h2 className="mt-1 text-2xl font-semibold text-slate-950">{tl("Modelli 3D della classe")}</h2>
         <p className="mt-1 text-sm text-slate-500">{tl("Modelli condivisi dal docente: ruotali, osservali da ogni lato e scarica l'STL per la stampa 3D.")}</p>
         {list.isLoading && <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}
         {list.data?.length === 0 && <p className="mt-10 text-center text-sm text-slate-400">{tl("Nessun modello condiviso per ora.")}</p>}
@@ -89,7 +89,7 @@ function SharedModelsGallery({ onBack }: { onBack?: () => void }) {
                 {m.thumbnail ? <img src={m.thumbnail} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Box className="h-8 w-8 text-slate-300" /></div>}
               </div>
               <div className="p-3">
-                <p className="truncate text-sm font-black text-slate-900">{m.name}</p>
+                <p className="truncate text-sm font-semibold text-slate-900">{m.name}</p>
                 <p className="text-[11px] text-slate-400">{m.object_count} {tl("parti ·")} {new Date(m.updated_at).toLocaleDateString('it-IT')}</p>
               </div>
             </button>

@@ -165,7 +165,7 @@ export function InvitationsPanel() {
       >
         <Bell className="h-5 w-5 text-slate-600" />
         {pendingCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-red-500 text-white text-xs font-bold rounded-full animate-pulse">
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-red-500 text-white text-xs font-semibold rounded-full">
             {pendingCount > 9 ? '9+' : pendingCount}
           </span>
         )}
@@ -176,7 +176,7 @@ export function InvitationsPanel() {
         <div className="isolate absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white opacity-100 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:origin-top">
           {/* Header */}
           <div className="border-b border-slate-200 bg-gradient-to-r from-violet-50 to-purple-50 px-5 py-4">
-            <h3 className="font-bold text-slate-800">{tl("Inviti Ricevuti")}</h3>
+            <h3 className="font-semibold text-slate-800">{tl("Inviti Ricevuti")}</h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {pendingCount > 0 ? tl("{0} inviti in attesa", pendingCount) : tl("Nessun invito in attesa")}
             </p>

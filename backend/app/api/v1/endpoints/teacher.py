@@ -4722,6 +4722,83 @@ async def delete_conversation_document(
     return {"ok": True}
 
 
+def _extract_pdf_images(data: bytes, mode: str) -> dict:
+    """Pull embedded images (or page renders) out of a PDF as small JPEG data URLs."""
+    import base64
+    import fitz  # PyMuPDF
+
+    max_images, max_side, max_total = 40, 1200, 14_000_000
+    out: list[dict] = []
+    total = 0
+    doc = fitz.open(stream=data, filetype="pdf")
+    try:
+        page_count = doc.page_count
+
+        def encode(pix: "fitz.Pixmap") -> bytes:
+            if pix.alpha or pix.colorspace is None or pix.colorspace.n != 3:
+                pix = fitz.Pixmap(fitz.csRGB, pix)
+            factor = 0
+            while max(pix.width, pix.height) >> factor > max_side:
+                factor += 1
+            if factor:
+                pix.shrink(factor)
+            return pix.tobytes("jpeg", jpg_quality=78)
+
+        if mode == "pages":
+            for index in range(min(page_count, 30)):
+                pix = doc[index].get_pixmap(matrix=fitz.Matrix(1.4, 1.4), alpha=False)
+                blob = encode(pix)
+                if total + len(blob) > max_total:
+                    break
+                total += len(blob)
+                out.append({"id": f"p{index + 1}", "page": index + 1, "width": pix.width, "height": pix.height,
+                            "data_url": "data:image/jpeg;base64," + base64.b64encode(blob).decode()})
+        else:
+            seen: set[int] = set()
+            for index in range(page_count):
+                for item in doc[index].get_images(full=True):
+                    xref, smask = item[0], item[1]
+                    if xref in seen or len(out) >= max_images:
+                        continue
+                    seen.add(xref)
+                    try:
+                        pix = fitz.Pixmap(doc, xref)
+                        if min(pix.width, pix.height) < 140 or pix.width * pix.height < 40_000:
+                            continue
+                        if smask:
+                            pix = fitz.Pixmap(pix, fitz.Pixmap(doc, smask))
+                        width, height = pix.width, pix.height
+                        blob = encode(pix)
+                    except Exception:
+                        continue
+                    if total + len(blob) > max_total:
+                        break
+                    total += len(blob)
+                    out.append({"id": f"x{xref}", "page": index + 1, "width": width, "height": height,
+                                "data_url": "data:image/jpeg;base64," + base64.b64encode(blob).decode()})
+        return {"page_count": page_count, "images": out}
+    finally:
+        doc.close()
+
+
+@router.post("/doc-images/from-pdf")
+async def extract_document_images_from_pdf(
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    file: UploadFile = File(...),
+    mode: str = Query("images", pattern="^(images|pages)$"),
+):
+    """List the images of a PDF (embedded pictures or whole-page renders) so a teacher can place them in a generated document."""
+    data = await file.read()
+    if len(data) > 30 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="PDF troppo grande (max 30 MB)")
+    if not data.startswith(b"%PDF"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Il file non è un PDF")
+    try:
+        return await asyncio.to_thread(_extract_pdf_images, data, mode)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Impossibile leggere il PDF") from exc
+
+
 @router.patch("/conversations/{conversation_id}")
 async def update_teacher_conversation(
     conversation_id: UUID,

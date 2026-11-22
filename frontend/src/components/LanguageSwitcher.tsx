@@ -78,7 +78,7 @@ export function LanguageSwitcher({ variant = 'row', className = '' }: LanguageSw
           key={lang.code}
           onClick={() => switchLanguage(lang.code)}
           title={lang.label}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition border ${
             current === lang.code
               ? 'bg-slate-100 border-slate-300 text-slate-800'
               : 'border-transparent text-slate-400 hover:text-slate-700 hover:bg-slate-50'

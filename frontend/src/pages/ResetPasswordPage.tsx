@@ -99,7 +99,7 @@ export default function ResetPasswordPage() {
                 <Check className="h-8 w-8 text-green-600" />
               </div>
             </div>
-            <CardTitle className="text-center">{tl("Password aggiornata!")}</CardTitle>
+            <CardTitle className="text-center">{tl("Password aggiornata")}</CardTitle>
             <CardDescription className="text-center">
               {tl("Puoi ora accedere con la tua nuova password.")}
             </CardDescription>
@@ -122,8 +122,8 @@ export default function ResetPasswordPage() {
           <div className="flex items-center justify-center gap-4 mb-4">
             <LogoMark className="h-12 w-12" />
             <span className="text-[28px] leading-[1.15] tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
-              <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
-              <span className="font-black text-[var(--logo-pink)]">.ai</span>
+              <span className="font-semibold text-[var(--logo-ink)]">Golinelli</span>
+              <span className="font-semibold text-[var(--logo-pink)]">.ai</span>
             </span>
           </div>
         </div>
@@ -135,7 +135,7 @@ export default function ResetPasswordPage() {
               {tl("Scegli una nuova password")}
             </CardTitle>
             <CardDescription>
-              {userInfo?.first_name ? tl("Ciao {0}! ", userInfo.first_name) : ''}
+              {userInfo?.first_name ? tl("Ciao {0} ", userInfo.first_name) : ''}
               {tl("Inserisci la nuova password per l'account")} <strong>{userInfo?.email}</strong>.
             </CardDescription>
           </CardHeader>

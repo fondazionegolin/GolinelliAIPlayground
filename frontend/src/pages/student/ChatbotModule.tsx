@@ -11,6 +11,7 @@ import { DRIVE_ITEM_MIME, filesFromUniversalDrag } from '@/lib/dragFiles'
 import { useState, useRef, useEffect, useCallback, useMemo, lazy, type CSSProperties, Suspense } from 'react'
 import { usePromptHistory } from '@/hooks/usePromptHistory'
 import { useAutoGrow } from '@/hooks/useAutoGrow'
+import { MathEditorDialog } from '@/components/chat/MathEditorDialog'
 import { ToolRoutingChip, type ToolRouting } from '@/components/chat/ToolRoutingChip'
 import { type RagSession, getRagSessions, saveRagSession, createRagSession, deleteRagSession } from '@/lib/ragSessions'
 import { useTranslation } from 'react-i18next'
@@ -367,6 +368,7 @@ interface Teacherbot {
   enable_live_voice?: boolean
   enable_inquiry?: boolean
   enable_escape_room?: boolean
+  enable_math_editor?: boolean
   is_studentbot?: boolean
 }
 
@@ -585,6 +587,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [voiceSource, setVoiceSource] = useState<VoiceSessionSource | undefined>(undefined)
   const [showLinkPopover, setShowLinkPopover] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [showMathEditor, setShowMathEditor] = useState(false)
   const [linkKind, setLinkKind] = useState<'youtube' | 'web'>('youtube')
   const [linkDraft, setLinkDraft] = useState('')
   const confirmLink = () => {
@@ -1948,7 +1951,7 @@ REGOLE IMPORTANTI:
     setMessages(prev => [...prev, userMessage])
     setInput('')
     try {
-      const { data } = await llmApi.handoff(target, text, { recent: messages.slice(-4).map(m => ({ role: m.role, content: m.content })) })
+      const { data } = await llmApi.handoff(target, text, { recent: messages.slice(-6).map(m => ({ role: m.role, content: m.content })) })
       const reply: Message = { id: `handoff-${Date.now()}`, role: 'assistant', content: data.content, handoff: data.handoff, timestamp: new Date() }
       setMessages(prev => [...prev, reply])
     } catch (err) {
@@ -2575,17 +2578,17 @@ REGOLE IMPORTANTI:
   const renderMobileTutorDrawer = (close: () => void) => {
     const currentKey = selectedTeacherbot ? `teacherbot-${selectedTeacherbot.id}` : (selectedProfile || 'tutor')
     const history = conversations.filter((c) => c.profile_key === currentKey)
-    const itemClass = (active: boolean) => `flex min-h-12 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm font-bold transition active:scale-[0.98] ${active ? 'border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'bg-[var(--ds-field-bg)] text-slate-700'}`
+    const itemClass = (active: boolean) => `flex min-h-12 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm font-semibold transition active:scale-[0.98] ${active ? 'border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'bg-[var(--ds-field-bg)] text-slate-700'}`
     return (
       <>
         <div className="flex items-center justify-between px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))]">
-          <span className="text-base font-black text-slate-900">{tl("Tutor AI")}</span>
+          <span className="text-base font-semibold text-slate-900">{tl("Tutor AI")}</span>
           <button type="button" onClick={close} className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ds-field-bg)] text-slate-700" aria-label={tl("Chiudi menu")}><X className="h-5 w-5" /></button>
         </div>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-3 pb-4">
           <button type="button" className={itemClass(false)} onClick={() => { close(); handleStartNewConversation() }}><Plus className="h-5 w-5 shrink-0" />{tl("Nuova chat")}</button>
           <section className="space-y-1.5">
-            <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-400">{tl("Assistenti")}</p>
+            <p className="px-1 text-[11px] font-semibold text-slate-400">{tl("Assistenti")}</p>
             {profiles.map((profile) => (
               <button key={profile.key} type="button" className={itemClass(!selectedTeacherbot && selectedProfile === profile.key)} onClick={() => { close(); void handleSelectProfile(profile.key).then(() => handleStartNewConversation()) }}>
                 <span className="shrink-0">{PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}</span><span className="truncate">{profile.name}</span>
@@ -2593,13 +2596,13 @@ REGOLE IMPORTANTI:
             ))}
           </section>
           <section className="space-y-1.5">
-            <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-400">{tl("Altri bot")}</p>
+            <p className="px-1 text-[11px] font-semibold text-slate-400">{tl("Altri bot")}</p>
             <button type="button" className={itemClass(false)} onClick={() => { close(); onOpenModule?.('chatbot_studentbots') }}><Sparkles className="h-5 w-5 shrink-0" />Studentbot</button>
             <button type="button" className={itemClass(false)} onClick={() => { close(); onOpenModule?.('chatbot_teacherbots') }}><Wand2 className="h-5 w-5 shrink-0" />Teacherbot</button>
           </section>
           {history.length > 0 && (
             <section className="space-y-1.5">
-              <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-400">{tl("Conversazioni")}</p>
+              <p className="px-1 text-[11px] font-semibold text-slate-400">{tl("Conversazioni")}</p>
               {history.map((conv) => (
                 <button key={conv.id} type="button" className={itemClass(conv.id === conversationId || conv.id === teacherbotConversationId)} onClick={() => { close(); void loadConversation(conv.id, conv.profile_key.startsWith('teacherbot-')) }}>
                   <MessageSquare className="h-4 w-4 shrink-0 opacity-60" /><span className="truncate">{conv.title || tl("Nuova chat")}</span>
@@ -2656,7 +2659,7 @@ REGOLE IMPORTANTI:
         {mobileSection ? (
           <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
             {mobileSection === 'studentbots' ? <Sparkles className="h-5 w-5 text-slate-700" /> : <Wand2 className="h-5 w-5 text-slate-700" />}
-            <h2 className="text-base font-black text-slate-900">{mobileSection === 'studentbots' ? 'Studentbot' : 'Teacherbot'}</h2>
+            <h2 className="text-base font-semibold text-slate-900">{mobileSection === 'studentbots' ? 'Studentbot' : 'Teacherbot'}</h2>
           </div>
         ) : (
         <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 scrollbar-none" aria-label={tl("Sezioni Tutor AI")}>
@@ -2666,7 +2669,7 @@ REGOLE IMPORTANTI:
             { key: 'studentbots' as const, label: 'Studentbot', icon: <Sparkles className="h-3.5 w-3.5" />, badge: studentbotsData.length },
           ]).map(({ key, label, icon, badge }) => (
             <button key={key} type="button" onClick={() => setMainTab(key)}
-              className={`flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-xs font-black transition-colors ${
+              className={`flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-xs font-semibold transition-colors ${
                 mainTab === key
                   ? 'border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
                   : 'bg-slate-100 text-slate-600'
@@ -2674,7 +2677,7 @@ REGOLE IMPORTANTI:
             >
               {icon}{label}
               {badge !== undefined && badge > 0 && (
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${mainTab === key ? 'bg-white/60 text-[var(--brand-red-text)]' : 'bg-slate-200 text-slate-500'}`}>{badge}</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${mainTab === key ? 'bg-white/60 text-[var(--brand-red-text)]' : 'bg-slate-200 text-slate-500'}`}>{badge}</span>
               )}
             </button>
           ))}
@@ -2695,7 +2698,7 @@ REGOLE IMPORTANTI:
                     <div className="flex h-12 w-12 items-center justify-center rounded-[18px]" style={{ backgroundColor: surface.icon }}>
                       <div style={{ color: surface.text }}>{PROFILE_ICONS[profile.key] || <Bot className="h-6 w-6" />}</div>
                     </div>
-                    <div className="mt-auto line-clamp-2 text-base font-extrabold leading-tight" style={{ color: surface.text }}>{profile.name}</div>
+                    <div className="mt-auto line-clamp-2 text-base font-semibold leading-tight" style={{ color: surface.text }}>{profile.name}</div>
                     <div className="mt-1 line-clamp-2 text-[11px] font-medium" style={{ color: surface.text, opacity: 0.75 }}>{profile.description}</div>
                   </motion.button>
                 )
@@ -2722,7 +2725,7 @@ REGOLE IMPORTANTI:
                       <div className="flex h-12 w-12 items-center justify-center rounded-[18px]" style={{ backgroundColor: surface.icon }}>
                         <Wand2 className="h-6 w-6" style={{ color: surface.text }} />
                       </div>
-                      <div className="mt-auto line-clamp-2 text-base font-extrabold leading-tight" style={{ color: surface.text }}>{bot.name}</div>
+                      <div className="mt-auto line-clamp-2 text-base font-semibold leading-tight" style={{ color: surface.text }}>{bot.name}</div>
                       <div className="mt-1 line-clamp-2 text-[11px] font-medium" style={{ color: surface.text, opacity: 0.75 }}>{bot.synopsis || bot.description}</div>
                     </motion.button>
                   )
@@ -2739,7 +2742,7 @@ REGOLE IMPORTANTI:
                 className="mobile-card-standard flex flex-col overflow-hidden rounded-[26px] border border-violet-200 bg-violet-50 p-4 text-left shadow-[0_12px_30px_rgba(23,23,23,0.08)]"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-violet-100 text-violet-700"><Plus className="h-6 w-6" /></div>
-                <div className="mt-auto text-base font-extrabold leading-tight text-violet-900">{tl("Crea bot")}</div>
+                <div className="mt-auto text-base font-semibold leading-tight text-violet-900">{tl("Crea bot")}</div>
                 <div className="mt-1 line-clamp-2 text-[11px] font-medium text-violet-700/75">{tl("Personalità, istruzioni e allegati")}</div>
               </motion.button>
               {studentbotsData.map((bot) => {
@@ -2752,7 +2755,7 @@ REGOLE IMPORTANTI:
                       className="flex h-full flex-col text-left"
                     >
                       <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-slate-100 text-slate-700"><Bot className="h-6 w-6" /></div>
-                      <div className="mt-auto line-clamp-2 pr-9 text-base font-extrabold leading-tight text-slate-900">{bot.name}</div>
+                      <div className="mt-auto line-clamp-2 pr-9 text-base font-semibold leading-tight text-slate-900">{bot.name}</div>
                       <div className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-500">{bot.synopsis || tl("Il tuo assistente AI personalizzato")}</div>
                     </button>
                     <div className="absolute right-2 top-2 flex flex-col gap-1.5">
@@ -2791,7 +2794,7 @@ REGOLE IMPORTANTI:
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.14)' }}><Plus className="h-4 w-4 text-violet-700" /></div>
                   <div>
-                    <h3 className="text-sm font-bold text-violet-800">{tl("Nuova microlezione")}</h3>
+                    <h3 className="text-sm font-semibold text-violet-800">{tl("Nuova microlezione")}</h3>
                     <p className="text-[11px] text-slate-600">{tl("Scegli un argomento")}</p>
                   </div>
                 </div>
@@ -2853,7 +2856,7 @@ REGOLE IMPORTANTI:
             <div className="bg-white rounded-t-2xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center"><BookOpen className="h-5 w-5 text-violet-600" /></div>
-                <div><h3 className="text-base font-bold text-slate-800">{tl("Oggi Imparo")}</h3><p className="text-xs text-slate-400">{tl("Genera una microlezione")}</p></div>
+                <div><h3 className="text-base font-semibold text-slate-800">{tl("Oggi Imparo")}</h3><p className="text-xs text-slate-400">{tl("Genera una microlezione")}</p></div>
               </div>
               <input autoFocus type="text" value={newLessonTopic} onChange={e => setNewLessonTopic(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleGenerateLesson(); if (e.key === 'Escape') setShowNewLessonDialog(false) }}
@@ -3086,6 +3089,13 @@ REGOLE IMPORTANTI:
   const composerContent = (
     <>
       <MessageLinkPreviews content={input} debounceMs={600} />
+      {selectedTeacherbot?.enable_math_editor && (
+        <MathEditorDialog
+          open={showMathEditor}
+          onOpenChange={setShowMathEditor}
+          onInsert={(markdown) => { setInput((prev) => prev + markdown); setTimeout(() => inputRef.current?.focus(), 80) }}
+        />
+      )}
       {attachedFiles.length > 0 && (
         <div className="mb-1 flex flex-wrap gap-1 rounded-t-lg border border-b-0 border-slate-200 bg-white p-2 md:mb-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
           {attachedFiles.map((af, idx) => (
@@ -3137,11 +3147,11 @@ REGOLE IMPORTANTI:
 
       <div className="bg-white p-2 md:bg-transparent md:p-3">
         <div
-          className="relative flex items-center gap-1.5 rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-sm transition-all focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200"
+          className="relative flex items-center gap-1.5 rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-sm transition focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200"
         >
           {mentionCandidates.length > 0 && (
             <div className="absolute bottom-full left-2 z-30 mb-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-              <div className="border-b border-slate-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              <div className="border-b border-slate-100 px-3 py-1.5 text-[10px] font-semibold text-slate-400">
                 {uiLanguage === 'en' ? 'Mention (private)' : 'Menziona (privato)'}
               </div>
               {mentionCandidates.slice(0, 6).map((p) => (
@@ -3151,7 +3161,7 @@ REGOLE IMPORTANTI:
                   onMouseDown={(e) => { e.preventDefault(); insertMentionNickname(p.nickname) }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
                 >
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: collabNameColor(p.nickname) }}>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white" style={{ backgroundColor: collabNameColor(p.nickname) }}>
                     {p.nickname.slice(0, 1).toUpperCase()}
                   </span>
                   <span className="truncate text-sm font-medium text-slate-700">{p.nickname}</span>
@@ -3181,7 +3191,7 @@ REGOLE IMPORTANTI:
               </Button>
               {showActionMenu && (
                 <div className="absolute bottom-full left-0 z-40 mb-2 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Strumenti")}</div>
+                  <div className="px-2 py-1 text-[10px] font-semibold text-slate-400">{tl("Strumenti")}</div>
                   <div className="flex items-center gap-1 rounded-lg px-2 py-1.5">
                     <VoiceRecorder
                       onInsertText={(text) => {
@@ -3247,11 +3257,11 @@ REGOLE IMPORTANTI:
             <button
               type="button"
               onClick={() => setShowChatModeMenu((prev) => !prev)}
-              className="inline-flex h-9 items-center gap-1 rounded-full bg-transparent pl-0.5 pr-1.5 text-xs font-semibold text-slate-500 transition-all hover:bg-slate-100"
+              className="inline-flex h-9 items-center gap-1 rounded-full bg-transparent pl-0.5 pr-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100"
               title={tl("Modalità attiva: cambia")}
             >
               <span
-                className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
                   chatMode === 'normal'
                     ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
                     : chatMode === 'image'
@@ -3351,6 +3361,18 @@ REGOLE IMPORTANTI:
             </div>
           )}
 
+          {selectedTeacherbot?.enable_math_editor && !sidebarMode && (
+            <Button
+              variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
+              style={{ color: 'inherit' }}
+              onClick={() => setShowMathEditor(true)}
+              title={uiLanguage === 'en' ? 'Formula editor' : 'Editor di formule'}
+              aria-label={uiLanguage === 'en' ? 'Formula editor' : 'Editor di formule'}
+            >
+              <Sigma className="h-4 w-4" />
+            </Button>
+          )}
+
           {activeSharedRoom && !sidebarMode && (
             <Button
               variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
@@ -3408,7 +3430,7 @@ REGOLE IMPORTANTI:
               onClick={stopActiveGeneration}
               size="icon"
               title={uiLanguage === 'en' ? 'Stop generation' : 'Interrompi generazione'}
-              className="h-9 w-9 flex-shrink-0 rounded-full bg-red-50 text-red-600 shadow-sm ring-1 ring-red-200 transition-all hover:bg-red-100 hover:text-red-700"
+              className="h-9 w-9 flex-shrink-0 rounded-full bg-red-50 text-red-600 shadow-sm ring-1 ring-red-200 transition hover:bg-red-100 hover:text-red-700"
             >
               <Square className="h-3.5 w-3.5 fill-current" />
             </Button>
@@ -3440,7 +3462,7 @@ REGOLE IMPORTANTI:
                 <button
                   key={m.id}
                   onClick={() => setImageProvider(m.id)}
-                  className={`rounded-lg px-2 py-1 text-[10px] transition-all ${imageProvider === m.id ? 'bg-[image:var(--selection-active-bg)] font-bold text-[var(--selection-active-text)] shadow' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`rounded-lg px-2 py-1 text-[10px] transition ${imageProvider === m.id ? 'bg-[image:var(--selection-active-bg)] font-semibold text-[var(--selection-active-text)] shadow' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                   {m.label}
                 </button>
@@ -3503,7 +3525,7 @@ REGOLE IMPORTANTI:
         <div className="border-b border-slate-200/70 bg-white/60 px-5 py-4 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
+              <p className="text-[10px] font-semibold" style={{ color: accentTheme.text }}>Chatbot</p>
               <h2 className="mt-0.5 text-base font-semibold text-slate-900">{tl("Spazio AI")}</h2>
             </div>
             {mainTab === 'rag' && (
@@ -3527,7 +3549,7 @@ REGOLE IMPORTANTI:
             return (
               <div key={key}>
                 <button
-	                  className={`w-full rounded-2xl border px-3.5 py-3 text-left backdrop-blur-sm transition-all ${MACRO_AREA_COLORS[key].surface} ${
+	                  className={`w-full rounded-2xl border px-3.5 py-3 text-left backdrop-blur-sm transition ${MACRO_AREA_COLORS[key].surface} ${
                       active || isExpanded
                         ? 'shadow-md ring-1 ring-inset ring-black/[0.04]'
                         : 'shadow-sm hover:shadow-md'
@@ -3557,10 +3579,10 @@ REGOLE IMPORTANTI:
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-sm font-bold tracking-tight text-slate-800">{label}</span>
+                        <span className="text-sm font-semibold tracking-tight text-slate-800">{label}</span>
                         <div className="flex items-center gap-1.5">
                           {badge !== undefined && (
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${MACRO_AREA_COLORS[key].badge}`}>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${MACRO_AREA_COLORS[key].badge}`}>
                               {badge}
                             </span>
                           )}
@@ -3585,9 +3607,9 @@ REGOLE IMPORTANTI:
                             onClick={() => handleSelectProfile(profile.key)}
                             className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(23,23,23,0.08)]' : 'hover:bg-white/70'}`}
                           >
-                            <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{profile.name}</span>
+                            <span className={`truncate text-[13px] ${isActive ? 'font-semibold text-slate-900' : 'font-medium text-slate-500'}`}>{profile.name}</span>
                             {usage > 0 && (
-                              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold ${MACRO_AREA_COLORS.assistants.badge}`}>{usage}</span>
+                              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${MACRO_AREA_COLORS.assistants.badge}`}>{usage}</span>
                             )}
                           </button>
                         </div>
@@ -3609,7 +3631,7 @@ REGOLE IMPORTANTI:
                             onClick={() => handleSelectTeacherbot(bot)}
                             className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(23,23,23,0.08)]' : 'hover:bg-white/70'}`}
                           >
-                            <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{bot.name}</span>
+                            <span className={`truncate text-[13px] ${isActive ? 'font-semibold text-slate-900' : 'font-medium text-slate-500'}`}>{bot.name}</span>
                           </button>
                         </div>
                       )
@@ -3653,7 +3675,7 @@ REGOLE IMPORTANTI:
                               }}
                               className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(23,23,23,0.08)]' : 'hover:bg-white/70'}`}
                             >
-                              <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{ragSession.name}</span>
+                              <span className={`truncate text-[13px] ${isActive ? 'font-semibold text-slate-900' : 'font-medium text-slate-500'}`}>{ragSession.name}</span>
                             </button>
                           </div>
                         )
@@ -3685,7 +3707,7 @@ REGOLE IMPORTANTI:
                               onClick={() => openLearningSession(session)}
                               className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(23,23,23,0.08)]' : 'hover:bg-white/70'}`}
                             >
-                              <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{session.topic}</span>
+                              <span className={`truncate text-[13px] ${isActive ? 'font-semibold text-slate-900' : 'font-medium text-slate-500'}`}>{session.topic}</span>
                             </button>
                           </div>
                         )
@@ -3701,11 +3723,11 @@ REGOLE IMPORTANTI:
 	        <div className="border-t border-slate-200/70 bg-white/45 px-3 py-3 backdrop-blur-sm">
           <div className="grid grid-cols-2 gap-1.5">
 	            <div className={`rounded-lg px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">{tl("Chat")}</div>
+              <div className="text-[10px] text-slate-400">{tl("Chat")}</div>
               <div className="mt-0.5 text-base font-semibold text-slate-900">{conversations.length}</div>
             </div>
 	            <div className={`rounded-lg px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">{tl("Lezioni")}</div>
+              <div className="text-[10px] text-slate-400">{tl("Lezioni")}</div>
               <div className="mt-0.5 text-base font-semibold text-slate-900">{learningSessions.length}</div>
             </div>
           </div>
@@ -3716,7 +3738,7 @@ REGOLE IMPORTANTI:
 
       <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden text-slate-900 ${sidebarMode ? 'rounded-none bg-white shadow-none' : 'ds-page-frame'}`}>
         {!sidebarMode && (selectedProfile || selectedTeacherbot || mainTab === 'rag') && (
-	          <div className={`${showHistory ? 'w-64' : 'w-16'} ds-frame-sidebar hidden md:flex min-h-0 shrink-0 flex-col transition-all duration-200`}>
+	          <div className={`${showHistory ? 'w-64' : 'w-16'} ds-frame-sidebar hidden md:flex min-h-0 shrink-0 flex-col transition duration-200`}>
             {showHistory ? (
               <>
 	                <div className="border-b border-slate-200/70 bg-white/60 p-3 backdrop-blur-sm">
@@ -3731,7 +3753,7 @@ REGOLE IMPORTANTI:
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
                   <button
                     onClick={handleStartNewConversation}
-                    className="flex w-full items-center gap-2 rounded-[var(--selection-radius)] border-0 bg-[image:var(--selection-active-bg)] px-3 py-2 text-left text-sm font-bold text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] transition-colors hover:bg-[var(--ds-control-hover)]"
+                    className="flex w-full items-center gap-2 rounded-[var(--selection-radius)] border-0 bg-[image:var(--selection-active-bg)] px-3 py-2 text-left text-sm font-semibold text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] transition-colors hover:bg-[var(--ds-control-hover)]"
                   >
                     <Sparkles className="h-4 w-4" />
                     {tl("Nuova chat")}
@@ -4054,7 +4076,7 @@ REGOLE IMPORTANTI:
                 )}
                 <div className="mx-auto max-w-6xl px-4 py-7 md:px-6">
                   <div className="mx-auto max-w-3xl">
-                    <SectionHeading section="/teacher/teacherbots" as="h2" className="text-2xl font-bold tracking-tight text-[var(--text-primary)]" subtitle={tl("Teacherbot del docente, Studentbot personalizzati e sessioni RAG sui tuoi documenti.")} subtitleClassName="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                    <SectionHeading section="/teacher/teacherbots" as="h2" className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]" subtitle={tl("Teacherbot del docente, Studentbot personalizzati e sessioni RAG sui tuoi documenti.")} subtitleClassName="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                       {tl("Spazio AI")}
                     </SectionHeading>
                     <SearchPill value={chatbotSearch} placeholder={tl("Cerca chatbot o messaggi...")} onValueChange={setChatbotSearch} className="mx-auto mt-6 max-w-xl" />
@@ -4065,7 +4087,7 @@ REGOLE IMPORTANTI:
               <div className="student-ai-library-body min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
                 <div className="mx-auto w-full max-w-6xl">
                   <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <h3 className="text-sm font-black text-slate-700">{librarySection === 'studentbots' ? tl("I tuoi Studentbot") : librarySection === 'rag' ? tl("Sessioni RAG") : tl("Teacherbot del docente")}</h3>
+                    <h3 className="text-sm font-semibold text-slate-700">{librarySection === 'studentbots' ? tl("I tuoi Studentbot") : librarySection === 'rag' ? tl("Sessioni RAG") : tl("Teacherbot del docente")}</h3>
                     <div className="ui-segment flex shrink-0 items-center rounded-xl p-0.5" role="group" aria-label={tl("Vista Spazio AI")}>
                       <button type="button" onClick={() => setLibraryViewMode('grid')} aria-pressed={libraryViewMode === 'grid'} title={tl("Vista griglia")} className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'grid' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid className="h-4 w-4" /></button>
                       <button type="button" onClick={() => setLibraryViewMode('list')} aria-pressed={libraryViewMode === 'list'} title={tl("Vista elenco")} className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'list' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><List className="h-4 w-4" /></button>
@@ -4077,8 +4099,8 @@ REGOLE IMPORTANTI:
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
                         <Sparkles className="h-4 w-4" />
-                        <h3 className="text-xs font-extrabold uppercase tracking-wide">{tl("Preferiti")}</h3>
-                        <span className="text-xs font-bold opacity-75">{filteredFavoriteChatbotItems.length}</span>
+                        <h3 className="text-xs font-semibold">{tl("Preferiti")}</h3>
+                        <span className="text-xs font-semibold opacity-75">{filteredFavoriteChatbotItems.length}</span>
                       </div>
                       <span className="hidden text-xs text-slate-400 sm:inline">{tl("Chatbot usati di recente")}</span>
                     </div>
@@ -4106,10 +4128,10 @@ REGOLE IMPORTANTI:
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 {item.icon}
                               </div>
-                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
+                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-semibold ${style.badge}`}>
                                 {item.kind === 'teacherbot' ? 'Teacherbot' : tl("Didattico")}
                               </span>
-                              <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{item.title}</p>
+                              <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-semibold text-slate-950`}>{item.title}</p>
                               <p title={libraryViewMode === 'list' ? item.description : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{item.description}</p>
                             </motion.button>
                           )
@@ -4124,8 +4146,8 @@ REGOLE IMPORTANTI:
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-violet-700">
                         <GraduationCap className="h-4 w-4" />
-                        <h3 className="text-xs font-extrabold uppercase tracking-wide">{tl("Chatbot Didattici")}</h3>
-                        <span className="text-xs font-bold opacity-75">{filteredProfiles.length}</span>
+                        <h3 className="text-xs font-semibold">{tl("Chatbot Didattici")}</h3>
+                        <span className="text-xs font-semibold opacity-75">{filteredProfiles.length}</span>
                       </div>
                       <span className="hidden text-xs text-slate-400 sm:inline">{tl("Assistenti AI per studio, quiz e strumenti")}</span>
                     </div>
@@ -4146,10 +4168,10 @@ REGOLE IMPORTANTI:
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
                               </div>
-                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
+                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-semibold ${style.badge}`}>
                                 {usage > 0 ? usage : tl("Nuovo")}
                               </span>
-                              <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{profile.name}</p>
+                              <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-semibold text-slate-950`}>{profile.name}</p>
                               <p title={libraryViewMode === 'list' ? profile.description : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{profile.description}</p>
                             </motion.button>
                           )
@@ -4164,8 +4186,8 @@ REGOLE IMPORTANTI:
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
                         <Wand2 className="h-4 w-4" />
-                        <h3 className="text-xs font-extrabold uppercase tracking-wide">Teacherbot</h3>
-                        <span className="text-xs font-bold opacity-75">{filteredTeacherbots.length}</span>
+                        <h3 className="text-xs font-semibold">Teacherbot</h3>
+                        <span className="text-xs font-semibold opacity-75">{filteredTeacherbots.length}</span>
                       </div>
                       <span className="hidden text-xs text-slate-400 sm:inline">{tl("Assistenti pubblicati dal docente")}</span>
                     </div>
@@ -4187,8 +4209,8 @@ REGOLE IMPORTANTI:
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 <TeacherbotAvatarIcon bot={bot} uiLanguage={uiLanguage} className="h-5 w-5" />
                               </div>
-                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>{tl("Docente")}</span>
-                              <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{bot.name}</p>
+                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-semibold ${style.badge}`}>{tl("Docente")}</span>
+                              <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-semibold text-slate-950`}>{bot.name}</p>
                               <p title={libraryViewMode === 'list' ? (bot.synopsis || bot.description || tl("Assistente personalizzato per la sessione.")) : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{bot.synopsis || bot.description || tl("Assistente personalizzato per la sessione.")}</p>
                             </motion.button>
                           )
@@ -4203,8 +4225,8 @@ REGOLE IMPORTANTI:
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sky-700">
                         <Sparkles className="h-4 w-4" />
-                        <h3 className="text-xs font-extrabold uppercase tracking-wide">Studentbot</h3>
-                        <span className="text-xs font-bold opacity-75">{filteredStudentbots.length}</span>
+                        <h3 className="text-xs font-semibold">Studentbot</h3>
+                        <span className="text-xs font-semibold opacity-75">{filteredStudentbots.length}</span>
                       </div>
                       <span className="hidden text-xs text-slate-400 sm:inline">{tl("I tuoi assistenti AI privati e personalizzati")}</span>
                     </div>
@@ -4215,8 +4237,8 @@ REGOLE IMPORTANTI:
                         className={`ds-well-tile group relative overflow-hidden border-0 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
                       >
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}><Plus className="h-5 w-5" /></div>
-                        <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>{tl("Nuovo")}</span>
-                        <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{tl("Crea il tuo bot personalizzato")}</p>
+                        <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-semibold ${CHATBOT_CARD_STYLES.emerald.badge}`}>{tl("Nuovo")}</span>
+                        <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-semibold text-slate-950`}>{tl("Crea il tuo bot personalizzato")}</p>
                         <p className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{tl("Scegli personalità, istruzioni e allegati.")}</p>
                       </motion.button>
                       {studentbotsLoading && <div className="flex min-h-[112px] items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-sky-500" /></div>}
@@ -4227,10 +4249,10 @@ REGOLE IMPORTANTI:
                             <button type="button" onClick={() => available && handleSelectTeacherbot(available)} className="absolute inset-0 z-0" aria-label={tl("Apri {0}", bot.name)} />
                             <div className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm pointer-events-none ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}><Sparkles className="h-5 w-5" /></div>
                             <span className={`${libraryViewMode === 'grid' ? 'absolute right-3 top-3' : 'col-start-3 row-span-2 row-start-1 self-center'} z-20 flex gap-1`}>
-                              <button type="button" onClick={() => setStudentbotEditorTarget(bot.id)} className="rounded-lg border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-black text-sky-700 shadow-sm">{tl("Configura")}</button>
-                              <button type="button" onClick={() => { if (window.confirm(tl("Eliminare lo Studentbot “{0}”?", bot.name))) deleteStudentbotMutation.mutate(bot.id) }} className="rounded-lg border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-black text-rose-600 shadow-sm">{tl("Elimina")}</button>
+                              <button type="button" onClick={() => setStudentbotEditorTarget(bot.id)} className="rounded-lg border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-semibold text-sky-700 shadow-sm">{tl("Configura")}</button>
+                              <button type="button" onClick={() => { if (window.confirm(tl("Eliminare lo Studentbot “{0}”?", bot.name))) deleteStudentbotMutation.mutate(bot.id) }} className="rounded-lg border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-semibold text-rose-600 shadow-sm">{tl("Elimina")}</button>
                             </span>
-                            <p className={`${libraryViewMode === 'grid' ? 'relative z-10 mt-2 pr-28' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950 pointer-events-none`}>{bot.name}</p>
+                            <p className={`${libraryViewMode === 'grid' ? 'relative z-10 mt-2 pr-28' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-semibold text-slate-950 pointer-events-none`}>{bot.name}</p>
                             <p className={`${libraryViewMode === 'grid' ? 'relative z-10 mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500 pointer-events-none`}>{bot.synopsis || tl("Il tuo assistente AI personalizzato")}</p>
                           </div>
                         )
@@ -4244,8 +4266,8 @@ REGOLE IMPORTANTI:
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">
                         <Database className="h-4 w-4" />
-                        <h3 className="text-xs font-extrabold uppercase tracking-wide">RAG</h3>
-                        <span className="text-xs font-bold opacity-75">{filteredRagSessions.length}</span>
+                        <h3 className="text-xs font-semibold">RAG</h3>
+                        <span className="text-xs font-semibold opacity-75">{filteredRagSessions.length}</span>
                       </div>
                       <span className="hidden text-xs text-slate-400 sm:inline">{tl("Documenti, citazioni e sessioni salvate")}</span>
                     </div>
@@ -4258,7 +4280,7 @@ REGOLE IMPORTANTI:
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}>
                           <Plus className="h-5 w-5" />
                         </div>
-                        <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{tl("Nuova sessione RAG")}</p>
+                        <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-semibold text-slate-950`}>{tl("Nuova sessione RAG")}</p>
                         <p title={libraryViewMode === 'list' ? tl("Interroga documenti e fonti caricate.") : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{tl("Interroga documenti e fonti caricate.")}</p>
                       </motion.button>
                       {filteredRagSessions.slice(0, 7).map((ragSession) => (
@@ -4271,10 +4293,10 @@ REGOLE IMPORTANTI:
                           <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}>
                             <Database className="h-5 w-5" />
                           </div>
-                          <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>
+                          <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-semibold ${CHATBOT_CARD_STYLES.emerald.badge}`}>
                             {ragSession.messages.length > 0 ? `${ragSession.messages.length} msg` : tl("Pronta")}
                           </span>
-                          <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{ragSession.name}</p>
+                          <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-semibold text-slate-950`}>{ragSession.name}</p>
                           <p title={libraryViewMode === 'list' ? (ragSession.messages.length > 0 ? `${ragSession.messages.length} messaggi` : tl("Sessione pronta")) : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>
                             {ragSession.messages.length > 0 ? `${ragSession.messages.length} messaggi` : tl("Sessione pronta")}
                           </p>
@@ -4294,7 +4316,7 @@ REGOLE IMPORTANTI:
                 >
                 <SectionIllustration section="/teacher/teacherbots" compact className="h-14 w-14" />
                 <div className="flex-1 min-w-0">
-                  <h3 className="truncate text-[15px] font-bold text-slate-900">
+                  <h3 className="truncate text-[15px] font-semibold text-slate-900">
                     {learningMode && activeLearningSession ? activeLearningSession.topic : (selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name)}
                   </h3>
                   <p className="hidden truncate text-xs font-medium text-slate-500 lg:block">
@@ -4486,7 +4508,7 @@ REGOLE IMPORTANTI:
                       return (
                         <span key={p.id} className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold"
                           style={{ borderColor: me ? accentTheme.accent : '#e5e5e5', backgroundColor: me ? accentTheme.soft : '#fafafa', color: c }}>
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: c }}>
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white" style={{ backgroundColor: c }}>
                             {p.nickname.slice(0, 1).toUpperCase()}
                           </span>
                           {me ? (uiLanguage === 'en' ? 'You' : 'Tu') : p.nickname}
@@ -4503,7 +4525,7 @@ REGOLE IMPORTANTI:
                       setActiveSharedRoom(null)
                       setSharedInvites((prev) => prev.filter((r) => r.id !== activeSharedRoom.id))
                     }}
-                    className="flex-shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-0.5 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                    className="flex-shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-0.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
                   >
                     {activeSharedRoom.owner_student_id === studentId
                       ? (uiLanguage === 'en' ? 'End' : 'Termina')
@@ -4568,24 +4590,24 @@ REGOLE IMPORTANTI:
                       )}
                     </div>
                   ) : isPeerUser ? (
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white shadow-sm" style={{ backgroundColor: nameColor }}>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-semibold text-white shadow-sm" style={{ backgroundColor: nameColor }}>
                       {(message.senderNickname || '?').slice(0, 2).toUpperCase()}
                     </div>
                   ) : (
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-700 text-[10px] font-black text-white shadow-sm">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-700 text-[10px] font-semibold text-white shadow-sm">
                       {uiLanguage === 'en' ? 'YOU' : 'TU'}
                     </div>
                   )}
                 </div>
                 <div className={`flex max-w-[92%] flex-col md:max-w-[80%] ${isOwnUser ? 'items-end' : 'items-start'}`}>
-                  <span className="mx-1 mb-1 truncate text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  <span className="mx-1 mb-1 truncate text-[11px] font-semibold text-slate-400">
                     {senderLabel}
                     {message.isPeer && (
                       <span className="ml-1.5 normal-case text-amber-600">@ {uiLanguage === 'en' ? 'private' : 'privato'}</span>
                     )}
                   </span>
                   <div
-                    className={`chat-markdown px-4 py-3 text-[16px] leading-7 shadow-sm transition-all ${isOwnUser
+                    className={`chat-markdown px-4 py-3 text-[16px] leading-7 shadow-sm transition ${isOwnUser
                       ? 'rounded-2xl rounded-tr-none border'
                       : 'rounded-2xl rounded-tl-none border border-slate-200 bg-white text-slate-700'} ${message.isPeer ? 'ring-1 ring-amber-200' : ''}`}
                     style={isOwnUser ? activeBotSoftStyle : undefined}
@@ -4697,7 +4719,7 @@ REGOLE IMPORTANTI:
               </div>
 
               {(!selectedTeacherbot?.enable_escape_room || isTeacherPreview) && (isMobile ? (
-                <div className={`fixed left-0 right-0 bottom-0 transition-all duration-200 z-50 ${isInputFocused ? 'p-2 bg-white border-t border-slate-200' : 'p-2'}`}>
+                <div className={`fixed left-0 right-0 bottom-0 transition duration-200 z-50 ${isInputFocused ? 'p-2 bg-white border-t border-slate-200' : 'p-2'}`}>
                   {composerContent}
                 </div>
               ) : (
@@ -4720,7 +4742,7 @@ REGOLE IMPORTANTI:
                 <BookOpen className="h-5 w-5 text-violet-600" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-800">{tl("Oggi Imparo")}</h3>
+                <h3 className="text-base font-semibold text-slate-800">{tl("Oggi Imparo")}</h3>
                 <p className="text-xs text-slate-400">{tl("Genera una microlezione su un argomento")}</p>
               </div>
             </div>
@@ -4817,7 +4839,7 @@ REGOLE IMPORTANTI:
                 <Users className="h-4 w-4" />
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-xs font-bold text-slate-800">{room.title}</span>
+                <span className="block truncate text-xs font-semibold text-slate-800">{room.title}</span>
                 <span className="block truncate text-[11px] text-slate-400">
                   {uiLanguage === 'en' ? 'Open shared chat' : 'Apri chat condivisa'} · {room.participants.length}
                 </span>
@@ -4868,7 +4890,7 @@ function ActionMenu({ actions, onSelect, darkMode = false }: { actions: any[], o
         <button
           key={idx}
           onClick={() => onSelect(action.value)}
-          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all shadow-sm group border ${
+          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition shadow-sm group border ${
             darkMode 
               ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' 
               : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
@@ -4889,7 +4911,7 @@ function SessionSelector({ sessions, onSelect, darkMode = false }: { sessions: a
       <div className={`px-4 py-2 border-b flex items-center justify-between ${
         darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'
       }`}>
-        <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{tl("Seleziona Sessione")}</span>
+        <span className={`text-xs font-semibold ${darkMode ? 'text-slate-300': 'text-slate-700'}`}>{tl("Seleziona Sessione")}</span>
         <span className="text-[10px] text-slate-400">{sessions.length} {tl("sessioni attive")}</span>
       </div>
       <div className="p-2 grid grid-cols-1 gap-1 max-h-60 overflow-y-auto">
@@ -4897,7 +4919,7 @@ function SessionSelector({ sessions, onSelect, darkMode = false }: { sessions: a
           <button
             key={s.id}
             onClick={() => onSelect(s.id)}
-            className={`text-left px-3 py-2.5 rounded-lg border border-transparent transition-all group flex items-center justify-between ${
+            className={`text-left px-3 py-2.5 rounded-lg border border-transparent transition group flex items-center justify-between ${
               darkMode 
                 ? 'hover:bg-white/10 hover:text-white' 
                 : 'hover:bg-sky-50 hover:text-sky-700 hover:border-sky-200'
@@ -4949,7 +4971,7 @@ function LearningUnitsBlock({ topic, units, onGenerateQuiz, onGenerateImage }: {
                 </div>
                 {unit.keyPoints.length > 0 && (
                   <div className="mt-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{uiLanguage === 'en' ? 'Key points' : 'Punti chiave'}</p>
+                    <p className="text-[11px] font-semibold text-slate-400">{uiLanguage === 'en' ? 'Key points' : 'Punti chiave'}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {unit.keyPoints.map((point) => (
                         <span key={point} className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
@@ -4996,7 +5018,7 @@ function StudentSelector({ students, onSelect, darkMode = false }: { students: a
       <div className={`px-4 py-2 border-b flex items-center justify-between ${
         darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'
       }`}>
-        <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{tl("Seleziona Studenti")}</span>
+        <span className={`text-xs font-semibold ${darkMode ? 'text-slate-300': 'text-slate-700'}`}>{tl("Seleziona Studenti")}</span>
         <span className="text-[10px] text-slate-400">{students.length} {tl("studenti")}</span>
       </div>
       <div className="p-2 grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
@@ -5004,7 +5026,7 @@ function StudentSelector({ students, onSelect, darkMode = false }: { students: a
           <div
             key={s.id}
             onClick={() => toggle(s.id)}
-            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${
+            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition ${
               selected.includes(s.id) 
                 ? (darkMode ? 'bg-sky-500/20 border-sky-500/50 text-sky-300' : 'bg-sky-50 border-sky-200 text-sky-700')
                 : (darkMode ? 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10' : 'bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100')
@@ -5089,9 +5111,9 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
             ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
             li: ({ children }) => <li className={`${darkMode ? 'text-white' : ''}`}>{children}</li>,
             strong: ({ children }) => <strong className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</strong>,
-            h1: ({ children }) => <h1 className={`text-lg font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h1>,
-            h2: ({ children }) => <h2 className={`text-base font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h2>,
-            h3: ({ children }) => <h3 className={`text-sm font-bold mb-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h3>,
+            h1: ({ children }) => <h1 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h1>,
+            h2: ({ children }) => <h2 className={`text-base font-semibold mb-2 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h2>,
+            h3: ({ children }) => <h3 className={`text-sm font-semibold mb-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h3>,
             blockquote: ({ children }) => <blockquote className={`border-l-4 ${darkMode ? 'border-white/30 text-white/80' : 'border-fuchsia-300 text-slate-600'} pl-3 italic my-2`}>{children}</blockquote>,
             img: ({ src, alt, ...props }) => (
               <div
@@ -5255,14 +5277,14 @@ function InteractiveExercise({ exercise }: { exercise: ExerciseData }) {
   return (
     <div className="rounded-xl p-4 border" style={{ backgroundColor: 'rgba(224, 242, 254, 0.72)', borderColor: 'rgba(125, 211, 252, 0.42)' }}>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-bold text-lg text-sky-800">{exercise.title}</h3>
+        <h3 className="font-semibold text-lg text-sky-800">{exercise.title}</h3>
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${difficultyColor[diff] || difficultyColor.medium}`}>
           {difficultyLabel[diff] || diff}
         </span>
       </div>
       <p className="text-sm text-slate-600 mb-3">{exercise.description}</p>
       <div className="bg-white rounded-lg p-3 mb-3 shadow-sm">
-        <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">{tl("Istruzioni")}</p>
+        <p className="text-xs font-semibold text-sky-700 mb-1">{tl("Istruzioni")}</p>
         <div className="chat-markdown prose prose-sm max-w-none text-slate-700">
           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownCodeComponents(false)}>
             {exercise.instructions}
@@ -5271,7 +5293,7 @@ function InteractiveExercise({ exercise }: { exercise: ExerciseData }) {
       </div>
       {exercise.examples && exercise.examples.length > 0 && (
         <div className="mb-3">
-          <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">{tl("Esempi")}</p>
+          <p className="text-xs font-semibold text-sky-700 mb-1">{tl("Esempi")}</p>
           <ul className="space-y-1">
             {exercise.examples.map((ex, i) => (
               <li key={i} className="text-sm bg-white rounded-lg px-3 py-2 shadow-sm text-slate-700">
@@ -5484,7 +5506,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
 
   return (
     <div className="rounded-xl p-4 border" style={{ backgroundColor: 'rgba(250, 232, 255, 0.78)', borderColor: 'rgba(217, 70, 239, 0.22)' }}>
-      <h3 className="font-bold text-lg text-fuchsia-800 mb-4 flex items-center gap-2">
+      <h3 className="font-semibold text-lg text-fuchsia-800 mb-4 flex items-center gap-2">
         {quiz.title}
       </h3>
 
@@ -5504,7 +5526,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                   const isSelected = answers[qIndex] === optIndex
                   const isCorrectOption = q.correctIndex === optIndex
 
-                  let buttonClass = "w-full text-left px-4 py-2 rounded-lg border transition-all text-sm "
+                  let buttonClass = "w-full text-left px-4 py-2 rounded-lg border transition text-sm "
 
                   if (submitted) {
                     if (isCorrectOption) {
@@ -5524,8 +5546,8 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                     <button key={optIndex} onClick={() => handleSelect(qIndex, optIndex)} disabled={submitted} className={buttonClass}>
                       <span className="font-medium mr-2">{String.fromCharCode(65 + optIndex)})</span>
                       {option}
-                      {submitted && isCorrectOption && <span className="ml-2 text-green-600 font-bold">{tl("[Corretto]")}</span>}
-                      {submitted && isSelected && !isCorrectOption && <span className="ml-2 text-red-600 font-bold">{tl("[Errato]")}</span>}
+                      {submitted && isCorrectOption && <span className="ml-2 text-green-600 font-semibold">{tl("[Corretto]")}</span>}
+                      {submitted && isSelected && !isCorrectOption && <span className="ml-2 text-red-600 font-semibold">{tl("[Errato]")}</span>}
                     </button>
                   )
                 })}
@@ -5533,7 +5555,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
 
               {showExplanations && hasAnswered && (
                 <div className={`mt-3 p-3 rounded-lg text-sm ${isCorrect ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-800'}`}>
-                  <strong>{isCorrect ? tl("Corretto!") : tl("Spiegazione:")}</strong> {q.explanation}
+                  <strong>{isCorrect ? tl("Corretto") : tl("Spiegazione:")}</strong> {q.explanation}
                 </div>
               )}
             </div>
@@ -5545,7 +5567,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
         <button
           onClick={handleSubmit}
           disabled={!allAnswered}
-          className={`mt-4 w-full py-3 rounded-xl font-medium transition-all ${allAnswered
+          className={`mt-4 w-full py-3 rounded-xl font-medium transition ${allAnswered
             ? 'text-white shadow-sm'
             : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
@@ -5555,11 +5577,11 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
         </button>
       ) : (
         <div className="mt-4 p-4 bg-white rounded-xl shadow-sm text-center">
-          <p className="text-2xl font-bold text-fuchsia-800">
+          <p className="text-2xl font-semibold text-fuchsia-800">
             {score}/{quiz.questions.length}
           </p>
           <p className="text-slate-600">
-            {score === quiz.questions.length ? tl("Perfetto!") : score >= quiz.questions.length / 2 ? tl("Buon lavoro!") : tl("Continua a studiare!")}
+            {score === quiz.questions.length ? tl("Perfetto") : score >= quiz.questions.length / 2 ? tl("Buon lavoro") : tl("Continua a studiare")}
           </p>
         </div>
       )}

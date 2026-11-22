@@ -56,7 +56,7 @@ function NumField({ label, value, onCommit, step = 1, min, suffix }: {
   }
   return (
     <label className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
+      <span className="text-[10px] font-semibold text-slate-400">{label}</span>
       <div className="flex items-center rounded-lg border border-slate-200 bg-white focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
         <input
           type="number"
@@ -310,19 +310,19 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
             value={project.name}
             onChange={e => project.setName(e.target.value)}
             title={tl("Nome del progetto")}
-            className="w-28 min-w-0 rounded-full border border-transparent bg-transparent px-2 py-1 text-sm font-black text-slate-900 hover:border-slate-200 focus:border-[color:var(--selection-border-hover)] focus:outline-none xl:w-44"
+            className="w-28 min-w-0 rounded-full border border-transparent bg-transparent px-2 py-1 text-sm font-semibold text-slate-900 hover:border-slate-200 focus:border-[color:var(--selection-border-hover)] focus:outline-none xl:w-44"
           />
           <SaveBadge status={project.status} />
           {projectsOpen && (
             <div className="absolute left-0 top-10 z-30 w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-              <button type="button" onClick={() => { setProjectsOpen(false); void project.newProject() }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-50">
+              <button type="button" onClick={() => { setProjectsOpen(false); void project.newProject() }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50">
                 <FilePlus2 className="h-4 w-4" /> {tl("Nuovo progetto")}
               </button>
               {project.legacy.length > 0 && (
                 <div className="mt-1 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">
                   <p>{project.legacy.length} {tl("progetti sono salvati solo in questo browser.")}</p>
                   <div className="mt-1 flex gap-2">
-                    <button type="button" onClick={() => void project.importLegacy()} className="font-bold text-amber-800 underline">{tl("Importali sul server")}</button>
+                    <button type="button" onClick={() => void project.importLegacy()} className="font-semibold text-amber-800 underline">{tl("Importali sul server")}</button>
                     <button type="button" onClick={project.dismissLegacy} className="text-amber-700">{tl("Ignora")}</button>
                   </div>
                 </div>
@@ -338,7 +338,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                         {p.thumbnail ? <img src={p.thumbnail} alt="" className="h-full w-full object-cover" /> : <Box className="m-auto mt-2 h-5 w-5 text-slate-300" />}
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate font-bold text-slate-800">{p.name}</span>
+                        <span className="block truncate font-semibold text-slate-800">{p.name}</span>
                         <span className="block text-[10px] text-slate-400">
                           {p.object_count} {tl("oggetti ·")} {new Date(p.updated_at).toLocaleString('it-IT')}
                           {(p.public_enabled || p.shared_class_ids.length > 0) && tl(" · condiviso")}
@@ -440,7 +440,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
         )}
         <aside className={`flex w-52 shrink-0 flex-col border-r border-slate-200 bg-white/80 ${libraryCollapsed ? 'hidden' : ''}`}>
           <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
-            <p className="pt-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{tl("Forme base")}</p>
+            <p className="pt-1.5 text-[10px] font-semibold text-slate-400">{tl("Forme base")}</p>
             <SidebarCollapseButton onClick={() => setLibraryCollapsed(true)} label={tl("Comprimi forme e oggetti")} />
           </div>
           <div className="grid grid-cols-3 gap-1.5 px-2">
@@ -454,7 +454,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                   onDragStart={e => { e.dataTransfer.setData('application/x-solid-primitive', String(i)); e.dataTransfer.effectAllowed = 'copy' }}
                   onClick={() => addPrimitive(def)}
                   title={tl("{0} — clic per aggiungere al centro o trascina sul piano", def.label)}
-                  className={`flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border text-[10px] font-bold leading-tight transition hover:-translate-y-0.5 hover:shadow ${
+                  className={`flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border text-[10px] font-semibold leading-tight transition hover:-translate-y-0.5 hover:shadow ${
                     def.hole ? 'border-dashed border-slate-300 bg-slate-50 text-slate-500' : 'border-slate-200 bg-white text-slate-700'
                   }`}
                 >
@@ -464,7 +464,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
               )
             })}
           </div>
-          <p className="flex items-center gap-1.5 px-3 pb-1 pt-4 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400"><Layers className="h-3 w-3" /> {tl("Oggetti (")}{objects.length})</p>
+          <p className="flex items-center gap-1.5 px-3 pb-1 pt-4 text-[10px] font-semibold text-slate-400"><Layers className="h-3 w-3" /> {tl("Oggetti (")}{objects.length})</p>
           <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
             {objects.length === 0 && <p className="px-1 text-[11px] leading-4 text-slate-400">{tl("Scena vuota: aggiungi una forma o chiedi all'assistente AI.")}</p>}
             {objects.map(o => {
@@ -475,7 +475,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                   key={o.id}
                   type="button"
                   onClick={e => setSelection(e.shiftKey || e.ctrlKey || e.metaKey ? (sel ? selection.filter(s => s !== o.id) : [...selection, o.id]) : [o.id])}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-[11px] ${sel ? 'bg-blue-50 font-bold text-blue-800' : 'text-slate-700 hover:bg-slate-50'}`}
+                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-[11px] ${sel ? 'bg-blue-50 font-semibold text-blue-800' : 'text-slate-700 hover:bg-slate-50'}`}
                 >
                   <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: o.hole ? 'repeating-linear-gradient(45deg,#a3a3a3 0 2px,#fff 2px 4px)' : o.color }} />
                   <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -503,9 +503,9 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
             onHover={info => setHover(h => (h === info ? h : info))}
             apiRef={viewport}
           />
-          <label className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 py-1 pl-3 pr-1 text-[11px] font-bold text-slate-500 shadow-sm backdrop-blur-sm">
+          <label className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 py-1 pl-3 pr-1 text-[11px] font-semibold text-slate-500 shadow-sm backdrop-blur-sm">
             <Grid3x3 className="h-3.5 w-3.5" /> {tl("Griglia")}
-            <select value={snap} onChange={e => setSnap(Number(e.target.value))} className="rounded-full border-0 bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-700 focus:outline-none">
+            <select value={snap} onChange={e => setSnap(Number(e.target.value))} className="rounded-full border-0 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700 focus:outline-none">
               {[0, 0.5, 1, 2, 5, 10].map(v => <option key={v} value={v}>{v === 0 ? 'libera' : `${v} mm`}</option>)}
             </select>
           </label>
@@ -517,7 +517,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
             ))}
           </div>
           <div className="pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-140px)] rounded-lg bg-white/85 px-2.5 py-1.5 text-[10.5px] leading-4 text-slate-500 shadow-sm">
-            {hover ? <span className="font-bold text-slate-800">{hover}</span> : (
+            {hover ? <span className="font-semibold text-slate-800">{hover}</span> : (
               <>{tl("Sinistro: ruota vista / trascina oggetto · Destro: sposta vista · Rotella: zoom · Maniglie: ridimensiona (Shift = proporzionale) · Anelli: ruota (Shift = 1°)")}</>
             )}
           </div>
@@ -527,7 +527,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
         <aside className="flex w-80 shrink-0 flex-col border-l border-slate-200 bg-white/85">
           <div className="flex gap-1 border-b border-slate-200 p-1.5">
             {([['shape', tl("Forma"), Box], ['ai', tl("Assistente AI"), Sparkles]] as const).map(([id, label, Icon]) => (
-              <button key={id} type="button" onClick={() => setPanel(id)} className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-black ${panel === id ? (id === 'ai' ? 'bg-violet-600 text-white' : 'bg-slate-900 text-white') : 'text-slate-600 hover:bg-slate-100'}`}>
+              <button key={id} type="button" onClick={() => setPanel(id)} className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold ${panel === id ? (id === 'ai' ? 'bg-violet-600 text-white' : 'bg-slate-900 text-white') : 'text-slate-600 hover:bg-slate-100'}`}>
                 <Icon className="h-3.5 w-3.5" /> {label}
               </button>
             ))}
@@ -560,13 +560,13 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
               )}
               {selected.length > 1 && (
                 <div className="space-y-2 text-xs text-slate-600">
-                  <p className="font-black text-slate-900">{selected.length} {tl("oggetti selezionati")}</p>
+                  <p className="font-semibold text-slate-900">{selected.length} {tl("oggetti selezionati")}</p>
                   <p>{tl("Raggruppa per unire i solidi e sottrarre i fori (Ctrl+G).")}</p>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => updateSelected(o => ({ ...o, hole: false }))} className="flex-1 rounded-lg border border-slate-200 py-1.5 font-bold hover:bg-slate-50">{tl("Tutti solidi")}</button>
-                    <button type="button" onClick={() => updateSelected(o => ({ ...o, hole: true }))} className="flex-1 rounded-lg border border-dashed border-slate-300 py-1.5 font-bold hover:bg-slate-50">{tl("Tutti fori")}</button>
+                    <button type="button" onClick={() => updateSelected(o => ({ ...o, hole: false }))} className="flex-1 rounded-lg border border-slate-200 py-1.5 font-semibold hover:bg-slate-50">{tl("Tutti solidi")}</button>
+                    <button type="button" onClick={() => updateSelected(o => ({ ...o, hole: true }))} className="flex-1 rounded-lg border border-dashed border-slate-300 py-1.5 font-semibold hover:bg-slate-50">{tl("Tutti fori")}</button>
                   </div>
-                  <button type="button" onClick={doGroup} className="w-full rounded-lg bg-slate-900 py-2 font-bold text-white hover:bg-slate-800">{tl("Raggruppa")}</button>
+                  <button type="button" onClick={doGroup} className="w-full rounded-lg bg-slate-900 py-2 font-semibold text-white hover:bg-slate-800">{tl("Raggruppa")}</button>
                 </div>
               )}
               {single && singleExtent && (
@@ -575,15 +575,15 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                     <input
                       value={single.name}
                       onChange={e => apply(objects.map(o => (o.id === single.id ? { ...o, name: e.target.value } : o)), false)}
-                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-black text-slate-900 focus:border-blue-400 focus:outline-none"
+                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-semibold text-slate-900 focus:border-blue-400 focus:outline-none"
                     />
-                    <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <p className="mt-1 text-[10px] font-semibold text-slate-400">
                       {KIND_LABEL[single.kind]}{single.kind === 'group' ? ` · ${single.children.length} parti` : ''}
                     </p>
                   </div>
 
                   <div className="space-y-2 rounded-lg bg-slate-50 p-2">
-                    <button type="button" aria-pressed={edgeMode} onClick={() => setEdgeMode(v => !v)} className={`w-full rounded-lg px-2 py-2 text-xs font-bold ${edgeMode ? 'bg-blue-600 text-white' : 'border bg-white text-slate-700'}`}>{edgeMode ? tl("Spigoli attivi") : tl("Seleziona spigoli")}</button>
+                    <button type="button" aria-pressed={edgeMode} onClick={() => setEdgeMode(v => !v)} className={`w-full rounded-lg px-2 py-2 text-xs font-semibold ${edgeMode ? 'bg-blue-600 text-white' : 'border bg-white text-slate-700'}`}>{edgeMode ? tl("Spigoli attivi") : tl("Seleziona spigoli")}</button>
                     {edgeMode && <p className="text-[11px] text-slate-500">{tl("Clicca uno spigolo e modifica la quota sulla forma. Gli spigoli paralleli agli assi modificano la relativa dimensione; quelli obliqui scalano il solido in proporzione.")}</p>}
                     {edgeMode && activeEdge && <>
                       <NumField label={tl("Lunghezza spigolo")} value={edgeLength(single, activeEdge)} min={0.1} suffix="mm" onCommit={v => commitEdgeLength(activeEdge.id, v)} />
@@ -594,13 +594,13 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                   </div>
 
                   <div className="grid grid-cols-2 gap-1.5">
-                    <button type="button" onClick={() => updateSelected(o => ({ ...o, hole: false }))} className={`rounded-lg py-2 text-xs font-black ${!single.hole ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{tl("Solido")}</button>
-                    <button type="button" onClick={() => updateSelected(o => ({ ...o, hole: true }))} className={`rounded-lg py-2 text-xs font-black ${single.hole ? 'bg-slate-500 text-white' : 'border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50'}`}>{tl("Foro")}</button>
+                    <button type="button" onClick={() => updateSelected(o => ({ ...o, hole: false }))} className={`rounded-lg py-2 text-xs font-semibold ${!single.hole ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{tl("Solido")}</button>
+                    <button type="button" onClick={() => updateSelected(o => ({ ...o, hole: true }))} className={`rounded-lg py-2 text-xs font-semibold ${single.hole ? 'bg-slate-500 text-white' : 'border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50'}`}>{tl("Foro")}</button>
                   </div>
 
                   {!single.hole && (
                     <div>
-                      <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{tl("Colore")}</p>
+                      <p className="mb-1 text-[10px] font-semibold text-slate-400">{tl("Colore")}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {COLOR_SWATCHES.map(c => (
                           <button key={c} type="button" title={c} onClick={() => updateSelected(o => ({ ...o, color: c }))} className={`h-6 w-6 rounded-full border ${single.color === c ? 'ring-2 ring-blue-500 ring-offset-1' : 'border-slate-300'}`} style={{ background: c }} />
@@ -611,7 +611,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                   )}
 
                   <div>
-                    <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-500">{tl("Dimensioni")}</p>
+                    <p className="mb-1 text-[10px] font-semibold text-slate-500">{tl("Dimensioni")}</p>
                     <div className="grid grid-cols-3 gap-1.5">
                       {([tl("Larg. X"), tl("Prof. Y"), tl("Alt. Z")] as const).map((l, i) => (
                         <NumField key={l} label={l} value={singleExtent[i]} min={0.1} suffix="mm" onCommit={v => setExtent(i, v)} />
@@ -619,16 +619,16 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                     </div>
                   </div>
                   <div>
-                    <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-500">{tl("Posizione (centro)")}</p>
+                    <p className="mb-1 text-[10px] font-semibold text-slate-500">{tl("Posizione (centro)")}</p>
                     <div className="grid grid-cols-3 gap-1.5">
                       {(['X', 'Y', 'Z'] as const).map((l, i) => (
                         <NumField key={l} label={l} value={single.position[i]} suffix="mm" onCommit={v => updateSelected(o => { const p = [...o.position] as Vec3; p[i] = v; return { ...o, position: p } })} />
                       ))}
                     </div>
-                    <p className="mt-1 text-[10px] text-slate-400">{tl("Base a z =")} {baseZ} mm {Math.abs(baseZ) > 0.01 && <button type="button" onClick={doDrop} className="font-bold text-blue-600 hover:underline">{tl("appoggia sul piano")}</button>}</p>
+                    <p className="mt-1 text-[10px] text-slate-400">{tl("Base a z =")} {baseZ} mm {Math.abs(baseZ) > 0.01 && <button type="button" onClick={doDrop} className="font-semibold text-blue-600 hover:underline">{tl("appoggia sul piano")}</button>}</p>
                   </div>
                   <div>
-                    <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-500">{tl("Rotazione")}</p>
+                    <p className="mb-1 text-[10px] font-semibold text-slate-500">{tl("Rotazione")}</p>
                     <div className="grid grid-cols-3 gap-1.5">
                       {(['X', 'Y', 'Z'] as const).map((l, i) => (
                         <NumField key={l} label={l} value={single.rotation[i]} step={15} suffix="°" onCommit={v => updateSelected(o => { const r = [...o.rotation] as Vec3; r[i] = v; return { ...o, rotation: r } })} />
@@ -664,7 +664,7 @@ function SaveBadge({ status }: { status: SaveStatus }) {
   }
   const { label, cls, icon: Icon } = map[status]
   return (
-    <span className={`hidden items-center gap-1 text-[10px] font-bold lg:inline-flex ${cls}`}>
+    <span className={`hidden items-center gap-1 text-[10px] font-semibold lg:inline-flex ${cls}`}>
       {Icon && <Icon className={`h-3 w-3 ${status === 'saving' ? 'animate-spin' : ''}`} />} {label}
     </span>
   )
@@ -674,7 +674,7 @@ function ParamsEditor({ obj, onParam }: { obj: PrimitiveObject; onParam: (k: key
   const p = obj.params
   const slider = (key: keyof PrimitiveObject['params'], label: string, min: number, max: number, step: number, def: number) => (
     <label key={key} className="block">
-      <span className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+      <span className="flex justify-between text-[10px] font-semibold text-slate-400">
         {label} <span className="text-slate-600">{(p[key] as number | undefined) ?? def}</span>
       </span>
       <input type="range" min={min} max={max} step={step} value={(p[key] as number | undefined) ?? def} onChange={e => onParam(key, Number(e.target.value))} className="w-full accent-blue-600" />
@@ -691,7 +691,7 @@ function ParamsEditor({ obj, onParam }: { obj: PrimitiveObject; onParam: (k: key
   if (obj.kind === 'text') {
     rows.push(
       <label key="text" className="block">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{tl("Testo")}</span>
+        <span className="text-[10px] font-semibold text-slate-400">{tl("Testo")}</span>
         <input defaultValue={p.text ?? ''} maxLength={24} onBlur={e => onParam('text', e.target.value || 'Testo')} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold" />
       </label>,
     )
@@ -699,7 +699,7 @@ function ParamsEditor({ obj, onParam }: { obj: PrimitiveObject; onParam: (k: key
   if (!rows.length) return null
   return (
     <div>
-      <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-500">{tl("Parametri forma")}</p>
+      <p className="mb-1 text-[10px] font-semibold text-slate-500">{tl("Parametri forma")}</p>
       <div className="space-y-2">{rows}</div>
     </div>
   )
