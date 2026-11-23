@@ -214,6 +214,7 @@ class ChatBody(BaseModel):
     changes: list[str] = Field(default_factory=list, max_length=40)
     selected: list[str] = Field(default_factory=list, max_length=60)
     near: list[str] = Field(default_factory=list, max_length=20)
+    socratic: bool = Field(default=False, description="Tutor socratico (sempre attivo per gli studenti; i docenti lo scelgono)")
     llm_provider: str | None = Field(default=None, max_length=20)  # model picked in the canvas menu (Admin → Modelli → Canvas)
     llm_model: str | None = Field(default=None, max_length=120)
 
@@ -444,6 +445,7 @@ class AskAreaBody(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     crop: str = Field(min_length=30, max_length=11_200_000, description="Ritaglio della lavagna: area a colori, resto sbiadito")
     context: str = Field(default="", max_length=5000, description="Testo degli elementi nella zona")
+    socratic: bool = False
 
 
 @router.post("/{canvas_id}/ask-area")
@@ -461,7 +463,7 @@ async def ask_area(canvas_id: uuid.UUID, body: AskAreaBody, actor: Actor, db: Db
     recent = "\n".join(f"{'Utente' if m.get('role') == 'user' else 'Assistente'}: {str(m.get('content', ''))[:400]}" for m in history[-6:])
     track = await tracker(actor)
     try:
-        result = await ai.ask_area(body.crop, body.question, body.context, recent, track)
+        result = await ai.ask_area(body.crop, body.question, body.context, recent, track, socratic=actor.is_student or body.socratic)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -652,7 +654,7 @@ async def chat(canvas_id: uuid.UUID, body: ChatBody, actor: Actor, db: Db):
     try:
         async with asyncio.timeout(170):
             who = f"[{author}] {body.content}" if is_shared(row) else body.content  # on a shared board the model must tell people apart
-            reply = await ai.converse(overview, extras, body.items, body.changes, body.selected, history, who, track, near=body.near, images_meta=body.images_meta[:len(extras)], pair=pair)
+            reply = await ai.converse(overview, extras, body.items, body.changes, body.selected, history, who, track, near=body.near, images_meta=body.images_meta[:len(extras)], pair=pair, socratic=actor.is_student or body.socratic)
     except HTTPException:
         raise
     except Exception as exc:
@@ -674,7 +676,7 @@ async def chat(canvas_id: uuid.UUID, body: ChatBody, actor: Actor, db: Db):
 class CheckBody(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     question: str = Field(min_length=1, max_length=600)
-    expected: str = Field(min_length=1, max_length=800)
+    expected: str = Field(min_length=1, max_length=2000)
     answer: str = Field(min_length=1, max_length=800)
 
 

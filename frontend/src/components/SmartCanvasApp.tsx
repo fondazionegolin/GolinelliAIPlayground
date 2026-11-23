@@ -25,6 +25,7 @@ import { CanvasModelWizard } from '@/components/CanvasModelWizard'
 import type { AreaLabelResult } from '@/components/canvasArea'
 
 const BASE = '/smart-canvases'
+const SOCRATIC_SUGGESTIONS = [tl("Non so da dove iniziare"), tl("Dammi un indizio"), tl("Controlla il mio ragionamento"), tl("Aiutami a visualizzare il problema")]
 const SUGGESTIONS = [tl("Cosa vedi sulla lavagna?"), tl("Fammi un'animazione della fotosintesi clorofilliana"), tl("Risolvi passo passo la formula selezionata"), tl("Annota l'immagine selezionata")]
 
 type Role = 'teacher' | 'student'
@@ -333,6 +334,10 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
   const [reportOpen, setReportOpen] = useState(false)
   const [labeling, setLabeling] = useState('')
   const [modelFor, setModelFor] = useState<string | null>(null)
+  // Socratic tutor: always on for students (the server enforces it too); on by default for teachers too, who can turn it off (remembered).
+  const [teacherSocratic, setTeacherSocratic] = useState(() => { try { return localStorage.getItem('smart_canvas_socratic') !== '0' } catch { return true } })
+  const socratic = role === 'student' || teacherSocratic
+  const toggleSocratic = () => setTeacherSocratic(v => { try { localStorage.setItem('smart_canvas_socratic', v ? '0' : '1') } catch { /* optional */ } return !v })
   const handle = useRef<CanvasHandle>(null)
   const history = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<number | null>(null)
@@ -432,7 +437,7 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
       const near = snap.selected.length ? snap.selected : changedIds(before, snap.doc).map(id => toAlias[id]).filter(Boolean)
       const { data } = await api.post<{ message: { id: string; content: string; ops?: AiOp[]; focus?: string[] } }>(`${BASE}/${boardId}/chat`, {
         request_id: userMessage.id, content: text, overview: snap.overview, images: snap.images, images_meta: snap.imagesMeta,
-        items: snap.items, changes, selected: snap.selected.slice(0, 60), near: near.slice(0, 20), ...storedModelChoice('canvas'),
+        items: snap.items, changes, selected: snap.selected.slice(0, 60), near: near.slice(0, 20), socratic, ...storedModelChoice('canvas'),
       }, { timeout: 190000 })
       let ops = unaliasOps(data.message.ops || [], snap.fromAlias)
       if (ops.some(o => o.on && o.kind === 'shape')) { setPhase(tl("Preciso le posizioni sull’immagine…")); ops = await refineOps(boardId, ops, snap.doc, text, data.message.content) }
@@ -478,7 +483,7 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
     setMessages(m => [...m, userMessage])
     try {
       const { data } = await api.post<{ message: { id: string; content: string }; labels: AreaLabelResult[] }>(`${BASE}/${boardId}/ask-area`,
-        { request_id: userMessage.id, question, crop: area.crop, context: area.context }, { timeout: 190000 })
+        { request_id: userMessage.id, question, crop: area.crop, context: area.context, socratic }, { timeout: 190000 })
       setMessages(m => [...m, { id: data.message.id, role: 'assistant', content: data.message.content, applied: data.labels.length }])
       window.setTimeout(() => { if (handle.current) lastSeen.current = JSON.stringify(handle.current.getDoc()) }, 400)
       return data.labels
@@ -589,15 +594,16 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
       <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
         <Sparkles className="h-4 w-4 text-[#e85c8d]" />
         <div className="min-w-0 flex-1"><h2 className="truncate text-sm font-bold text-slate-900">{tl("Assistente della lavagna")}</h2>
-          <p className="text-[11px] text-slate-500">{tl("Vede tutta la lavagna, le immagini e le modifiche.")}</p></div>
+          <p className="text-[11px] text-slate-500">{socratic ? tl("Ti guida con domande e schemi: la soluzione la trovi tu.") : tl("Vede tutta la lavagna, le immagini e le modifiche.")}</p></div>
+        {role === 'teacher' && <Button type="button" tone="neutral" surface={socratic ? 'soft' : 'ghost'} density="compact" aria-pressed={socratic} title={tl("Il tutor non dà risultati: guida con domande, indizi e supporti visivi")} onClick={toggleSocratic}>{tl("Socratico")}</Button>}
         <button type="button" aria-label={tl("Chiudi")} onClick={() => setPanelOpen(false)} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
       </div>
       <div ref={history} className="flex-1 space-y-3 overflow-y-auto px-4 py-3" role="log" aria-live="polite">
         {assistantAllowed && !messages.length && <div className="rounded-lg border border-dashed border-slate-300 bg-white p-3 text-xs text-slate-600">
           <button type="button" onClick={() => handle.current?.insertTutorial()} className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-pink-50 px-3 py-1.5 text-[11px] font-bold text-[#e85c8d] hover:bg-pink-100"><span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#e85c8d] text-[10px] text-white">?</span>{tl("Apri la guida sulla lavagna")}</button>
           <p className="mb-2 font-semibold text-slate-800">{tl("Disegna, incolla un’immagine, poi chiedi.")}</p>
-          <p className="mb-3">{tl("Seleziona un elemento per indicare di cosa parli. Posso rispondere, annotare le immagini e creare forme, formule, grafici e schemi.")}</p>
-          <div className="flex flex-wrap gap-1.5">{SUGGESTIONS.map(s => <button key={s} type="button" disabled={busy} onClick={() => void send(s)} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50">{s}</button>)}</div>
+          <p className="mb-3">{socratic ? tl("Scrivi il tuo ragionamento sulla lavagna: ti faccio domande, ti do indizi e schemi per capire meglio. Non ti dico il risultato.") : tl("Seleziona un elemento per indicare di cosa parli. Posso rispondere, annotare le immagini e creare forme, formule, grafici e schemi.")}</p>
+          <div className="flex flex-wrap gap-1.5">{(socratic ? SOCRATIC_SUGGESTIONS : SUGGESTIONS).map(s => <button key={s} type="button" disabled={busy} onClick={() => void send(s)} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50">{s}</button>)}</div>
         </div>}
         {messages.map(m => <article key={m.id} className={m.role === 'user' ? 'ml-8 rounded-lg bg-[#1a1a2e] px-3 py-2 text-sm text-white' : 'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800'}>
           {m.role === 'user' ? <>{shared && m.author && <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-pink-300">{m.author}</span>}{m.content}</> : <div className="prose prose-sm max-w-none prose-p:my-1.5">

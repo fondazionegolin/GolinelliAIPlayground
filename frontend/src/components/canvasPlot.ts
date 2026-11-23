@@ -15,6 +15,8 @@ export type PlotRiemann = { from: number; to: number; n: number; kind: 'left' | 
 export type PlotSpec = {
   w: number; h: number; expr: string; xMin: number; xMax: number; yMin: number; yMax: number; title?: string; color?: string
   marks?: PlotMark[]; areas?: PlotArea[]; extra?: PlotExtra[]; vlines?: PlotVLine[]; riemann?: PlotRiemann
+  /** Learner mode: the figure shows the situation, not the computed values (areas, sums, notable points). */
+  guided?: boolean
 }
 
 type Pt = { x: number; y: number }
@@ -182,7 +184,7 @@ export function plotGeometry(spec: PlotSpec): PlotGeometry {
     if (!d) return
     const value = integrate((x) => upper(x) - lower(x), from, to)
     const auto = value === null ? '' : `A = ∫[${fmt(from)}, ${fmt(to)}] = ${formatValue(value)}`
-    const text = area.label ?? auto
+    const text = area.label ?? (spec.guided ? 'area da calcolare' : auto)
     // The label sits inside the region, where it is tallest (clamped so it fits between the limits), low enough to stay clear of the curve.
     const half = (text.length * 6.4) / 2 + 4
     let bestX = (from + to) / 2, bestH = -1
@@ -220,7 +222,7 @@ export function plotGeometry(spec: PlotSpec): PlotGeometry {
       }
       if (valid) {
         const kind = rm.kind === 'left' ? 'sinistra' : rm.kind === 'right' ? 'destra' : rm.kind === 'mid' ? 'punto medio' : 'trapezi'
-        out.riemannLabel = { text: `Somma di Riemann (${n} rettangoli, ${kind}) ≈ ${formatValue(total)}`, x: gx + 8, y: gy + 16 }
+        out.riemannLabel = { text: spec.guided ? `Somma di Riemann (${n} rettangoli, ${kind})` : `Somma di Riemann (${n} rettangoli, ${kind}) ≈ ${formatValue(total)}`, x: gx + 8, y: gy + 16 }
       }
     }
   }
@@ -239,7 +241,7 @@ export function plotGeometry(spec: PlotSpec): PlotGeometry {
   })
 
   for (const m of spec.marks || []) {
-    if (m.x >= xa && m.x <= xb && m.y >= ya && m.y <= yb) out.marks.push({ x: px(m.x), y: py(m.y), label: m.label || '' })
+    if (!spec.guided && m.x >= xa && m.x <= xb && m.y >= ya && m.y <= yb) out.marks.push({ x: px(m.x), y: py(m.y), label: m.label || '' })
   }
   return out
 }

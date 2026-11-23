@@ -58,6 +58,7 @@
     "framer-motion": "^12.29.2",
     "hyperformula": "^3.1.1",
     "i18next": "^23.7.16",
+    "jsxgraph": "^1.14.3",
     "katex": "^0.16.27",
     "livekit-client": "^2.19.0",
     "plotly.js-dist-min": "^3.3.1",
@@ -81,6 +82,9 @@
     "three-bvh-csg": "^0.0.18",
     "three-mesh-bvh": "0.9.7",
     "uuid": "^13.0.0",
+    "vega": "^5.33.1",
+    "vega-embed": "^6.29.0",
+    "vega-lite": "^5.23.0",
     "xlsx": "^0.18.5",
     "zustand": "^4.4.7"
   },

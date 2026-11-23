@@ -18,7 +18,7 @@ import 'katex/dist/katex.min.css'
 import { FormulaEditor } from './FormulaEditor'
 import { MotionFrame, MotionPlayer } from './motion/MotionStage'
 import { CanvasShape } from './CanvasShape'
-import { CheckCard, FlashCard, QuizCard, type CheckResult } from './CanvasInteractive'
+import { CheckCard, FillInTable, FlashCard, QuizCard, type CheckResult } from './CanvasInteractive'
 import { canvasLabelColor, isToneStroke, shadeTopFor, shapeStrokeFor } from './canvasColors'
 import { DEMOS } from './motion/library'
 import { buildTutorial, TUTORIAL_SIZE } from './canvasTutorial'
@@ -29,6 +29,8 @@ import { calloutInk, calloutTarget, leaderStart } from './canvasCallouts'
 import type { PlotArea, PlotExtra, PlotRiemann, PlotVLine } from './canvasPlot'
 import { ModelExplorerDialog, ModelQrPopover, ModelViewer } from './CanvasModel3D'
 import { cutoutImage } from './canvasCutout'
+import { CanvasFigure } from './CanvasFigure'
+import type { FigureSpec } from './canvasFigures'
 import { CanvasBoardTable, HAND_FONT, newBoardData, type BoardData } from './CanvasBoardTable'
 import { fitSize, isSvgFile, svgFromFile } from './canvasSvg'
 import { areaContext, layoutAreaCallouts, pointsBox, thin, type AreaLabelResult, type Box as AreaBox, type Pt } from './canvasArea'
@@ -71,13 +73,17 @@ type CanvasItem =
   | (CanvasPositionedItemBase & { type: 'line'; color: string; width: number; arrow?: boolean; flipX?: boolean; flipY?: boolean })
   | (CanvasPositionedItemBase & { type: 'animation'; scene: Scene })
   | (CanvasPositionedItemBase & { type: 'formula'; latex: string; src?: string; fontSize: number; color: string })
-  | (CanvasPositionedItemBase & { type: 'plot'; expr: string; xMin: number; xMax: number; yMin: number; yMax: number; color: string; title?: string; marks?: Array<{ x: number; y: number; label?: string }>; areas?: PlotArea[]; extra?: PlotExtra[]; vlines?: PlotVLine[]; riemann?: PlotRiemann })
+  | (CanvasPositionedItemBase & { type: 'plot'; expr: string; xMin: number; xMax: number; yMin: number; yMax: number; color: string; title?: string; marks?: Array<{ x: number; y: number; label?: string }>; areas?: PlotArea[]; extra?: PlotExtra[]; vlines?: PlotVLine[]; riemann?: PlotRiemann; guided?: boolean })
   | (CanvasPositionedItemBase & { type: 'image'; src: string; /** The picture before «Rimuovi sfondo», to restore it. */ origSrc?: string })
   /** A 3D model (GLB stored by the board): orbitable in place, QR code for AR on a phone. */
   | (CanvasPositionedItemBase & { type: 'model3d'; src: string; poster?: string; usdz?: string; title?: string })
   /** A flag naming a point of an image: `rx/ry` = the point in 0..1 of the image box (so it follows the image), `tx/ty` = last known world point. */
   | (CanvasPositionedItemBase & { type: 'callout'; text: string; color: string; imageId?: string; rx: number; ry: number; tx: number; ty: number; edited?: boolean })
   | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
+  /** A table the learner completes: blank cells are checked against salted hashes (the keys never reach the board). */
+  | (CanvasPositionedItemBase & { type: 'fillin'; title?: string; instruction?: string; corner?: string; columns: string[]; rows: Array<{ label: string; cells: Array<{ v?: string; h?: string[]; hint?: string }> }>; salt: string; answers?: Record<string, CanvasAnswer> })
+  /** A chart or diagram drawn from data by the figure library (pie, bars, fractions, Venn…) or by Vega-Lite / JSXGraph. */
+  | (CanvasPositionedItemBase & { type: 'figure'; spec: FigureSpec })
   /** A table that works as a board: editable column headers, sticky-note cards ordered by column. */
   | (CanvasPositionedItemBase & { type: 'board' } & BoardData)
   | (CanvasPositionedItemBase & { type: 'path'; points: Point[]; ow: number; oh: number; color: string; width: number })
@@ -1802,6 +1808,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     const isInteractiveTarget = tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON'
     if (isTextEditable(item) && editingId === item.id && isInteractiveTarget) return
     if (item.type === 'model3d' && editingId === item.id) return // orbiting the model, not moving the item
+    if (item.type === 'figure' && editingId === item.id) return // moving points of an interactive construction, not the item
     if (item.type === 'board' && (e.target as HTMLElement).closest('input, textarea, button, [draggable="true"]')) return // working inside the table, not moving it
     if (isTextEditable(item) && editingId !== item.id) { e.preventDefault(); setEditingId(null) }
     if (!canEdit || isConnector(item) || isLockedByOther(item.id)) return
@@ -2948,7 +2955,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   }}
                   onPointerDown={(e) => onPointerDownItem(e, item)}
                   onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={() => { if (!canEdit) return; if (item.type === 'formula' || item.type === 'callout' || item.type === 'model3d') { setSelectedId(item.id); setSelectedIds([item.id]); setEditingId(item.id) } else if (isTextEditable(item)) startTextEditingRef.current(item.id) }}
+                  onDoubleClick={() => { if (!canEdit) return; if (item.type === 'formula' || item.type === 'callout' || item.type === 'model3d' || (item.type === 'figure' && item.spec.fig === 'jsxgraph')) { setSelectedId(item.id); setSelectedIds([item.id]); setEditingId(item.id) } else if (isTextEditable(item)) startTextEditingRef.current(item.id) }}
                   onContextMenu={(e) => openContextMenu(e, item.id)}
                 >
                   {item.type === 'postit' && (
@@ -3211,6 +3218,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                     </div>
                   )}
 
+                  {item.type === 'figure' && <CanvasFigure item={item} interactive={isEditing} />}
+
                   {item.type === 'board' && (
                     <CanvasBoardTable
                       data={item} canEdit={canEdit && !lockedByOther}
@@ -3236,6 +3245,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
 
                   {item.type === 'quiz' && <QuizCard item={item} viewer={viewer} canRecord={canEdit} onRecord={(patch) => recordAnswer(item.id, patch)} />}
                   {item.type === 'flashcard' && <FlashCard item={item} viewer={viewer} canRecord={canEdit} onRecord={(patch) => recordAnswer(item.id, patch)} />}
+                  {item.type === 'fillin' && <FillInTable item={item} viewer={viewer} canRecord={canEdit} onRecord={(patch) => recordAnswer(item.id, patch)} />}
                   {item.type === 'check' && <CheckCard item={item} viewer={viewer} canRecord={canEdit} onRecord={(patch) => recordAnswer(item.id, patch)} onValidate={onValidateAnswer} />}
 
                   {/* Move mode: a grab surface over the whole item, so nothing inside it (text, players, images) steals the drag */}

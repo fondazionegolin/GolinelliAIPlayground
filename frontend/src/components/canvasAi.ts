@@ -10,14 +10,20 @@ import { explicitFunction, graphWindow } from './canvasMath'
 import type { Scene } from './motion/spec'
 import { canvasLabelColor, shapeStrokeFor } from './canvasColors'
 import { HAND_FONT } from './CanvasBoardTable'
+import { answerHash, defaultFigureSize, describeFigure, figureDataUrl, figureSvg, isEngine, type FigureSpec } from './canvasFigures'
+import { getSnapshot, sanitizeVega, snapshotKey } from './canvasFigureEngines'
 
 export type ShapeKind = 'rect' | 'rounded-rect' | 'ellipse' | 'diamond' | 'triangle' | 'star' | 'hexagon' | 'parallelogram'
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
 
 /** Mirror of the backend `CanvasOp` (snake_case on the wire). */
 export type AiOp = {
-  kind: 'shape' | 'text' | 'note' | 'frame' | 'arrow' | 'line' | 'plot' | 'curve' | 'formula' | 'animation' | 'cluster' | 'illustration'
+  kind: 'shape' | 'text' | 'note' | 'frame' | 'arrow' | 'line' | 'plot' | 'curve' | 'formula' | 'animation' | 'cluster' | 'illustration' | 'figure'
     | 'quiz' | 'flashcard' | 'check' | 'label_image' | 'callout' | 'connect' | 'update' | 'delete'
+  /** figure: JSON text of the figure spec (`{"fig": "pie", …}`); with `update` on a figure it replaces the spec. */
+  spec?: string
+  /** figure/plot: learner mode, the figure shows the situation and not the computed results. */
+  guided?: boolean
   /** quiz: `text` = question, `options`, `correct` (indices), `explanation`; flashcard: `text` = front, `back`;
    *  check: `text` = open question, `expected` = answer key, `hint`. */
   options?: string[]; correct?: number[]; explanation?: string; back?: string; expected?: string; hint?: string
@@ -124,8 +130,9 @@ function buildItem(op: AiOp): CanvasItem | null {
       // Tone on tone: without an explicit border the figure takes a slightly darker shade of its own fill.
       return { id, ai: true, type: 'shape', shape: op.shape || 'rounded-rect', x, y, w: op.w ?? 200, h: op.h ?? 100,
         fill: op.fill || '#dbeafe', fillOpacity: op.opacity, stroke: op.stroke || shapeStrokeFor(op.fill || '#dbeafe'), borderWidth: op.opacity !== undefined && op.opacity < 0.6 ? 2 : 1.5, borderStyle: 'solid', text: op.text || '', textColor: '#171717', textStyle: HAND_STYLE(op.font_size ?? 14, op.bold ? '600' : 'normal') }
+    case 'figure': return buildFigure(op, id)
     case 'text':
-      return { id, ai: true, type: 'text', x, y, w: op.w ?? 280, h: op.h ?? 60, text: op.text || '', color: op.stroke || '#171717', textStyle: TEXT_STYLE(op.font_size ?? 16, op.bold ? '600' : 'normal') }
+      return { id, ai: true, type: 'text', x, y, w: op.w ?? 280, h: Math.max(op.h ?? 0, textHeight(op.text || '', op.w ?? 280, op.font_size ?? 16, !!op.bold)), text: op.text || '', color: op.stroke || '#171717', textStyle: TEXT_STYLE(op.font_size ?? 16, op.bold ? '600' : 'normal') }
     case 'note':
       return { id, ai: true, type: 'postit', x, y, w: op.w ?? 180, h: op.h ?? 140, text: op.text || '', color: op.fill || '#fef9c3', textStyle: HAND_STYLE(op.font_size ?? 14, op.bold ? '600' : 'normal') }
     case 'frame':
@@ -141,7 +148,7 @@ function buildItem(op: AiOp): CanvasItem | null {
     case 'flashcard':
       return { id, ai: true, type: 'flashcard', x, y, w: op.w ?? 260, h: op.h ?? 190, front: CLEAN(op.text, 200), back: CLEAN(op.back, 500), color: op.fill || '#fef3c7' }
     case 'check':
-      return { id, ai: true, type: 'check', x, y, w: op.w ?? 340, h: op.h ?? 270, question: CLEAN(op.text, 400), expected: CLEAN(op.expected, 600),
+      return { id, ai: true, type: 'check', x, y, w: op.w ?? 340, h: op.h ?? 270, question: CLEAN(op.text, 400), expected: CLEAN(op.expected, 2000),
         hint: CLEAN(op.hint, 200) || undefined, color: op.fill || '#dcfce7' }
     case 'animation':
       return op.scene ? { id, ai: true, type: 'animation', x, y, w: op.w ?? 640, h: op.h ?? 360, scene: op.scene } : null
@@ -173,10 +180,52 @@ export function smoothCurve(points: Array<{ x: number; y: number }>, steps = 12)
 
 export { plotGeometry, fitWindow, compileFn, integrate, formatValue, type PlotSpec, type PlotGeometry, type PlotArea, type PlotExtra, type PlotVLine, type PlotRiemann } from './canvasPlot'
 
+/** Height a text needs at this width (the box used to cut long titles off). */
+export function textHeight(text: string, w: number, fontSize: number, bold: boolean): number {
+  const perLine = Math.max(Math.floor((w - 16) / (fontSize * (bold ? 0.6 : 0.54))), 4)
+  const lines = text.split('\n').reduce((n, para) => n + Math.max(1, Math.ceil(para.length / perLine)), 0)
+  return Math.ceil(lines * fontSize * 1.4) + 14
+}
+
+/** Parses the model's figure spec; null when it is not a usable figure. */
+export function parseFigureSpec(raw: string | undefined): FigureSpec | null {
+  if (!raw) return null
+  try {
+    const spec = JSON.parse(raw) as FigureSpec
+    if (!spec || typeof spec !== 'object' || typeof spec.fig !== 'string') return null
+    if (spec.fig === 'vega' && !(spec.def && typeof spec.def === 'object' && sanitizeVega(spec.def))) return null
+    if (spec.fig === 'jsxgraph' && !(spec.def && Array.isArray(spec.def.elements))) return null
+    return spec
+  } catch { return null }
+}
+
+function buildFillIn(op: AiOp, id: string): CanvasItem | null {
+  let raw: Record<string, unknown>
+  try { raw = JSON.parse(op.spec || '') } catch { return null }
+  if (!raw || raw.fig !== 'fillin' || !Array.isArray(raw.columns) || !Array.isArray(raw.rows)) return null
+  const salt = typeof raw.salt === 'string' ? raw.salt : Math.random().toString(16).slice(2, 10)
+  const rows = (raw.rows as Array<{ label?: string; cells?: Array<{ v?: string; a?: string; h?: string[]; hint?: string }> }>).map((r) => ({
+    label: String(r.label ?? ''),
+    // a key that arrives in the clear (it should not) is turned into a hash right away, so it is never stored
+    cells: (r.cells ?? []).map((c) => (c.h || c.a !== undefined ? { h: c.h ?? String(c.a).split('|').filter((x) => x.trim()).map((x) => answerHash(salt, x)), hint: c.hint } : { v: String(c.v ?? '') })),
+  }))
+  const cols = (raw.columns as unknown[]).map(String)
+  return { id, ai: true, type: 'fillin', x: op.x ?? 0, y: op.y ?? 0, w: Math.max(op.w ?? 120 + cols.length * 110, 320), h: Math.max(op.h ?? 130 + rows.length * 50 + (raw.instruction ? 20 : 0), 220),
+    title: typeof raw.title === 'string' ? raw.title : undefined, instruction: typeof raw.instruction === 'string' ? raw.instruction : undefined, corner: typeof raw.corner === 'string' ? raw.corner : undefined, columns: cols, rows, salt }
+}
+
+function buildFigure(op: AiOp, id: string): CanvasItem | null {
+  if (op.spec && /"fig"\s*:\s*"fillin"/.test(op.spec)) return buildFillIn(op, id)
+  const spec = parseFigureSpec(op.spec)
+  if (!spec) return null
+  const [dw, dh] = defaultFigureSize(spec)
+  return { id, ai: true, type: 'figure', x: op.x ?? 0, y: op.y ?? 0, w: Math.max(op.w ?? dw, 200), h: Math.max(op.h ?? dh, 120), spec: op.guided ? { ...spec, guided: true } : spec }
+}
+
 function buildPlot(op: AiOp, id: string): CanvasItem | null {
   const item: CanvasItem = { id, ai: true, type: 'plot', x: op.x ?? 0, y: op.y ?? 0, w: Math.max(op.w ?? 520, 200), h: Math.max(op.h ?? 420, 160),
     expr: op.expr || '', xMin: op.x_min ?? -5, xMax: op.x_max ?? 5, yMin: op.y_min ?? -5, yMax: op.y_max ?? 5, color: op.stroke || '#dc2626', title: op.text || `y = ${op.expr}`, marks: op.marks,
-    areas: op.areas, extra: op.extra_curves, vlines: op.vlines, riemann: op.riemann }
+    areas: op.areas, extra: op.extra_curves, vlines: op.vlines, riemann: op.riemann, guided: op.guided || undefined }
   // The window always shows the whole shaded region, its limits and the curves over it, whatever the model picked.
   Object.assign(item, fitWindow(item as unknown as PlotSpec))
   return plotGeometry(item as unknown as PlotSpec).ok ? item : null
@@ -191,6 +240,7 @@ function patchItem(item: CanvasItem, op: AiOp): CanvasItem {
   if (op.h !== undefined && 'h' in item) next.h = op.h
   if (op.text !== undefined && 'text' in item) next.text = op.text
   if (item.type === 'animation' && op.scene) next.scene = op.scene
+  if (item.type === 'figure' && op.spec) { const spec = parseFigureSpec(op.spec); if (spec) next.spec = op.guided ? { ...spec, guided: true } : spec }
   if (item.type === 'formula') {
     if (op.text !== undefined) { next.latex = op.text; if (op.expr === undefined) next.src = undefined }
     if (op.expr !== undefined) next.src = op.expr
@@ -489,6 +539,12 @@ export function describeDoc(doc: CanvasDoc): { items: SceneItem[]; toAlias: Reco
       case 'connector': return { ...base, text: '', detail: `da ${toAlias[item.fromId] || '?'} a ${toAlias[item.toId] || '?'}` }
       case 'image': return { ...base, text: '', detail: 'immagine incollata' }
       case 'board': return { ...base, text: CLEAN([item.title, ...item.columns.map((c) => `${c.title}: ${item.cards.filter((k) => k.col === c.id).map((k) => k.text).join(' / ')}`)].filter(Boolean).join(' | '), 600), detail: `tabella-board ${item.columns.length} colonne, ${item.cards.length} schede` }
+      case 'figure': return { ...base, text: CLEAN(describeFigure(item.spec), 600), detail: 'figura generata da dati (modificabile con update e un nuovo spec)' }
+      case 'fillin': {
+        const mine = Object.values(item.answers || {})
+        const grid = item.rows.map((r) => `${r.label}: ${r.cells.map((c) => (c.h ? '[da compilare]' : c.v)).join(' | ')}`).join(' / ')
+        return { ...base, text: CLEAN(`${item.title || ''} ${item.instruction || ''} colonne ${item.columns.join(', ')} · ${grid}`, 600), detail: `tabella da completare con correzione automatica${mine.length ? `; ${mine.length} tentativi (${mine.filter((a) => a.ok).length} completati bene)` : ''}` }
+      }
       case 'model3d': return { ...base, text: CLEAN(item.title || '', 200), detail: 'modello 3D interattivo' }
       case 'table': return { ...base, text: CLEAN(item.data.slice(0, 6).map((row) => row.join(' | ')).join(' / '), 600), detail: `tabella ${item.data.length} righe` }
       case 'path': return { ...base, text: '', detail: 'disegno a mano libera' }
@@ -619,7 +675,10 @@ export async function renderDocToPng(doc: CanvasDoc, aliases: Record<string, str
   ctx.translate(-minX, -minY)
   const byId = new Map(doc.items.map((i) => [i.id, i]))
   const images = new Map<string, HTMLImageElement | null>()
-  await Promise.all(doc.items.filter((i) => i.type === 'image').map(async (i) => { if (i.type === 'image') images.set(i.id, await loadImage(i.src)) }))
+  await Promise.all(doc.items.map(async (i) => {
+    if (i.type === 'image') images.set(i.id, await loadImage(i.src))
+    else if (i.type === 'figure') images.set(i.id, await loadImage(isEngine(i.spec) ? getSnapshot(snapshotKey(i.id, [i.spec, Math.round(i.w), Math.round(i.h)])) || '' : figureDataUrl(figureSvg(i.spec, i.w, i.h))))
+  }))
 
   // Same layering as the live board: frames (larger first) under everything else.
   const frameFirst = [...doc.items.filter((i) => i.type === 'frame').sort((a, b) => ('w' in b ? b.w * b.h : 0) - ('w' in a ? a.w * a.h : 0)), ...doc.items.filter((i) => i.type !== 'frame')]
@@ -650,6 +709,20 @@ export async function renderDocToPng(doc: CanvasDoc, aliases: Record<string, str
       const image = images.get(item.id)
       if (image) ctx.drawImage(image, item.x, item.y, item.w, item.h)
       else { ctx.fillStyle = '#e2e8f0'; ctx.fillRect(item.x, item.y, item.w, item.h); drawText(ctx, '(immagine non leggibile)', item.x, item.y, item.w, item.h, 14, '#475569', true) }
+    } else if (item.type === 'fillin') {
+      const card = new Path2D(); card.roundRect(item.x, item.y, item.w, item.h, 14); ctx.fillStyle = '#ffffff'; ctx.fill(card); ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1.5; ctx.stroke(card)
+      drawText(ctx, [item.title, item.instruction].filter(Boolean).join(' — '), item.x, item.y - 2, item.w, 40, 13, '#0f172a', false)
+      const n = item.columns.length + 1, cw = (item.w - 24) / n
+      const cell = (cx: number, cy: number, text: string, fill: string) => { ctx.fillStyle = fill; ctx.fillRect(cx, cy, cw - 4, 30); drawText(ctx, text, cx, cy, cw - 4, 30, 13, '#1e293b', true) }
+      item.columns.forEach((c, i) => cell(item.x + 12 + (i + 1) * cw, item.y + 48, c, '#e0e7ff'))
+      item.rows.forEach((r, ri) => {
+        cell(item.x + 12, item.y + 82 + ri * 34, r.label, '#fce7f3')
+        r.cells.forEach((c, ci) => cell(item.x + 12 + (ci + 1) * cw, item.y + 82 + ri * 34, c.h ? '?' : c.v || '', c.h ? '#fef3c7' : '#f1f5f9'))
+      })
+    } else if (item.type === 'figure') {
+      const image = images.get(item.id)
+      if (image) ctx.drawImage(image, item.x, item.y, item.w, item.h)
+      else { ctx.fillStyle = '#f1f5f9'; ctx.fillRect(item.x, item.y, item.w, item.h); drawText(ctx, describeFigure(item.spec), item.x, item.y, item.w, item.h, 13, '#475569', true) }
     } else if (item.type === 'board') {
       const card = new Path2D(); card.roundRect(item.x, item.y, item.w, item.h, 16); ctx.fillStyle = '#f8fafc'; ctx.fill(card)
       drawText(ctx, item.title || '', item.x, item.y - 2, item.w, 28, 14, '#1e293b', false)
