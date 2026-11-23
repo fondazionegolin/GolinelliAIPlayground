@@ -89,7 +89,7 @@ function FaqRow({ item, id, open, onToggle }: { item: FaqItem; id: string; open:
   const buttonId = `${id}-btn`
   const panelId = `${id}-panel`
   return (
-    <li className="border-b border-slate-200">
+    <li className="shadow-[0_1px_0_var(--ds-frame-divider)]">
       <h3>
         <button
           type="button"
@@ -97,17 +97,17 @@ function FaqRow({ item, id, open, onToggle }: { item: FaqItem; id: string; open:
           aria-expanded={open}
           aria-controls={panelId}
           onClick={onToggle}
-          className="flex w-full items-start justify-between gap-4 rounded-md py-4 text-left text-base font-semibold text-[var(--logo-ink)] transition-colors hover:text-[var(--logo-pink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--logo-pink)]"
+          className="flex w-full items-start justify-between gap-4 rounded-md py-4 text-left text-base font-semibold text-[var(--text-primary)] transition-colors hover:text-[var(--logo-pink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--logo-pink)]"
         >
           <span>{item.q}</span>
           <ChevronDown
             aria-hidden="true"
-            className={`mt-1 h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            className={`mt-1 h-5 w-5 shrink-0 text-[var(--text-muted)] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
           />
         </button>
       </h3>
       <div id={panelId} role="region" aria-labelledby={buttonId} hidden={!open} className="pb-5 pr-9">
-        <div className="space-y-3 text-sm leading-relaxed text-slate-600 md:text-base">
+        <div className="space-y-3 text-sm leading-relaxed text-[var(--text-muted)] md:text-base">
           {item.a.map((paragraph, index) => (
             <p key={index}>{paragraph}</p>
           ))}
@@ -124,12 +124,12 @@ export function LandingFaq() {
 
   return (
     <section id="landing-faq" aria-labelledby={`${baseId}-title`} className="scroll-mt-28 text-left">
-      <div className="border-t border-slate-200 py-10">
-        <span className="text-xs font-semibold text-[var(--logo-pink)]">{tl("Domande frequenti")}</span>
-        <h2 id={`${baseId}-title`} className="mt-2 text-2xl font-semibold tracking-tight text-[var(--logo-ink)] md:text-3xl">
+      <div className="py-10 shadow-[0_-1px_0_var(--ds-frame-divider)]">
+        <span className="text-sm text-[var(--text-secondary)]">{tl("Domande frequenti")}</span>
+        <h2 id={`${baseId}-title`} className="mt-2 text-2xl font-semibold tracking-tight text-[var(--text-primary)] md:text-3xl">
           {tl("Prima di iniziare")}
         </h2>
-        <ul className="mt-6 max-w-3xl border-t border-slate-200">
+        <ul className="mt-6 max-w-3xl shadow-[0_-1px_0_var(--ds-frame-divider)]">
           {faqs.map((item, index) => (
             <FaqRow
               key={index}

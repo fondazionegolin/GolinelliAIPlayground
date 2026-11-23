@@ -65,6 +65,8 @@ type Board = {
   can_manage?: boolean
   can_edit?: boolean
   cards?: BoardCard[] | null
+  /** Task per column id, sent by the board list (the list does not carry the cards). */
+  column_counts?: Record<string, number> | null
 }
 type Template = { id: string; label: string; columns: BoardColumn[] }
 type BoardPatch = {
@@ -594,24 +596,22 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
             ) : (
               <div className="ds-well grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {filteredBoards.map((item) => {
-                  let hash = 0
-                  for (const ch of item.title) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
-                  const hue = hash % 360
-                  const count = (item.cards || []).length
+                  const count = item.column_counts ? Object.values(item.column_counts).reduce((sum, n) => sum + n, 0) : (item.cards || []).length
                   return (
                     <article key={item.id} className="ui-card ui-card-interactive group relative overflow-hidden">
                       <button type="button" onClick={() => setSelectedId(item.id)} className="block w-full text-left">
-                        <div className="relative flex aspect-video items-stretch gap-1.5 overflow-hidden p-3" style={{ background: `linear-gradient(135deg, hsl(${hue} 50% 30%), hsl(${(hue + 48) % 360} 55% 42%))` }}>
-                          {item.columns.slice(0, 4).map((column) => {
-                            const inColumn = (item.cards || []).filter((card) => card.column_id === column.id).length
+                        <div className="relative flex aspect-video items-stretch gap-1.5 overflow-hidden bg-[var(--ds-surface-muted)] p-3 pb-9" aria-hidden="true">
+                          {item.columns.slice(0, 8).map((column) => {
+                            const inColumn = item.column_counts?.[column.id] ?? (item.cards || []).filter((card) => card.column_id === column.id).length
                             return (
-                              <div key={column.id} className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg bg-black/25 p-1.5">
-                                <span className="mb-0.5 h-1 w-1/2 rounded-full bg-white/50" />
-                                {Array.from({ length: Math.min(inColumn, 4) }).map((_, index) => <span key={index} className="h-4 rounded bg-white/25" />)}
+                              <div key={column.id} className="flex min-w-0 flex-1 flex-col gap-1 overflow-hidden rounded-md bg-[var(--ds-surface-raised)] p-1">
+                                <span className="mb-0.5 h-1 w-2/3 shrink-0 rounded-full bg-[var(--app-accent)] opacity-70" />
+                                {Array.from({ length: Math.min(inColumn, 9) }).map((_, index) => <span key={index} className="h-2 shrink-0 rounded-[3px] bg-[var(--app-accent-soft-strong)]" />)}
+                                {inColumn > 9 && <span className="text-[8px] font-bold leading-none text-[var(--text-secondary)]">+{inColumn - 9}</span>}
                               </div>
                             )
                           })}
-                          <span className="absolute bottom-2 right-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-semibold text-white">
+                          <span className="absolute bottom-2 right-3 inline-flex items-center gap-1 rounded-full bg-[var(--ds-surface-raised)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text-secondary)] shadow-[var(--ds-shadow-1)]">
                             {item.shared_with_me ? <Users className="h-3 w-3" /> : item.visibility === 'session_shared' ? <Share2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
                             {item.shared_with_me ? tl("Condivisa con te") : item.visibility === 'session_shared' ? tl("Condivisa") : tl("Privata")}
                           </span>
@@ -627,7 +627,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                         <button
                           type="button"
                           onClick={() => { if (window.confirm(tl("Eliminare la board \"{0}\"?", item.title))) deleteBoard.mutate(item.id) }}
-                          className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition hover:bg-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+                          className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ds-surface-raised)] text-[var(--text-secondary)] shadow-[var(--ds-shadow-1)] opacity-0 transition hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
                           aria-label={tl("Elimina {0}", item.title)}
                         >
                           <Trash2 className="h-4 w-4" />

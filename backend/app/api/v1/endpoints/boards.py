@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import delete, select, or_
+from sqlalchemy import delete, func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import StudentOrTeacher, get_student_or_teacher
@@ -332,8 +332,10 @@ def _serialize_board(
     actor: StudentOrTeacher | None = None,
     share: Optional[BoardShare] = None,
     session_title: Optional[str] = None,
+    column_counts: Optional[dict[str, int]] = None,
 ) -> dict:
     return {
+        "column_counts": column_counts,
         "id": str(board.id),
         "tenant_id": str(board.tenant_id),
         "session_id": str(board.session_id) if board.session_id else None,
@@ -602,7 +604,14 @@ async def list_boards(
         boards.setdefault(board_id, pair)
     ordered = sorted(boards.values(), key=lambda pair: pair[0].updated_at, reverse=True)
     titles = await _session_titles(db, {b.session_id for b, _ in ordered if b.session_id})
-    return [_serialize_board(b, actor=actor, share=s, session_title=titles.get(b.session_id)) for b, s in ordered]
+    counts: dict[uuid.UUID, dict[str, int]] = {}
+    if ordered:
+        rows = await db.execute(
+            select(BoardCard.board_id, BoardCard.column_id, func.count())
+            .where(BoardCard.board_id.in_([b.id for b, _ in ordered])).group_by(BoardCard.board_id, BoardCard.column_id))
+        for board_id, column_id, total in rows.all():
+            counts.setdefault(board_id, {})[column_id] = int(total)
+    return [_serialize_board(b, actor=actor, share=s, session_title=titles.get(b.session_id), column_counts=counts.get(b.id, {})) for b, s in ordered]
 
 
 async def _resolve_create_session(db: AsyncSession, actor: StudentOrTeacher, session_id: Optional[str]) -> Optional[uuid.UUID]:

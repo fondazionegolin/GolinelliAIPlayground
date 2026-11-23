@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-19T13:41:42.902846+00:00",
-  "version_label": "2026.11.19-266eb7b0",
+  "generated_at": "2026-11-23T07:11:25.925054+00:00",
+  "version_label": "2026.11.23-4c60e888",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 32 commit dall'ultima release pubblicata.",
-  "git_ref": "266eb7b02adbeee51ec186b76812d06f191b9f22",
+  "summary": "Bozza generata automaticamente da 34 commit dall'ultima release pubblicata.",
+  "git_ref": "4c60e888106320dbf9bf215226b9d5adeed9270c",
   "items": [
     {
       "category": "new",
@@ -164,6 +164,16 @@
       "category": "new",
       "title": "Improve Vibe QA, voice and live labs",
       "description": "Improve Vibe QA, voice and live labs"
+    },
+    {
+      "category": "new",
+      "title": "Cleaner call transcripts, REC spectrum, compact nav menu, Vibe Lab model selector removed",
+      "description": "Cleaner call transcripts, REC spectrum, compact nav menu, Vibe Lab model selector removed"
+    },
+    {
+      "category": "new",
+      "title": "Boards: landing library with previews, full-width board, recessed task cards",
+      "description": "Boards: landing library with previews, full-width board, recessed task cards"
     }
   ]
 }

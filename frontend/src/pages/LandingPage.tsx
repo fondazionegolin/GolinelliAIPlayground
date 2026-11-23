@@ -10,12 +10,13 @@ import {
   Lock,
   ArrowRight,
   Mail,
+  ChevronDown,
 } from '@/components/icons'
-import { X, Check, Loader2 } from '@/components/icons'
+import { Check, Loader2 } from '@/components/icons'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/lib/api'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button, Input } from '@/design'
+import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
 import { useTranslation } from 'react-i18next'
@@ -59,21 +60,21 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col bg-white font-sans text-slate-900">
+    <div className="relative flex min-h-screen w-full flex-col bg-[var(--ds-canvas-base)] font-sans text-[var(--text-primary)]">
 
       {/* --- Navbar --- */}
-      <nav className="sticky top-0 z-50 w-full border-b border-slate-100 bg-white/95 px-4 py-4 backdrop-blur-sm md:px-6 md:py-4">
+      <nav className="sticky top-0 z-50 w-full bg-[var(--ds-canvas-base)] px-4 py-3 shadow-[0_1px_0_var(--ds-frame-divider)] md:px-6">
         <div className="mx-auto max-w-screen-2xl">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
+              <button type="button" className="flex items-center gap-3 rounded-[var(--control-radius)]" onClick={() => switchTab('home')}>
                 <img src="/logo_new.png" alt={tl("Golinelli AI")} className="h-10 w-auto" />
                 <span className="text-2xl tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
                   <span className="font-semibold text-[var(--logo-ink)]">Golinelli</span>
                   <span className="font-semibold text-[var(--logo-pink)]">.ai</span>
                 </span>
-              </div>
-              <div className="mx-1 hidden h-7 w-px bg-slate-200 md:block" />
+              </button>
+              <div className="mx-1 hidden h-7 w-px bg-[var(--ds-frame-divider)] md:block" />
               <a
                 href="https://www.fondazionegolinelli.it"
                 target="_blank"
@@ -84,19 +85,27 @@ export default function LandingPage() {
               </a>
             </div>
 
-            <div className="hidden md:flex items-center gap-1">
-              <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')} color="#fe004d">{t('landing.nav_explore')}</TabButton>
-              <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} color="#7b69c9">{t('landing.nav_teachers')}</TabButton>
-              <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')} color="#38bdf8">{t('landing.nav_students')}</TabButton>
+            <div className="hidden items-center gap-1 p-1 md:flex" style={buildAccentNavClusterStyle()} role="group" aria-label={tl("Sezioni")}>
+              <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')}>{t('landing.nav_explore')}</TabButton>
+              <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')}>{t('landing.nav_teachers')}</TabButton>
+              <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')}>{t('landing.nav_students')}</TabButton>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="hidden md:flex items-center gap-3">
+            <div className="flex items-center gap-4">
+              <div className="hidden items-center gap-4 md:flex">
                 <button
-                  onClick={goToContacts}
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-[var(--logo-pink)]"
+                  type="button"
+                  onClick={() => setOpenDocument('privacy')}
+                  className="text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
                 >
-                  <Mail size={13} />
+                  {tl("Privacy")}
+                </button>
+                <button
+                  type="button"
+                  onClick={goToContacts}
+                  className="flex items-center gap-2 text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                >
+                  <Mail size={16} />
                   {tl("Contatti")}
                 </button>
               </div>
@@ -104,21 +113,21 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2 md:hidden" aria-label={tl("Accesso alla piattaforma")}>
-            <MobileNavButton active={activeTab === 'students'} onClick={() => switchTab('students')} tone="sky">
-              <GraduationCap className="h-4 w-4" />
+          <div className="mt-3 grid grid-cols-2 gap-1 p-1 md:hidden" style={buildAccentNavClusterStyle()} role="group" aria-label={tl("Accesso alla piattaforma")}>
+            <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')}>
+              <GraduationCap size={16} />
               {tl("Studente")}
-            </MobileNavButton>
-            <MobileNavButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} tone="violet">
-              <School className="h-4 w-4" />
+            </TabButton>
+            <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')}>
+              <School size={16} />
               {tl("Docente")}
-            </MobileNavButton>
+            </TabButton>
           </div>
-          <div className="mt-3 flex justify-end border-t border-slate-100 pt-2">
+          <div className="mt-2 flex justify-end md:hidden">
             <button
               type="button"
               onClick={() => setOpenDocument('privacy')}
-              className="text-sm font-medium text-slate-600 underline underline-offset-4 transition-colors hover:text-[var(--logo-pink)]"
+              className="text-sm text-[var(--text-muted)] underline underline-offset-4 transition-colors hover:text-[var(--text-primary)]"
             >
               {tl("Informativa privacy")}
             </button>
@@ -136,41 +145,41 @@ export default function LandingPage() {
       </main>
 
       {/* --- Footer --- */}
-      <footer className="border-t border-slate-100 bg-white py-8 text-center text-sm text-slate-500">
+      <footer className="px-4 py-8 text-center text-sm text-[var(--text-muted)] shadow-[0_-1px_0_var(--ds-frame-divider)]">
         <p>{t('landing.footer_copyright')}</p>
-        <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-slate-400">
+        <p className="mt-2 flex items-center justify-center gap-1.5 text-xs">
           {tl("un progetto di")}{' '}
           <a
             href="https://www.fondazionegolinelli.it"
             target="_blank"
             rel="noreferrer"
-            className="font-semibold text-slate-500 hover:text-[var(--logo-pink)] transition-colors"
+            className="font-semibold text-[var(--text-primary)] transition-colors hover:text-[var(--logo-pink)]"
           >
             Fondazione Golinelli
           </a>
         </p>
         <p className="mt-2 text-xs">
-          <a href={`mailto:${CONTACT_EMAIL}`} className="text-slate-500 transition-colors hover:text-[var(--logo-pink)]">{CONTACT_EMAIL}</a>
+          <a href={`mailto:${CONTACT_EMAIL}`} className="transition-colors hover:text-[var(--text-primary)]">{CONTACT_EMAIL}</a>
         </p>
         <p className="mt-2">
           <span className="inline-flex items-center gap-3 text-xs">
             <button
               onClick={() => setOpenDocument('privacy')}
-              className="text-slate-400 hover:text-[var(--logo-pink)] transition-colors underline underline-offset-2"
+              className="underline underline-offset-2 transition-colors hover:text-[var(--text-primary)]"
             >
               {tl("Informativa privacy")}
             </button>
-            <span className="text-slate-300">•</span>
+            <span aria-hidden className="opacity-50">·</span>
             <button
               onClick={() => setOpenDocument('ai-act')}
-              className="text-slate-400 hover:text-[#7b69c9] transition-colors underline underline-offset-2"
+              className="underline underline-offset-2 transition-colors hover:text-[var(--text-primary)]"
             >
               {tl("AI Act")}
             </button>
-            <span className="text-slate-300">•</span>
+            <span aria-hidden className="opacity-50">·</span>
             <Link
               to="/terms"
-              className="text-slate-400 hover:text-[var(--logo-pink)] transition-colors underline underline-offset-2"
+              className="underline underline-offset-2 transition-colors hover:text-[var(--text-primary)]"
             >
               {tl("Termini")}
             </Link>
@@ -182,13 +191,13 @@ export default function LandingPage() {
         <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden gap-0 flex flex-col">
           {openDocument && (
             <>
-              <DialogHeader className="border-b border-slate-200 bg-white/92 px-5 py-3 backdrop-blur-sm shrink-0">
+              <DialogHeader className="ds-frame-header shrink-0 px-5 py-3">
                 <DialogTitle className="text-base">{documentMeta[openDocument].title}</DialogTitle>
                 <DialogDescription className="text-xs">
                   {documentMeta[openDocument].description}
                 </DialogDescription>
               </DialogHeader>
-              <div className="flex-1 min-h-0 bg-slate-100">
+              <div className="min-h-0 flex-1 bg-[var(--ds-well)]">
                 <iframe
                   src={documentMeta[openDocument].src}
                   title={documentMeta[openDocument].title}
@@ -203,56 +212,22 @@ export default function LandingPage() {
   )
 }
 
-function MobileNavButton({
-  active,
-  children,
-  onClick,
-  tone,
-}: {
+function TabButton({ active, children, onClick }: {
   active: boolean
   children: React.ReactNode
   onClick: () => void
-  tone: 'rose' | 'violet' | 'sky'
 }) {
-  const toneClass = tone === 'rose'
-    ? 'border-rose-200 text-rose-700'
-    : tone === 'violet'
-      ? 'border-violet-200 text-violet-700'
-      : 'border-sky-200 text-sky-700'
-
-  const activeClass = tone === 'rose'
-    ? 'bg-rose-600 border-rose-600 text-white'
-    : tone === 'violet'
-      ? 'bg-violet-600 border-violet-600 text-white'
-      : 'bg-sky-600 border-sky-600 text-white'
-
   return (
-    <button
+    <Button
+      type="button"
+      tone="neutral"
+      surface="ghost"
       onClick={onClick}
-      className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${
-        active ? activeClass : `bg-white ${toneClass}`
-      }`}
+      aria-pressed={active}
+      className={`gap-2 text-sm ${active ? 'ds-selected' : 'text-[var(--text-muted)]'}`}
     >
       {children}
-    </button>
-  )
-}
-
-function TabButton({ active, children, onClick, color = '#262626' }: {
-  active: boolean
-  children: React.ReactNode
-  onClick: () => void
-  color?: string
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="relative rounded-lg px-4 py-2 text-sm font-semibold transition-colors hover:bg-slate-50"
-      style={{ color: active ? color : undefined }}
-      aria-pressed={active}
-    >
-      <span className="relative z-10">{children}</span>
-    </button>
+    </Button>
   )
 }
 
@@ -293,14 +268,14 @@ function ModuleCard({ moduleKey, illustration }: { moduleKey: string; illustrati
   const { t } = useTranslation()
   const copy = MODULE_COPY[moduleKey]
   return (
-    <article className="flex flex-col gap-3 border-t border-slate-200 py-6 text-left">
+    <article className="ui-card flex flex-col gap-4 p-5 text-left">
       <img src={`/illustrations/nav/${illustration}.webp`} alt="" width={80} height={80}
         loading="lazy" decoding="async" className="h-20 w-20 shrink-0 object-contain" />
       <div>
-        <h3 className="text-base font-semibold text-[var(--logo-ink)]">
+        <h3 className="text-base font-semibold text-[var(--text-primary)]">
           {t(`landing.mod_${moduleKey}_title`, { defaultValue: copy.title })}
         </h3>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+        <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
           {t(`landing.mod_${moduleKey}_body`, { defaultValue: copy.body })}
         </p>
       </div>
@@ -374,41 +349,41 @@ function HomeSection({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.5 }}
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }} transition={{ duration: 0.24, ease: [0.2, 0, 0, 1] }}
       className="w-full max-w-6xl space-y-20 md:space-y-28"
     >
 
       {/* ---------- Hero ---------- */}
       <section className="relative grid gap-8 py-4 md:grid-cols-[1fr_1.1fr] md:items-center md:gap-10 md:py-10">
         <div className="relative text-left">
-          <span className="text-xs font-semibold text-slate-500">
+          <span className="text-sm text-[var(--text-secondary)]">
             {td('hero_eyebrow', tl("Piattaforma didattica per la scuola"))}
           </span>
 
-          <h1 className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--logo-ink)] md:text-5xl lg:text-6xl">
+          <h1 className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--text-primary)] md:text-5xl lg:text-6xl">
             {td('hero_title', tl("L’intelligenza artificiale"))}<br />
-            <span className="text-[var(--logo-violet-strong)]">{td('hero_title_accent', tl("entra in classe."))}</span>
+            <span className="text-[var(--logo-violet-strong)]">{td('hero_title_accent', tl("entra in classe"))}</span>
           </h1>
 
-          <p className="mt-5 max-w-xl text-base leading-relaxed text-slate-700 md:text-lg">
+          <p className="mt-6 max-w-xl text-base leading-relaxed text-[var(--text-muted)] md:text-lg">
             {td('hero_body', tl("Uno spazio per insegnare, creare e sperimentare con l'AI. Il docente guida, gli studenti esplorano."))}
           </p>
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button tone="accent" surface="solid" onClick={onTeacherCta}>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Button tone="accent" surface="solid" density="roomy" onClick={onTeacherCta}>
               {td('cta_teachers', tl("Area docenti"))}
             </Button>
-            <Button tone="neutral" surface="outline" onClick={onStudentCta}>
+            <Button tone="neutral" surface="outline" density="roomy" onClick={onStudentCta}>
               {td('cta_students', tl("Accesso studenti"))}
             </Button>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-x-5 gap-y-1 text-sm font-semibold">
-            <button onClick={() => scrollTo('landing-modules')} className="inline-flex items-center gap-1 text-slate-600 transition-colors hover:text-[var(--logo-pink)]">
+          <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <button onClick={() => scrollTo('landing-modules')} className="inline-flex items-center gap-1 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]">
               {td('link_modules', tl("Cosa trovi dentro"))} <ArrowRight size={14} />
             </button>
-            <button onClick={() => scrollTo('landing-tutorial')} className="inline-flex items-center gap-1 text-slate-600 transition-colors hover:text-[var(--logo-pink)]">
+            <button onClick={() => scrollTo('landing-tutorial')} className="inline-flex items-center gap-1 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]">
               {td('link_tutorial', tl("Come si entra"))} <ArrowRight size={14} />
             </button>
           </div>
@@ -422,8 +397,13 @@ function HomeSection({
         </figure>
       </section>
 
-      <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 border-y border-slate-100 py-5 text-xs font-semibold text-slate-500">
-        {pillars.map(title => <span key={title}>{title}</span>)}
+      <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 py-5 text-sm text-[var(--text-muted)] shadow-[0_-1px_0_var(--ds-frame-divider),0_1px_0_var(--ds-frame-divider)]">
+        {pillars.map(title => (
+          <span key={title} className="inline-flex items-center gap-2">
+            <Check size={16} className="text-[var(--logo-violet-strong)]" />
+            {title}
+          </span>
+        ))}
       </div>
 
       {/* ---------- Modules ---------- */}
@@ -433,7 +413,7 @@ function HomeSection({
           title={td('modules_title', tl("Tutto quello che serve per una lezione con l'AI"))}
           body={td('modules_body', tl("Ogni modulo si accende per sessione: il docente decide cosa vedono gli studenti."))}
         />
-        <div className="mt-8 grid gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="ds-well mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {MODULES.map(m => (
             <ModuleCard key={m.key} moduleKey={m.key} illustration={m.illustration} />
           ))}
@@ -477,13 +457,13 @@ function HomeSection({
 
       {/* ---------- Contacts ---------- */}
       <section id="landing-contacts" className="scroll-mt-28">
-        <div className="flex flex-col gap-6 border-t border-slate-200 py-10 text-left md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-6 py-10 text-left shadow-[0_-1px_0_var(--ds-frame-divider)] md:flex-row md:items-center md:justify-between">
           <div className="max-w-xl">
-            <span className="text-xs font-semibold text-[var(--logo-pink)]">{td('contacts_eyebrow', tl("Contatti"))}</span>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--logo-ink)] md:text-3xl">
+            <span className="text-sm text-[var(--text-secondary)]">{td('contacts_eyebrow', tl("Contatti"))}</span>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--text-primary)] md:text-3xl">
               {td('contacts_title', tl("Vuoi portare Golinelli.ai nella tua scuola?"))}
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600 md:text-base">
+            <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)] md:text-base">
               {td('contacts_body', tl("Per richiedere un invito docente, avere informazioni sulla piattaforma o segnalare un problema, scrivici."))}
             </p>
           </div>
@@ -509,9 +489,9 @@ function HomeSection({
 function SectionHeading({ eyebrow, title, body }: { eyebrow: string; title: string; body: string }) {
   return (
     <div className="max-w-2xl text-left">
-      <span className="text-xs font-semibold text-[var(--logo-pink)]">{eyebrow}</span>
-      <h2 className="mt-2 text-3xl font-semibold leading-tight tracking-tight text-[var(--logo-ink)] md:text-4xl">{title}</h2>
-      <p className="mt-3 text-base leading-relaxed text-slate-600">{body}</p>
+      <span className="text-sm text-[var(--text-secondary)]">{eyebrow}</span>
+      <h2 className="mt-2 text-3xl font-semibold leading-tight tracking-tight text-[var(--text-primary)] md:text-4xl">{title}</h2>
+      <p className="mt-3 text-base leading-relaxed text-[var(--text-muted)]">{body}</p>
     </div>
   )
 }
@@ -530,20 +510,19 @@ function TutorialTrack({
 }) {
   const a = ACCENT[accent]
   return (
-    <details className="group rounded-2xl border border-slate-200 p-5 md:p-6">
+    <details className="ui-card group p-5 md:p-6">
       <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: a.soft, color: a.ink }}>
             <Icon size={20} />
           </span>
-          <h3 className="text-xl font-semibold text-[var(--logo-ink)]">{title}</h3>
+          <h3 className="text-xl font-semibold text-[var(--text-primary)]">{title}</h3>
         </div>
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
-          style={{ background: a.soft, color: a.ink }}
-        >
-          {badge}
-          <span aria-hidden className="ml-1 text-base transition-transform group-open:rotate-45">+</span>
+        <span className="inline-flex items-center gap-2">
+          <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: a.soft, color: a.ink }}>
+            {badge}
+          </span>
+          <ChevronDown aria-hidden size={18} className="text-[var(--text-muted)] transition-transform duration-200 group-open:rotate-180" />
         </span>
       </summary>
 
@@ -557,8 +536,8 @@ function TutorialTrack({
               {i + 1}
             </span>
             <div>
-              <p className="font-semibold text-[var(--logo-ink)]">{s.title}</p>
-              <p className="mt-0.5 text-sm leading-relaxed text-slate-600">{s.body}</p>
+              <p className="font-semibold text-[var(--text-primary)]">{s.title}</p>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--text-muted)]">{s.body}</p>
             </div>
           </li>
         ))}
@@ -566,10 +545,10 @@ function TutorialTrack({
 
       <div className="mt-6 flex gap-3 rounded-[var(--ds-radius-panel)] p-4" style={{ background: a.soft }}>
         <Lock size={18} className="mt-0.5 shrink-0" style={{ color: a.ink }} />
-        <p className="text-sm font-medium leading-relaxed text-slate-800">{note}</p>
+        <p className="text-sm leading-relaxed text-[var(--text-primary)]">{note}</p>
       </div>
 
-      <Button tone="neutral" surface="outline" onClick={onAction} className="mt-5 w-full">
+      <Button tone="neutral" surface="outline" onClick={onAction} className="mt-6 w-full">
         {actionLabel} <ArrowRight size={16} />
       </Button>
     </details>
@@ -594,27 +573,24 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-[var(--shadow-xl)] border border-slate-200 p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-sm">
         {sent ? (
-          <div className="text-center py-4">
-            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-              <Check className="w-6 h-6 text-green-600" />
-            </div>
-            <h3 className="text-base font-semibold text-slate-800 mb-1">{tl("Email inviata")}</h3>
-            <p className="text-sm text-slate-500 mb-4">{tl("Se la mail è registrata riceverai un link per reimpostare la password entro qualche minuto.")}</p>
-            <Button tone="neutral" surface="solid" className="w-full">{tl("Chiudi")}</Button>
+          <div className="py-2 text-center">
+            <Check className="mx-auto mb-4 h-8 w-8 text-emerald-600" />
+            <DialogHeader className="items-center text-center">
+              <DialogTitle className="text-base">{tl("Email inviata")}</DialogTitle>
+              <DialogDescription>{tl("Se la mail è registrata riceverai un link per reimpostare la password entro qualche minuto.")}</DialogDescription>
+            </DialogHeader>
+            <Button tone="neutral" surface="solid" className="mt-6 w-full" onClick={onClose}>{tl("Chiudi")}</Button>
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-slate-800">{tl("Recupera password")}</h3>
-              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-sm text-slate-500 mb-4">{tl("Inserisci l'email del tuo account docente. Ti invieremo un link per reimpostare la password.")}</p>
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <DialogHeader>
+              <DialogTitle className="text-base">{tl("Recupera password")}</DialogTitle>
+              <DialogDescription>{tl("Inserisci l'email del tuo account docente. Ti invieremo un link per reimpostare la password.")}</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="mt-2 space-y-3">
               <Input
                 type="email"
                 autoFocus
@@ -622,18 +598,17 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
                 placeholder="docente@scuola.it"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="bg-slate-50 border-slate-200"
               />
               <Button type="submit" tone="accent" surface="solid" className="w-full" disabled={loading || !email.trim()}>
                 {loading ? (
-                  <span className="flex items-center gap-2"><Loader2 className="animate-spin h-4 w-4" />{tl("Invio...")}</span>
+                  <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />{tl("Invio…")}</span>
                 ) : tl("Invia link di reset")}
               </Button>
             </form>
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -645,15 +620,15 @@ function TeachersSection() {
   return (
     <>
     <motion.div
-      initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }} className="w-full max-w-md"
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }} transition={{ duration: 0.24, ease: [0.2, 0, 0, 1] }} className="w-full max-w-md"
     >
-      <div className="overflow-hidden rounded-xl bg-[var(--ds-surface-raised)] shadow-[var(--ds-shadow-3)]">
-        <div className="bg-blue-50 px-5 py-5 text-left text-slate-900 md:p-6 md:text-center">
-          <div className="relative z-10">
-            <img src="/illustrations/nav/support.webp" alt="" width={96} height={96} className="mb-3 h-24 w-24 object-contain md:mx-auto" />
-            <h2 className="text-2xl font-semibold">{t('landing.nav_teacher_area')}</h2>
-            <p className="text-sm text-slate-600">{t('login.subtitle')}</p>
+      <div className="ui-card overflow-hidden">
+        <div className="ds-frame-header flex items-center gap-4 px-5 py-5 text-left md:px-8">
+          <img src="/illustrations/nav/support.webp" alt="" width={72} height={72} className="h-[72px] w-[72px] shrink-0 object-contain" />
+          <div className="min-w-0">
+            <h2 className="text-2xl font-semibold text-[var(--text-primary)]">{t('landing.nav_teacher_area')}</h2>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">{t('login.subtitle')}</p>
           </div>
         </div>
 
@@ -665,19 +640,17 @@ function TeachersSection() {
                 id="email" type="email"
                 placeholder={t('login.email_placeholder')}
                 value={email} onChange={(e) => setEmail(e.target.value)}
-                className="border-slate-200 bg-slate-50 focus:ring-blue-500"
                 required
               />
             </div>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <Label htmlFor="password">Password</Label>
-                <button type="button" onClick={() => setShowForgot(true)} className="text-xs text-blue-700 hover:underline">{tl("Recupera?")}</button>
+                <button type="button" onClick={() => setShowForgot(true)} className="text-xs text-[var(--text-secondary)] underline-offset-2 hover:underline">{tl("Password dimenticata?")}</button>
               </div>
               <Input
                 id="password" type="password"
                 value={password} onChange={(e) => setPassword(e.target.value)}
-                className="border-slate-200 bg-slate-50 focus:ring-blue-500"
                 required
               />
             </div>
@@ -686,11 +659,11 @@ function TeachersSection() {
             </Button>
           </form>
 
-          <div className="mt-8 rounded-2xl bg-[var(--ds-surface-tint)] p-4 text-left shadow-[var(--ds-shadow-inset)]">
+          <div className="mt-8 rounded-[var(--ds-radius-panel)] bg-[var(--surface-logo-violet)] p-4 text-left">
             <p className="flex items-center gap-2 text-sm font-semibold text-[var(--logo-violet-strong)]">
               <KeyRound size={16} /> {t('landing.invite_only_title', { defaultValue: 'Registrazione solo su invito' })}
             </p>
-            <p className="mt-1 text-sm leading-relaxed text-slate-600">
+            <p className="mt-1 text-sm leading-relaxed text-[var(--text-muted)]">
               {t('landing.invite_only_body', { defaultValue: 'Al momento i docenti non possono iscriversi da soli: l\'account si attiva dal link ricevuto via email. Non hai un invito?' })}{' '}
               <Link to="/teacher-request" className="font-semibold text-[var(--logo-violet-strong)] underline underline-offset-2">
                 {t('landing.invite_only_request', { defaultValue: 'Richiedilo qui' })}
@@ -700,8 +673,8 @@ function TeachersSection() {
         </div>
       </div>
       <div className="mt-4 text-center">
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-medium border border-amber-200">
-          <FlaskConical size={12} /> {tl("Piattaforma in Beta Privata")}
+        <span className="inline-flex items-center gap-2 text-xs text-[var(--text-muted)]">
+          <FlaskConical size={16} /> {tl("Piattaforma in beta privata")}
         </span>
       </div>
     </motion.div>
@@ -714,20 +687,22 @@ function StudentsSection() {
   const { t } = useTranslation()
   return (
     <motion.div
-      initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 20 }} className="w-full max-w-md"
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }} transition={{ duration: 0.24, ease: [0.2, 0, 0, 1] }} className="w-full max-w-md"
     >
-      <div className="overflow-hidden rounded-xl bg-[var(--ds-surface-raised)] shadow-[var(--ds-shadow-3)]">
-        <div className="bg-blue-50 px-5 py-5 text-left text-slate-900 md:p-6 md:text-center">
-          <img src="/illustrations/nav/classes.webp" alt="" width={96} height={96} className="mb-3 h-24 w-24 object-contain md:mx-auto" />
-          <h2 className="text-2xl font-semibold">{t('landing.nav_student_area')}</h2>
-          <p className="text-sm text-slate-600">{t('student_join.subtitle')}</p>
+      <div className="ui-card overflow-hidden">
+        <div className="ds-frame-header flex items-center gap-4 px-5 py-5 text-left md:px-8">
+          <img src="/illustrations/nav/classes.webp" alt="" width={72} height={72} className="h-[72px] w-[72px] shrink-0 object-contain" />
+          <div className="min-w-0">
+            <h2 className="text-2xl font-semibold text-[var(--text-primary)]">{t('landing.nav_student_area')}</h2>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">{t('student_join.subtitle')}</p>
+          </div>
         </div>
 
         <div className="p-5 md:p-8">
-          <div className="mb-5 flex gap-3 rounded-2xl bg-[var(--ds-surface-tint)] p-4 text-left shadow-[var(--ds-shadow-inset)]">
+          <div className="mb-6 flex gap-3 rounded-[var(--ds-radius-panel)] bg-[var(--surface-logo-blue)] p-4 text-left">
             <Lock size={18} className="mt-0.5 shrink-0 text-[var(--logo-blue-strong)]" />
-            <p className="text-sm leading-relaxed text-slate-700">
+            <p className="text-sm leading-relaxed text-[var(--text-primary)]">
               {t('landing.student_code_note', { defaultValue: 'Per entrare serve il codice di una sessione già avviata dal tuo docente. Senza codice non è possibile accedere.' })}
             </p>
           </div>
