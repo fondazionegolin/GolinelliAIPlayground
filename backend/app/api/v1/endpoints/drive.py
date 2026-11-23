@@ -9,7 +9,7 @@ import re
 import secrets
 import zipfile
 from pathlib import PurePosixPath
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional, Sequence
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
@@ -40,7 +40,7 @@ public_router = APIRouter()
 INLINE_SAFE_PREFIXES = ("image/", "video/", "audio/", "text/plain", "application/pdf")
 UNSAFE_INLINE = {"image/svg+xml", "text/html", "application/xhtml+xml"}
 MAX_ZIP_BYTES = 1024 * 1024 * 1024
-View = Literal["folder", "recent", "starred", "trash", "shared", "search"]
+View = Literal["all", "folder", "recent", "starred", "trash", "shared", "search"]
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -262,7 +262,13 @@ async def _get_or_create_folder(db: AsyncSession, owner: UUID, tenant_id, parent
     return folder
 
 
-async def _check_targets(db: AsyncSession, principal: drive.DrivePrincipal, entries: list[ShareEntry]) -> list[tuple[str, UUID, str]]:
+async def _check_targets(
+    db: AsyncSession,
+    principal: drive.DrivePrincipal,
+    entries: list[ShareEntry],
+    *,
+    existing_class_ids: frozenset[UUID] = frozenset(),
+) -> list[tuple[str, UUID, str]]:
     teacher = principal.teacher
     available = await share_targets(db, StudentOrTeacher(teacher=teacher, student=principal.student))
     allowed_students = {UUID(row["id"]) for row in available["students"]}
@@ -290,11 +296,19 @@ async def _check_targets(db: AsyncSession, principal: drive.DrivePrincipal, entr
                 continue
             resolved.append(("teacher", target.id, entry.role))
         elif entry.target_type == "class":
-            if not teacher or not entry.target_id or not await teacher_can_access_class(db, teacher, entry.target_id):
+            allowed = entry.target_id and (
+                await teacher_can_access_class(db, teacher, entry.target_id) if teacher
+                else entry.target_id == principal.student_class_id and entry.target_id in existing_class_ids
+            )
+            if not allowed:
                 raise HTTPException(status_code=403, detail="Classe non accessibile")
             resolved.append(("class", entry.target_id, entry.role))
         else:
-            if not teacher or not entry.target_id or not await teacher_can_access_session(db, teacher, entry.target_id):
+            allowed = entry.target_id and (
+                await teacher_can_access_session(db, teacher, entry.target_id) if teacher
+                else entry.target_id == principal.student.session_id and bool(available["sessions"])
+            )
+            if not allowed:
                 raise HTTPException(status_code=403, detail="Sessione non accessibile")
             resolved.append(("session", entry.target_id, entry.role))
     return resolved
@@ -349,7 +363,9 @@ async def list_items(
 
     breadcrumb: list[dict] = []
     role: str | None = "owner"
-    if not principal.is_teacher and view == "folder" and not parent_id:
+    if view == "all":
+        parent_id = None
+    if not principal.is_teacher and (view == "all" or (view == "folder" and not parent_id)):
         root = await drive.sync_student_audio(db, principal.student)
         parent_id = root.id
         await db.commit()
@@ -368,33 +384,29 @@ async def list_items(
         rows = (await db.execute(
             _visible(select(DriveItem)).where(DriveItem.parent_id == folder.id).where(DriveItem.trashed_at.is_(None))
         )).scalars().all()
-        return {"items": await _serialize(db, list(rows), role), "breadcrumb": breadcrumb, "role": role,
+        items = await _serialize(db, list(rows), role) if role == "owner" else await _shared_items(db, principal, rows)
+        return {"items": items, "breadcrumb": breadcrumb, "role": role,
                 "folder": (await _serialize(db, [folder], role))[0]}
 
-    if view == "shared":
+    shared = []
+    if view in ("all", "shared"):
         targets = principal.share_targets()
         target_filter = or_(*[(DriveShare.target_type == kind) & (DriveShare.target_id == target_id) for kind, target_id in targets])
-        share_rows = (await db.execute(select(DriveShare.item_id, DriveShare.role).where(target_filter))).all()
-        best: dict[UUID, str] = {}
-        for item_id, share_role in share_rows:
-            if drive.ROLE_RANK.get(share_role, 0) > drive.ROLE_RANK.get(best.get(item_id, ""), 0):
-                best[item_id] = share_role
-        rows = (await db.execute(
-            _visible(select(DriveItem)).where(DriveItem.id.in_(list(best))).where(DriveItem.trashed_at.is_(None))
-        )).scalars().all() if best else []
-        items = []
-        for row in rows:
-            effective_role, _ = await drive.resolve_role(db, principal, row)
-            if effective_role:
-                items.extend(await _serialize(db, [row], effective_role))
-        return {"items": items, "breadcrumb": [], "role": None}
+        share_ids = select(DriveShare.item_id).where(target_filter)
+        rows = (await db.scalars(
+            _visible(select(DriveItem)).where(DriveItem.id.in_(share_ids), DriveItem.trashed_at.is_(None))
+        )).all()
+        shared = await _shared_items(db, principal, rows, roots_only=True)
+        if view == "shared":
+            return {"items": shared, "breadcrumb": [], "role": None}
 
     if principal.is_teacher:
         base = _visible(select(DriveItem)).where(DriveItem.owner_teacher_id == principal.teacher.id, DriveItem.owner_student_id.is_(None))
     else:
         base = _visible(select(DriveItem)).where(DriveItem.owner_student_id == principal.student.id)
-    if view == "folder":
-        query = base.where(DriveItem.parent_id.is_(None)).where(DriveItem.trashed_at.is_(None))
+    if view in ("all", "folder"):
+        query = base.where(DriveItem.parent_id == parent_id if parent_id else DriveItem.parent_id.is_(None))
+        query = query.where(DriveItem.trashed_at.is_(None))
     elif view == "recent":
         query = base.where(DriveItem.kind != "folder").where(DriveItem.trashed_at.is_(None)).order_by(DriveItem.updated_at.desc()).limit(60)
     elif view == "starred":
@@ -410,7 +422,21 @@ async def list_items(
             return {"items": [], "breadcrumb": [], "role": "owner"}
         query = base.where(DriveItem.trashed_at.is_(None)).where(DriveItem.name.ilike(f"%{term}%")).limit(200)
     rows = (await db.execute(query)).scalars().all()
-    return {"items": await _serialize(db, list(rows), "owner"), "breadcrumb": breadcrumb, "role": role}
+    return {"items": await _serialize(db, list(rows), "owner") + shared, "breadcrumb": breadcrumb, "role": role}
+
+
+async def _shared_items(
+    db: AsyncSession, principal: drive.DrivePrincipal, rows: Sequence[DriveItem], *, roots_only: bool = False,
+) -> list[dict]:
+    by_role: dict[str, list[DriveItem]] = {}
+    for row in rows:
+        role, root = await drive.resolve_role(db, principal, row)
+        if role and (not roots_only or (root and root.id == row.id)):
+            by_role.setdefault(role, []).append(row)
+    items = []
+    for role, group in by_role.items():
+        items.extend(await _serialize(db, group, role))
+    return items
 
 
 @router.get("/items/{item_id}")
@@ -638,8 +664,6 @@ async def upload(
             mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
         if name.lower().endswith(".glb"):
             mime = "model/gltf-binary"
-        if target is None or (target.owner_student_id and (target.system_key or "").startswith("student:")):
-            target = await drive.type_folder(db, owner, owner_user.tenant_id, drive.file_category(name, mime), parent=target, student_id=target.owner_student_id if target else None)
         file_id = uuid4()
         suffix = PurePosixPath(name).suffix[:16]
         storage_key = f"{drive.DRIVE_PREFIX}{owner_user.tenant_id}/{owner}/{file_id}{suffix}"
@@ -899,7 +923,7 @@ async def share_targets(
         .where(SessionStudent.session_id.in_([session.id for session in sessions])).order_by(SessionStudent.nickname))).all() if sessions else []
     return {
         "classes": [{"id": str(cls.id), "name": cls.name} for cls in classes],
-        "sessions": [{"id": str(session.id), "name": session.title, "class_id": str(session.class_id), "status": getattr(session.status, "value", session.status)} for session in sessions] if teacher else [],
+        "sessions": [{"id": str(session.id), "name": session.title, "class_id": str(session.class_id), "status": getattr(session.status, "value", session.status)} for session in sessions],
         "students": [{"id": str(student.id), "name": student.nickname, "session": title} for student, title in students if not auth.student or student.id != auth.student.id],
         "teachers": [{"id": str(user.id), "name": f"{user.first_name or ''} {user.last_name or ''}".strip() or "Docente"} for user in teachers],
     }
@@ -963,8 +987,11 @@ async def put_shares(
     auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
 ):
     item = await _share_owned(db, auth, item_id)
-    resolved = await _check_targets(db, await _principal(db, auth), body.shares)
     existing = (await db.execute(select(DriveShare).where(DriveShare.item_id == item.id))).scalars().all()
+    resolved = await _check_targets(
+        db, await _principal(db, auth), body.shares,
+        existing_class_ids=frozenset(share.target_id for share in existing if share.target_type == "class"),
+    )
     wanted = {(kind, target_id): role for kind, target_id, role in resolved}
     for share in existing:
         key = (share.target_type, share.target_id)

@@ -2,10 +2,12 @@
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from io import BytesIO
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
+from starlette.datastructures import Headers
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -91,6 +93,57 @@ async def test_student_can_share_own_folder_with_peer_and_teacher_but_peer_canno
             await routes._check_targets(db, await drive.principal_for(db, None, students[0]), [routes.ShareEntry(target_type='teacher', target_id=other.id)])
         with pytest.raises(HTTPException):
             await routes._check_targets(db, await drive.principal_for(db, None, students[0]), [routes.ShareEntry(target_type='student', target_id=uuid4())])
+
+
+async def test_student_session_share_lists_folder_and_contents_for_students_and_teacher(tmp_path, monkeypatch):
+    async with isolated() as (db, teacher, other, students):
+        monkeypatch.setattr(drive, 'UPLOADS_ROOT', tmp_path)
+        owner, peer, newcomer = [StudentOrTeacher(student=student) for student in students]
+        teacher_auth = StudentOrTeacher(teacher=teacher)
+        private = await routes.upload(db, owner, [
+            UploadFile(BytesIO(b'private'), filename='appunti.txt', headers=Headers({'content-type': 'text/plain'})),
+        ], None, None)
+        folder = await routes.create_folder(routes.FolderCreate(name='Esperimento'), db, owner)
+        folder_id = UUID(folder['id'])
+        personal = await routes.list_items(db, owner, view='all')
+        assert {row['id'] for row in personal['items']} == {folder['id'], private['items'][0]['id']}
+        targets = await routes.share_targets(db, owner)
+        assert [session['id'] for session in targets['sessions']] == [str(owner.student.session_id)]
+        await routes.put_shares(folder_id, routes.SharesUpdate(shares=[
+            routes.ShareEntry(target_type='session', target_id=owner.student.session_id),
+            routes.ShareEntry(target_type='teacher', target_id=teacher.id),
+        ]), db, owner)
+        uploaded = await routes.upload(db, owner, [
+            UploadFile(BytesIO(b'risultati'), filename='misure.txt', headers=Headers({'content-type': 'text/plain'})),
+        ], folder_id, '["Risultati/misure.txt"]')
+        file_id = UUID(uploaded['items'][0]['id'])
+        subfolder_id = UUID(uploaded['items'][0]['parent_id'])
+        # A direct grant on a nested file must preserve the folder as the shared entry point.
+        await routes.put_shares(file_id, routes.SharesUpdate(shares=[
+            routes.ShareEntry(target_type='student', target_id=peer.student.id, role='editor'),
+        ]), db, owner)
+
+        for recipient in (peer, newcomer, teacher_auth):
+            shared = await routes.list_items(db, recipient, view='shared')
+            assert [(item['id'], item['role']) for item in shared['items']] == [(folder['id'], 'viewer')]
+            combined = await routes.list_items(db, recipient, view='all')
+            assert folder['id'] in {item['id'] for item in combined['items']}
+            assert private['items'][0]['id'] not in {item['id'] for item in combined['items']}
+            nested = await routes.list_items(db, recipient, view='folder', parent_id=folder_id)
+            assert [(item['id'], item['name']) for item in nested['items']] == [(str(subfolder_id), 'Risultati')]
+            contents = await routes.list_items(db, recipient, view='folder', parent_id=subfolder_id)
+            assert contents['breadcrumb'][0]['id'] == folder['id']
+            assert contents['items'][0]['role'] == ('editor' if recipient is peer else 'viewer')
+            exported = await routes.item_export(file_id, db, recipient, None)
+            assert exported.body == b'risultati'
+
+        assert (await routes.list_items(db, StudentOrTeacher(teacher=other), view='shared'))['items'] == []
+        with pytest.raises(HTTPException):
+            await routes.item_export(file_id, db, StudentOrTeacher(teacher=other), None)
+        with pytest.raises(HTTPException):
+            await routes.put_shares(folder_id, routes.SharesUpdate(shares=[
+                routes.ShareEntry(target_type='session', target_id=uuid4()),
+            ]), db, owner)
 
 
 async def test_bulk_share_preserves_existing_access_and_repeated_targets_are_unique():

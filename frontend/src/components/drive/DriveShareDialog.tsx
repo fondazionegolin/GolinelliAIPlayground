@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Copy, GraduationCap, Link2, Loader2, Mail, Shapes, Trash2, Users } from '@/components/icons'
-import { Button, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/design'
+import { Button, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Select } from '@/design'
 import { driveApi, type DriveShareTarget } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import type { DriveItem } from './driveTypes'
@@ -22,7 +22,6 @@ export function DriveShareDialog({ item, items = [item], isTeacher = true, onClo
   const [publicToken, setPublicToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [pick, setPick] = useState('')
   const [email, setEmail] = useState('')
   const [copied, setCopied] = useState(false)
 
@@ -48,11 +47,10 @@ export function DriveShareDialog({ item, items = [item], isTeacher = true, onClo
   }
   const taken = new Set(rows.map((row) => `${row.target_type}:${row.target_id}`))
 
-  const addPicked = () => {
-    if (!pick) return
+  const addPicked = (pick: string) => {
+    if (!pick || taken.has(pick)) return
     const [targetType, targetId] = pick.split(':') as [ShareRow['target_type'], string]
-    if (!taken.has(pick)) setRows((current) => [...current, { target_type: targetType, target_id: targetId, role: 'viewer' }])
-    setPick('')
+    setRows((current) => [...current, { target_type: targetType, target_id: targetId, role: 'viewer' }])
   }
   const addEmail = () => {
     const value = email.trim()
@@ -63,12 +61,16 @@ export function DriveShareDialog({ item, items = [item], isTeacher = true, onClo
   }
 
   const save = async () => {
+    const pendingEmail = email.trim()
+    const recipients: ShareRow[] = isTeacher && pendingEmail && !rows.some((row) => row.email?.toLowerCase() === pendingEmail.toLowerCase())
+      ? [...rows, { target_type: 'teacher', email: pendingEmail, role: 'viewer' }]
+      : rows
     setSaving(true)
     try {
-      const payload: DriveShareTarget[] = rows.map(({ target_type, target_id, email: mail, role }) => ({ target_type, target_id, email: mail, role }))
+      const payload: DriveShareTarget[] = recipients.map(({ target_type, target_id, email: mail, role }) => ({ target_type, target_id, email: mail, role }))
       if (bulk) await driveApi.addShares(items.map((entry) => entry.id), payload)
       else { const res = await driveApi.putShares(item.id, payload); setRows(res.data.shares) }
-      toast({ title: rows.length ? tl("Condivisione aggiornata") : tl("Condivisione rimossa") })
+      toast({ title: recipients.length ? tl("Condivisione aggiornata") : tl("Condivisione rimossa") })
       onChanged()
       onClose()
     } catch (err: any) {
@@ -109,33 +111,36 @@ export function DriveShareDialog({ item, items = [item], isTeacher = true, onClo
           ) : (
             <>
               <div className="space-y-2">
-                <label className="text-[11px] font-semibold text-slate-400">{tl("Persone, classi e sessioni")}</label>
-                <div className="flex gap-2">
-                  <select
-                    value={pick}
-                    onChange={(event) => setPick(event.target.value)}
-                    className="ds-control h-10 min-w-0 flex-1 rounded-xl px-3 text-sm"
-                  >
-                    <option value="">{tl("Scegli…")}</option>
-                    {targets.students.length > 0 && <optgroup label={tl("Studenti")}>
-                      {targets.students.map((student) => <option key={student.id} value={`student:${student.id}`} disabled={taken.has(`student:${student.id}`)}>{student.name} · {student.session}</option>)}
-                    </optgroup>}
-                    {targets.teachers.length > 0 && <optgroup label={tl("Docenti")}>
-                      {targets.teachers.map((teacher) => <option key={teacher.id} value={`teacher:${teacher.id}`} disabled={taken.has(`teacher:${teacher.id}`)}>{teacher.name}</option>)}
-                    </optgroup>}
-                    {targets.classes.map((cls) => (
-                      <optgroup key={cls.id} label={cls.name}>
-                        <option value={`class:${cls.id}`} disabled={taken.has(`class:${cls.id}`)}>{tl("Tutta la classe")} {cls.name}</option>
-                        {targets.sessions.filter((s) => s.class_id === cls.id).map((s) => (
-                          <option key={s.id} value={`session:${s.id}`} disabled={taken.has(`session:${s.id}`)}>
-                            {tl("Sessione ·")} {s.name}{s.status === 'active' ? tl(" (attiva)") : ''}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <Button type="button" tone="accent" surface="soft" onClick={addPicked} disabled={!pick}>{tl("Aggiungi")}</Button>
-                </div>
+                <label htmlFor="drive-share-recipient" className="text-[11px] font-semibold text-slate-400">{tl("Destinatari")}</label>
+                <Select
+                  id="drive-share-recipient"
+                  value=""
+                  onChange={(event) => addPicked(event.target.value)}
+                  disabled={saving}
+                >
+                  <option value="" disabled>{tl("Aggiungi un destinatario…")}</option>
+                  {!isTeacher && targets.sessions.map((session) => (
+                    <option key={session.id} value={`session:${session.id}`} disabled={taken.has(`session:${session.id}`)}>
+                      {tl("Tutti gli studenti della sessione")} · {session.name}
+                    </option>
+                  ))}
+                  {targets.students.length > 0 && <optgroup label={tl("Studenti")}>
+                    {targets.students.map((student) => <option key={student.id} value={`student:${student.id}`} disabled={taken.has(`student:${student.id}`)}>{student.name} · {student.session}</option>)}
+                  </optgroup>}
+                  {targets.teachers.length > 0 && <optgroup label={tl("Docenti")}>
+                    {targets.teachers.map((teacher) => <option key={teacher.id} value={`teacher:${teacher.id}`} disabled={taken.has(`teacher:${teacher.id}`)}>{teacher.name}</option>)}
+                  </optgroup>}
+                  {targets.classes.map((cls) => (
+                    <optgroup key={cls.id} label={cls.name}>
+                      <option value={`class:${cls.id}`} disabled={taken.has(`class:${cls.id}`)}>{tl("Tutta la classe")} {cls.name}</option>
+                      {targets.sessions.filter((s) => s.class_id === cls.id).map((s) => (
+                        <option key={s.id} value={`session:${s.id}`} disabled={taken.has(`session:${s.id}`)}>
+                          {tl("Sessione ·")} {s.name}{s.status === 'active' ? tl(" (attiva)") : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </Select>
               </div>
               {isTeacher && <div className="space-y-2">
                 <label className="text-[11px] font-semibold text-slate-400">{tl("Colleghi docenti")}</label>
@@ -219,7 +224,7 @@ export function DriveShareDialog({ item, items = [item], isTeacher = true, onClo
         </DialogBody>
         <DialogFooter>
           <Button type="button" tone="neutral" surface="ghost" onClick={onClose}>{tl("Annulla")}</Button>
-          <Button type="button" tone="accent" surface="solid" onClick={() => void save()} disabled={saving || loading || loadError || (bulk && rows.length === 0)}>
+          <Button type="button" tone="accent" surface="solid" onClick={() => void save()} disabled={saving || loading || loadError || (!!email.trim() && !email.includes('@')) || (bulk && rows.length === 0 && !email.trim())}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />} {tl("Salva")}
           </Button>
         </DialogFooter>

@@ -10,8 +10,9 @@ import {
   FolderPlus, FolderUp, HardDrive, LayoutGrid, List, Loader2, MoreVertical, Pencil, Plus, RefreshCw, RotateCcw,
   Share2, Star, Trash2, Upload, Users, X, Globe, Link2,
 } from '@/components/icons'
-import { Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, SearchPill } from '@/design'
+import { Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, SearchPill } from '@/design'
 import { driveApi, type DriveView } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/ui/use-toast'
 import {
   CATEGORY_META, FILTERS, canEdit, categoryOf, editorPathFor, formatBytes, formatDate, iconFor, sortItems,
@@ -34,6 +35,7 @@ interface UploadJob { id: string; label: string; progress: number; status: 'uplo
 interface PickedFile { file: File; path: string }
 
 const VIEW_LABEL: Record<DriveView, string> = {
+  all: tl("Tutti i file"),
   folder: tl("Il mio drive"), recent: tl("Recenti"), starred: tl("Speciali"), trash: tl("Cestino"), shared: tl("Condivisi con me"), search: tl("Risultati ricerca"),
 }
 
@@ -75,11 +77,12 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   const { toast } = useToast()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const accountId = useAuthStore((state) => isTeacher ? state.user?.id : state.studentSession?.student_id)
   // Teachers navigate through the URL (back/forward, shareable); students keep it local because the
   // student dashboard reacts to every query-string change.
   const [searchParams, setSearchParams] = useSearchParams()
-  const [localNav, setLocalNav] = useState<{ view: DriveView; folder: string | null }>({ view: 'folder', folder: null })
-  const view = isTeacher ? ((searchParams.get('view') as DriveView) || 'folder') : localNav.view
+  const [localNav, setLocalNav] = useState<{ view: DriveView; folder: string | null }>({ view: 'all', folder: null })
+  const view = isTeacher ? ((searchParams.get('view') as DriveView) || 'all') : localNav.view
   const folderId = isTeacher ? searchParams.get('folder') : localNav.folder
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -115,19 +118,20 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   }, [query])
 
   const effectiveView: DriveView = debounced && isTeacher ? 'search' : folderId ? 'folder' : view
-  const listingKey = ['drive', 'list', effectiveView, folderId, debounced] as const
+  const listingKey = ['drive', 'list', mode, accountId, effectiveView, folderId, debounced] as const
   const listing = useQuery<DriveListing>({
     queryKey: listingKey,
     queryFn: async () => (await driveApi.list({ view: effectiveView, parent_id: effectiveView === 'folder' ? folderId : undefined, q: debounced || undefined })).data,
-    placeholderData: (previous) => previous,
+    staleTime: 0,
+    refetchInterval: effectiveView === 'all' || effectiveView === 'shared' || folderId ? 15_000 : false,
   })
   const tree = useQuery<DriveFolderNode[]>({
-    queryKey: ['drive', 'tree'],
+    queryKey: ['drive', 'tree', mode, accountId],
     queryFn: async () => (await driveApi.tree()).data,
     staleTime: 15_000,
   })
   const usage = useQuery<{ used_bytes: number; quota_bytes: number }>({
-    queryKey: ['drive', 'usage'],
+    queryKey: ['drive', 'usage', accountId],
     queryFn: async () => (await driveApi.usage()).data,
     enabled: isTeacher,
   })
@@ -141,9 +145,9 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
     const folder = tree.data.find((node) => node.session_id === sessionParam && node.system_key === `session:${sessionParam}`)
     setSearchParams(folder ? { folder: folder.id } : {}, { replace: true })
   }, [sessionParam, tree.data, setSearchParams])
-  const role = listing.data?.role ?? (isTeacher ? 'owner' : null)
+  const role = listing.data?.role ?? (!folderId && isTeacher ? 'owner' : null)
   const inTrash = effectiveView === 'trash'
-  const writable = !inTrash && canEdit(role) && (effectiveView === 'folder' || effectiveView === 'search') && true
+  const writable = canEdit(role) && (effectiveView === 'all' || effectiveView === 'folder' || effectiveView === 'search')
 
   const items = useMemo(() => {
     const raw = listing.data?.items ?? []
@@ -158,12 +162,12 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   const go = (next: { view?: DriveView; folder?: string | null }) => {
     setQuery('')
     if (!isTeacher) {
-      setLocalNav({ view: next.view ?? 'folder', folder: next.folder ?? null })
+      setLocalNav({ view: next.view ?? 'all', folder: next.folder ?? null })
       return
     }
     const params = new URLSearchParams()
     if (next.folder) params.set('folder', next.folder)
-    else if (next.view && next.view !== 'folder') params.set('view', next.view)
+    else if (next.view && next.view !== 'all') params.set('view', next.view)
     setSearchParams(params)
   }
 
@@ -180,7 +184,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
     if (item.kind === 'folder') { go({ folder: item.id }); return }
     // Platform artifacts (documents, presentations, 3D models) open in their native editor; the
     // preview modal is only for plain uploaded files that have no editor.
-    const editorPath = isTeacher ? editorPathFor(item) : null
+    const editorPath = isTeacher && item.role === 'owner' ? editorPathFor(item) : null
     if (editorPath) navigate(editorPath)
     else setPreview(item)
   }
@@ -419,15 +423,15 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
 
   // ── Rendering helpers ────────────────────────────────────────────────────
   const breadcrumb = listing.data?.breadcrumb ?? []
-  const sharedLabel = isTeacher ? VIEW_LABEL.shared : tl("Condivisi con me")
-  const rootLabel = isTeacher ? (folderId && breadcrumb.length && listing.data?.role !== 'owner' ? sharedLabel : VIEW_LABEL[folderId ? 'folder' : effectiveView]) : listing.data?.role === 'owner' ? tl('I miei file') : sharedLabel
   const rootView: DriveView = folderId && listing.data?.role !== 'owner' ? 'shared' : folderId ? 'folder' : effectiveView
-  const title = debounced && isTeacher ? tl("Risultati per «{0}»", debounced) : folderId ? breadcrumb[breadcrumb.length - 1]?.name ?? '' : effectiveView === 'shared' ? sharedLabel : VIEW_LABEL[effectiveView]
+  const ownLabel = isTeacher ? VIEW_LABEL.folder : tl("I miei file")
+  const rootLabel = rootView === 'folder' ? ownLabel : VIEW_LABEL[rootView]
+  const title = debounced && isTeacher ? tl("Risultati per «{0}»", debounced) : rootLabel
 
   const menuActions = (item: DriveItem) => {
     const targets = selected.has(item.id) && selectedItems.length > 1 ? selectedItems : [item]
     const single = targets.length === 1
-    const editorPath = isTeacher && single ? editorPathFor(item) : null
+    const editorPath = isTeacher && single && item.role === 'owner' ? editorPathFor(item) : null
     const isDoc = item.source_type === 'document' || item.source_type === 'presentation'
     const editableTargets = targets.filter((entry) => canEdit(entry.role) && !entry.is_system)
     const owned = targets.every((entry) => entry.role === 'owner')
@@ -504,7 +508,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
       {isTeacher && (
         <aside className="ds-panel hidden w-64 shrink-0 flex-col rounded-[var(--card-radius)] p-3 lg:flex" onClick={(event) => event.stopPropagation()}>
           <div className="relative mb-3">
-            <Button type="button" tone="accent" surface="solid" className="w-full justify-start gap-2 rounded-2xl" onClick={(event) => { event.stopPropagation(); setNewMenuOpen((value) => !value) }}>
+            <Button type="button" tone="accent" surface="solid" className="w-full justify-start gap-2 rounded-2xl" disabled={!writable} onClick={(event) => { event.stopPropagation(); setNewMenuOpen((value) => !value) }}>
               <Plus className="h-4 w-4" /> {tl("Nuovo")}
             </Button>
             {newMenuOpen && (
@@ -516,7 +520,8 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
             )}
           </div>
           <nav className="flex flex-col gap-0.5">
-            {navEntry('folder', <HardDrive className="h-4 w-4" />, tl("Il mio drive"), null)}
+            {navEntry('all', <Folder className="h-4 w-4" />, VIEW_LABEL.all)}
+            {navEntry('folder', <HardDrive className="h-4 w-4" />, ownLabel, null)}
           </nav>
           <div className="mt-1 min-h-0 flex-1 overflow-y-auto pr-1">
             <FolderTree
@@ -559,7 +564,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
               <button
                 type="button"
                 onClick={() => go({ view: rootView })}
-                {...(rootView === 'folder' ? folderDropProps(null) : {})}
+                {...(rootView === 'folder' || rootView === 'all' ? folderDropProps(null) : {})}
                 className={`shrink-0 rounded-lg px-2 py-1 font-semibold text-slate-500 hover:bg-slate-100 ${folderId ? '' : 'text-slate-900'} ${dropTarget === 'root' ? 'ring-2 ring-[var(--app-accent)]' : ''}`}
               >
                 {folderId ? rootLabel : title}
@@ -570,7 +575,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
                   <button
                     type="button"
                     onClick={() => go({ folder: crumb.id })}
-                    {...folderDropProps(crumb.id, index < breadcrumb.length - 1)}
+                    {...folderDropProps(crumb.id, listing.data?.role === 'owner' && index < breadcrumb.length - 1)}
                     className={`truncate rounded-lg px-2 py-1 ${index === breadcrumb.length - 1 ? 'font-semibold text-slate-900' : 'font-semibold text-slate-500 hover:bg-slate-100'} ${dropTarget === crumb.id ? 'ring-2 ring-[var(--app-accent)]' : ''}`}
                   >
                     {crumb.name}
@@ -583,7 +588,14 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
             )}
           </div>
 
-          {!isTeacher && <div className="flex gap-2 py-2"><Button tone="neutral" surface="ghost" className={rootView === 'folder' ? 'ds-selected' : ''} onClick={() => go({view: 'folder'})}>{tl('I miei file')}</Button><Button tone="neutral" surface="ghost" className={rootView === 'shared' ? 'ds-selected' : ''} onClick={() => go({view: 'shared'})}>{tl('Condivisi con me')}</Button><Button tone="neutral" surface="ghost" onClick={music.open}>{tl('Musica e playlist')}</Button></div>}
+          <div className={`flex flex-wrap gap-2 py-2 ${isTeacher ? 'lg:hidden' : ''}`}>
+            {(['all', 'folder', 'shared'] as const).map((entry) => (
+              <Button key={entry} tone="neutral" surface="ghost" aria-pressed={rootView === entry} className={rootView === entry ? 'ds-selected' : ''} onClick={() => go({ view: entry })}>
+                {entry === 'folder' ? ownLabel : VIEW_LABEL[entry]}
+              </Button>
+            ))}
+            {!isTeacher && <Button tone="neutral" surface="ghost" onClick={music.open}>{tl('Musica e playlist')}</Button>}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {selectedItems.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1 rounded-2xl bg-[var(--app-accent-soft)] px-2 py-1">
@@ -926,22 +938,30 @@ function UploadPanel({ jobs, onClose }: { jobs: UploadJob[]; onClose: () => void
 function NewFolderDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string) => Promise<void> }) {
   const [name, setName] = useState(tl("Nuova cartella"))
   const [busy, setBusy] = useState(false)
+  const submitting = useRef(false)
   const submit = async () => {
-    if (!name.trim()) return
+    if (submitting.current || !name.trim()) return
+    submitting.current = true
     setBusy(true)
-    try { await onCreate(name.trim()) } finally { setBusy(false) }
+    try { await onCreate(name.trim()) } finally {
+      submitting.current = false
+      setBusy(false)
+    }
   }
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+    <Dialog open onOpenChange={(open) => { if (!open && !submitting.current) onClose() }}>
       <DialogContent size="sm">
         <DialogHeader><DialogTitle>{tl("Nuova cartella")}</DialogTitle></DialogHeader>
         <DialogBody>
-          <input autoFocus value={name} onChange={(event) => setName(event.target.value)} onFocus={(event) => event.target.select()}
-            onKeyDown={(event) => { if (event.key === 'Enter') void submit() }}
-            className="ds-control h-11 w-full rounded-xl px-3 text-sm outline-none focus:shadow-[var(--ds-shadow-focus)]" />
+          <Input autoFocus aria-label={tl("Nome della cartella")} value={name} onChange={(event) => setName(event.target.value)} onFocus={(event) => event.target.select()}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+              event.preventDefault()
+              if (!event.repeat) void submit()
+            }} />
         </DialogBody>
         <DialogFooter>
-          <Button type="button" tone="neutral" surface="ghost" onClick={onClose}>{tl("Annulla")}</Button>
+          <Button type="button" tone="neutral" surface="ghost" disabled={busy} onClick={onClose}>{tl("Annulla")}</Button>
           <Button type="button" tone="accent" surface="solid" onClick={() => void submit()} disabled={busy || !name.trim()}>
             {busy && <Loader2 className="h-4 w-4 animate-spin" />} {tl("Crea")}
           </Button>

@@ -1534,7 +1534,7 @@ export const filesApi = {
     api.get(`/files/session/${sessionId}`),
 }
 
-export type DriveView = 'folder' | 'recent' | 'starred' | 'trash' | 'shared' | 'search'
+export type DriveView = 'all' | 'folder' | 'recent' | 'starred' | 'trash' | 'shared' | 'search'
 export type DriveShareTarget = { target_type: 'session' | 'class' | 'teacher' | 'student'; target_id?: string; email?: string; role: 'viewer' | 'editor' }
 
 export const driveApi = {

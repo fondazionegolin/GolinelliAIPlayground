@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-23T12:04:37.879583+00:00",
-  "version_label": "2026.11.23-a44bc209",
+  "generated_at": "2026-11-23T14:04:05.008685+00:00",
+  "version_label": "2026.11.23-427b5f8b",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 37 commit dall'ultima release pubblicata.",
-  "git_ref": "a44bc209b7134af33e25c9aaf1bcf1bdb2b94fc5",
+  "summary": "Bozza generata automaticamente da 39 commit dall'ultima release pubblicata.",
+  "git_ref": "427b5f8b499aeb3e55c7dcb1622e95664c157f8b",
   "items": [
     {
       "category": "new",
@@ -189,6 +189,16 @@
       "category": "new",
       "title": "Canvas: grab cursor, local cut-out, image-to-3D with AR QR, ask-about-area; drive naming/sharing",
       "description": "Canvas: grab cursor, local cut-out, image-to-3D with AR QR, ask-about-area; drive naming/sharing"
+    },
+    {
+      "category": "new",
+      "title": "Canvas: handwriting font, orange flags with collision-free placement, SVG import, board tables",
+      "description": "Canvas: handwriting font, orange flags with collision-free placement, SVG import, board tables"
+    },
+    {
+      "category": "new",
+      "title": "Canvas: figure library (pie, bars, fractions, Venn, truth tables, Vega-Lite, JSXGraph), Socratic tutor, fill-in tables",
+      "description": "Canvas: figure library (pie, bars, fractions, Venn, truth tables, Vega-Lite, JSXGraph), Socratic tutor, fill-in tables"
     }
   ]
 }

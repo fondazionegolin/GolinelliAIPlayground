@@ -406,7 +406,7 @@ async def sync_student_audio(db, student):
 async def organize_loose_files(db, teacher):
     rows = (await db.scalars(select(DriveItem).where(DriveItem.owner_teacher_id == teacher.id,
         DriveItem.owner_student_id.is_(None), DriveItem.kind != "folder", DriveItem.is_hidden.is_(False),
-        DriveItem.trashed_at.is_(None), or_(DriveItem.source_type.is_(None), DriveItem.source_type != "voice_track")))).all()
+        DriveItem.trashed_at.is_(None), or_(DriveItem.source_type.is_(None), DriveItem.source_type.not_in(("voice_track", "upload")))))).all()
     from app.models.voice_lab import VoiceLabItem
     lab = (await db.scalars(select(VoiceLabItem).where(VoiceLabItem.owner_id == teacher.id))).all()
     services = {v.details.get("drive_item_id"): v.service for v in lab}
