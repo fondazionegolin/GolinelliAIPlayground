@@ -25,17 +25,19 @@ import { buildTutorial, TUTORIAL_SIZE } from './canvasTutorial'
 import type { Scene } from './motion/spec'
 import { CanvasMinimap, type MinimapItem } from './CanvasMinimap'
 import { plainToLatex } from './canvasMath'
-import { calloutTarget, leaderStart } from './canvasCallouts'
+import { calloutInk, calloutTarget, leaderStart } from './canvasCallouts'
 import type { PlotArea, PlotExtra, PlotRiemann, PlotVLine } from './canvasPlot'
 import { ModelExplorerDialog, ModelQrPopover, ModelViewer } from './CanvasModel3D'
 import { cutoutImage } from './canvasCutout'
+import { CanvasBoardTable, HAND_FONT, newBoardData, type BoardData } from './CanvasBoardTable'
+import { fitSize, isSvgFile, svgFromFile } from './canvasSvg'
 import { areaContext, layoutAreaCallouts, pointsBox, thin, type AreaLabelResult, type Box as AreaBox, type Pt } from './canvasArea'
 import { findFreeRect, graphFromFormula, makePath, normalizePath, applyAiOps, describeDoc, renderDocToPng, collectImages, plotGeometry, type AiOp, type SceneItem } from './canvasAi'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type CanvasRole = 'teacher' | 'student'
-type Tool = 'select' | 'hand' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'connector' | 'rect' | 'ellipse' | 'diamond' | 'star' | 'hexagon' | 'line' | 'arrow' | 'formula' | 'move' | 'ask'
+type Tool = 'select' | 'hand' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'connector' | 'rect' | 'ellipse' | 'diamond' | 'star' | 'hexagon' | 'line' | 'arrow' | 'formula' | 'move' | 'ask' | 'board'
 const SHAPE_TOOLS: Tool[] = ['roundedRect', 'ellipse']
 
 type Point = { x: number; y: number }
@@ -76,6 +78,8 @@ type CanvasItem =
   /** A flag naming a point of an image: `rx/ry` = the point in 0..1 of the image box (so it follows the image), `tx/ty` = last known world point. */
   | (CanvasPositionedItemBase & { type: 'callout'; text: string; color: string; imageId?: string; rx: number; ry: number; tx: number; ty: number; edited?: boolean })
   | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
+  /** A table that works as a board: editable column headers, sticky-note cards ordered by column. */
+  | (CanvasPositionedItemBase & { type: 'board' } & BoardData)
   | (CanvasPositionedItemBase & { type: 'path'; points: Point[]; ow: number; oh: number; color: string; width: number })
   | (CanvasPositionedItemBase & { type: 'quiz'; question: string; options: string[]; correct: number[]; explanation?: string; color: string; answers?: Record<string, CanvasAnswer> })
   | (CanvasPositionedItemBase & { type: 'flashcard'; front: string; back: string; color: string; answers?: Record<string, CanvasAnswer> })
@@ -150,6 +154,13 @@ const DEFAULT_TEXT_STYLE: CanvasTextStyle = {
   fontWeight: 'normal',
   fontStyle: 'normal',
 }
+
+/** Handwriting for sticky notes and the text inside shapes (Patrick Hand has no italic: the browser slants it). */
+const HAND_TEXT_STYLE: CanvasTextStyle = { fontFamily: HAND_FONT, fontSize: 16, fontWeight: 'normal', fontStyle: 'italic' }
+const isDefaultStyle = (s?: CanvasTextStyle) => !s || (s.fontFamily === DEFAULT_TEXT_STYLE.fontFamily && s.fontSize === 14 && s.fontWeight === 'normal' && s.fontStyle === 'normal')
+/** Items made before the handwriting default carry the plain default style: they move to the handwriting too. */
+const handStyle = (s?: CanvasTextStyle): CanvasTextStyle => (isDefaultStyle(s) ? HAND_TEXT_STYLE : { ...HAND_TEXT_STYLE, ...s })
+const textCss = (s: CanvasTextStyle): React.CSSProperties => ({ fontFamily: s.fontFamily, fontSize: `${s.fontSize}px`, fontWeight: s.fontWeight, fontStyle: s.fontStyle })
 
 const POSTIT_PALETTE = ['#fef9c3', '#fce7f3', '#dbeafe', '#dcfce7', '#ffedd5', '#ede9fe', '#fecaca', '#e0f2fe']
 // ─── Template definitions ─────────────────────────────────────────────────────
@@ -619,6 +630,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [qrFor, setQrFor] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const lassoRef = useRef<Pt[] | null>(null)
   const lassoRafRef = useRef<number | null>(null)
   const [lassoPts, setLassoPts] = useState<Pt[]>([])
@@ -708,7 +720,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   }, [canvasDoc.items, editingId])
   const selectedTextStyle = useMemo(() => {
     if (!selectedItem || !isTextEditable(selectedItem)) return null
-    return { ...DEFAULT_TEXT_STYLE, ...(selectedItem.textStyle || {}) }
+    return selectedItem.type === 'postit' || selectedItem.type === 'shape' ? handStyle(selectedItem.textStyle) : { ...DEFAULT_TEXT_STYLE, ...(selectedItem.textStyle || {}) }
   }, [selectedItem])
 
   const currentUserId = useMemo(() => {
@@ -1363,6 +1375,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           if (e.key === 't' || e.key === 'T') setTool('text')
           if (e.key === 'r' || e.key === 'R') setTool('roundedRect')
           if (e.key === 'g' || e.key === 'G') setTool('move')
+          if (e.key === 'b' || e.key === 'B') setTool('board')
           if ((e.key === 'a' || e.key === 'A') && onAskArea) setTool('ask')
           if (e.key === 'o' || e.key === 'O') setTool('ellipse')
           if (e.key === 'm' || e.key === 'M') setTool('formula')
@@ -1510,20 +1523,21 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
 
   const DEFAULT_ITEM_SIZES: Partial<Record<Tool, [number, number]>> = {
     postit: [150, 130], frame: [360, 260], text: [280, 120], roundedRect: [220, 140], triangle: [220, 160],
-    rect: [220, 140], ellipse: [200, 140], diamond: [200, 160], star: [180, 180], hexagon: [220, 150], line: [160, 0], arrow: [160, 0], formula: [380, 84],
+    board: [720, 400], rect: [220, 140], ellipse: [200, 140], diamond: [200, 160], star: [180, 180], hexagon: [220, 150], line: [160, 0], arrow: [160, 0], formula: [380, 84],
   }
 
   const createItemAtBounds = (type: Tool, x: number, y: number, w: number, h: number): CanvasItem | null => {
     const id = mkId()
-    if (type === 'postit') return { id, type: 'postit', x, y, w, h, text: '', color: newPostitColor, textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'postit') return { id, type: 'postit', x, y, w, h, text: '', color: newPostitColor, textStyle: HAND_TEXT_STYLE }
+    if (type === 'board') return { id, type: 'board', x, y, w: Math.max(w, 460), h: Math.max(h, 300), ...newBoardData() }
     if (type === 'frame') return { id, type: 'frame', x, y, w, h, text: 'Frame', color: '#3ea9f4', backgroundColor: '#ffffff99', borderWidth: 2, borderStyle: 'dashed', textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'text') return { id, type: 'text', x, y, w, h, text: 'Testo', color: '#171717', textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 1.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 1.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: HAND_TEXT_STYLE }
     if (type === 'formula') return { id, type: 'formula', x, y, w, h, latex: '', fontSize: 28, color: '#0f172a' }
     const shapeByTool: Partial<Record<Tool, 'rect' | 'ellipse' | 'diamond' | 'star' | 'hexagon'>> = { rect: 'rect', ellipse: 'ellipse', diamond: 'diamond', star: 'star', hexagon: 'hexagon' }
     const extraShape = shapeByTool[type]
-    if (extraShape) return { id, type: 'shape', shape: extraShape, x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 1.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 1.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
+    if (extraShape) return { id, type: 'shape', shape: extraShape, x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 1.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: HAND_TEXT_STYLE }
+    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 1.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: HAND_TEXT_STYLE }
     return null
   }
 
@@ -1788,6 +1802,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     const isInteractiveTarget = tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON'
     if (isTextEditable(item) && editingId === item.id && isInteractiveTarget) return
     if (item.type === 'model3d' && editingId === item.id) return // orbiting the model, not moving the item
+    if (item.type === 'board' && (e.target as HTMLElement).closest('input, textarea, button, [draggable="true"]')) return // working inside the table, not moving it
     if (isTextEditable(item) && editingId !== item.id) { e.preventDefault(); setEditingId(null) }
     if (!canEdit || isConnector(item) || isLockedByOther(item.id)) return
 
@@ -1976,7 +1991,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           movingIds.add(id)
           const selected = itemById.get(id)
           if (selected && isFrame(selected)) collectFrameDescendants(canvasDoc.items, id).forEach((childId) => movingIds.add(childId))
-          if (selected?.type === 'image') canvasDoc.items.forEach((c) => { if (c.type === 'callout' && c.imageId === id) movingIds.add(c.id) })
+          if (selected && selected.type !== 'callout') canvasDoc.items.forEach((c) => { if (c.type === 'callout' && c.imageId === id) movingIds.add(c.id) })
         })
         const origins: Record<string, Point> = {}
         movingIds.forEach((id) => {
@@ -2326,11 +2341,19 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       let offset = 0
       for (const file of files) {
         try {
-          const src = await uploadImage(file)
-          const natural = await new Promise<{ w: number; h: number }>((resolve) => {
-            const probe = new Image(); probe.onload = () => resolve({ w: probe.naturalWidth, h: probe.naturalHeight }); probe.onerror = () => resolve({ w: 4, h: 3 }); probe.src = src
-          })
-          const w = Math.min(520, natural.w), h = Math.max(40, Math.round(w * natural.h / Math.max(natural.w, 1)))
+          let src: string, natural: { w: number; h: number }
+          if (isSvgFile(file)) {
+            const svg = await svgFromFile(file)
+            if (!svg) { setNotice(tl("Questo file SVG non è valido o è troppo grande.")); continue }
+            src = svg.src; natural = { w: svg.w, h: svg.h }
+          } else {
+            src = await uploadImage(file)
+            natural = await new Promise<{ w: number; h: number }>((resolve) => {
+              const probe = new Image(); probe.onload = () => resolve({ w: probe.naturalWidth, h: probe.naturalHeight }); probe.onerror = () => resolve({ w: 4, h: 3 }); probe.src = src
+            })
+          }
+          const fitted = isSvgFile(file) ? fitSize(natural.w, natural.h, 520) : { w: Math.min(520, natural.w), h: 0 }
+          const w = fitted.w, h = Math.max(40, Math.round(w * natural.h / Math.max(natural.w, 1)))
           const img: CanvasItem = { id: mkId(), type: 'image', x: centre.x - w / 2 + offset, y: centre.y - h / 2 + offset, w, h, src }
           setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, { ...img, parentFrameId: getParentFrameId(img, prev.items) }] }))
           setSelectedId(img.id); setSelectedIds([img.id])
@@ -2347,6 +2370,12 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       const files = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith('image/'))
       if (!files.length) {
         const text = event.clipboardData?.getData('text/plain') || ''
+        // SVG markup copied as text (design tools, editors): it becomes a picture on the board.
+        if (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)?(<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(text)) {
+          event.preventDefault()
+          pasteImagesRef.current([new File([text], 'incollato.svg', { type: 'image/svg+xml' })])
+          return
+        }
         // Board elements copied inside the app (marker only, or nothing readable on the clipboard).
         if (canvasClipboard && (!text || text.startsWith(CANVAS_CLIP_MARKER))) { if (pasteSelectionRef.current()) event.preventDefault(); return }
         // A picture copied from a web page / slide may travel as HTML only: fetch it.
@@ -2409,6 +2438,15 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     let ox = wp.x, oy = wp.y
 
     for (const file of files) {
+      if (isSvgFile(file)) {
+        const svg = await svgFromFile(file)
+        if (!svg) { setNotice(tl("Questo file SVG non è valido o è troppo grande.")); continue }
+        const fitted = fitSize(svg.w, svg.h, 420)
+        const img: CanvasItem = { id: mkId(), type: 'image', x: ox, y: oy, w: fitted.w, h: fitted.h, src: svg.src }
+        setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, { ...img, parentFrameId: getParentFrameId(img, prev.items) }] }))
+        oy += 30
+        continue
+      }
       if (file.type.startsWith('image/')) {
         try {
           const imageUrl = await uploadImage(file)
@@ -2666,6 +2704,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
             <>
               <span className="text-slate-500">{tl("Testo")}</span>
               <select className="h-6 rounded border border-slate-200 bg-white px-1 text-xs" value={selectedTextStyle.fontFamily} onChange={(e) => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontFamily: e.target.value } })} disabled={!canEdit || isLockedByOther(selectedItem.id)}>
+                <option value={HAND_FONT}>Patrick Hand</option>
                 <option value="Inter, system-ui, sans-serif">Inter</option>
                 <option value="Arial, sans-serif">Arial</option>
                 <option value="Georgia, serif">Georgia</option>
@@ -2708,6 +2747,10 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
             <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
             <ToolButton activeTool={tool} t="postit" icon={StickyNote} label={tl("Post-it — trascina per dimensionare (P)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="frame" icon={Frame} label={tl("Frame — trascina per dimensionare (F)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="board" icon={Table} label={tl("Tabella-board: colonne con schede ordinate (B)")} onSetTool={setTool} />
+            <input ref={fileInputRef} type="file" accept="image/*,.svg" multiple hidden onChange={(e) => { const picked = Array.from(e.target.files || []); e.target.value = ''; if (picked.length) pasteImagesRef.current(picked) }} />
+            <button type="button" title={tl("Carica immagini o SVG")} aria-label={tl("Carica immagini o SVG")} onClick={() => fileInputRef.current?.click()}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-[#0d9488] transition-colors hover:bg-[color-mix(in_srgb,#0d9488_14%,white)] [&_svg]:![stroke-width:2.4]"><ImagePlus className="h-5 w-5" /></button>
             <ToolButton activeTool={tool} t="text" icon={Type} label={tl("Testo (T)")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
             <ToolButton activeTool={tool} t="roundedRect" icon={RectangleHorizontal} label={tl("Rettangolo — trascina per dimensionare (R)")} onSetTool={setTool} />
@@ -2896,7 +2939,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   data-canvas-x={item.x}
                   data-canvas-y={item.y}
                   data-canvas-type={item.type}
-                  className={`absolute ${selectedIdSet.has(item.id) ? (tool === 'move' ? 'ring-2 ring-pink-500 ring-offset-2' : 'ring-2 ring-blue-500 ring-offset-1') : ''} ${lockedByOther ? 'opacity-60' : ''} ${canEdit && !lockedByOther && !isEditing && (tool === 'select' || tool === 'move') && item.type !== 'path' ? 'cursor-grab active:cursor-grabbing [&_*:not(button)]:!cursor-grab [&_*:not(button)]:active:!cursor-grabbing' : ''}`}
+                  className={`absolute ${selectedIdSet.has(item.id) ? (tool === 'move' ? 'ring-2 ring-pink-500 ring-offset-2' : 'ring-2 ring-blue-500 ring-offset-1') : ''} ${lockedByOther ? 'opacity-60' : ''} ${canEdit && !lockedByOther && !isEditing && (tool === 'select' || tool === 'move') && item.type !== 'path' && item.type !== 'board' ? 'cursor-grab active:cursor-grabbing [&_*:not(button)]:!cursor-grab [&_*:not(button)]:active:!cursor-grabbing' : ''}`}
                   style={{
                     left: item.x, top: item.y, width: item.w, height: item.h,
                     zIndex: itemZIndex.get(item.id) || 1,
@@ -2916,7 +2959,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                       onBlur={() => { emitUnlock(item.id); endInteraction() }}
                       onChange={(e) => updateItem(item.id, { text: e.target.value })}
                       className="h-full w-full resize-none rounded-xl p-2.5 text-sm"
-                      style={{ background: `linear-gradient(180deg, ${shadeTopFor(item.color, 0.5)} 0%, ${item.color} 100%)`, boxShadow: `inset 0 0 0 1px ${shapeStrokeFor(item.color)}55, 0 2px 6px -2px ${shapeStrokeFor(item.color)}40`, color: canvasLabelColor(item.color), fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 14}px`, fontWeight: item.textStyle?.fontWeight || 'normal', fontStyle: item.textStyle?.fontStyle || 'normal', border: 'none', outline: 'none' }}
+                      style={{ background: `linear-gradient(180deg, ${shadeTopFor(item.color, 0.5)} 0%, ${item.color} 100%)`, boxShadow: `inset 0 0 0 1px ${shapeStrokeFor(item.color)}55, 0 2px 6px -2px ${shapeStrokeFor(item.color)}40`, color: canvasLabelColor(item.color), ...textCss(handStyle(item.textStyle)), border: 'none', outline: 'none' }}
                       disabled={!canEdit || lockedByOther}
                       readOnly={!isEditing}
                       autoFocus={isEditing}
@@ -2991,10 +3034,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                         className="absolute inset-[12%] z-[1] resize-none bg-transparent text-center"
                         style={{
                           color: canvasLabelColor(item.fill, item.textColor, item.fillOpacity),
-                          fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
-                          fontSize: `${item.textStyle?.fontSize || 14}px`,
-                          fontWeight: item.textStyle?.fontWeight || 'normal',
-                          fontStyle: item.textStyle?.fontStyle || 'normal',
+                          ...textCss(handStyle(item.textStyle)),
                           border: 'none',
                           outline: 'none',
                           pointerEvents: isEditing ? 'auto' : 'none',
@@ -3081,16 +3121,26 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   )}
 
                   {item.type === 'callout' && (() => {
+                    const ink = calloutInk(item.color)
                     const target = calloutTarget(item, canvasDoc.items)
                     const local = { x: target.x - item.x, y: target.y - item.y }
                     const start = leaderStart(item.w, item.h, local)
+                    // a gentle curve reads better than a ruler line and keeps long leaders from looking like connectors
+                    const dx = local.x - start.x, dy = local.y - start.y, len = Math.max(Math.hypot(dx, dy), 1)
+                    const bend = Math.min(22, len * 0.14)
+                    const path = `M ${start.x} ${start.y} Q ${(start.x + local.x) / 2 - (dy / len) * bend} ${(start.y + local.y) / 2 + (dx / len) * bend} ${local.x} ${local.y}`
+                    const tall = item.h > 34
+                    const split = item.text.indexOf(': ')
+                    const head = split > 0 ? item.text.slice(0, split) : item.text
+                    const rest = split > 0 ? item.text.slice(split) : ''
                     return (
                       <>
                         <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={item.w} height={item.h} aria-hidden="true">
-                          <line x1={start.x} y1={start.y} x2={local.x} y2={local.y} stroke="#ffffff" strokeWidth={4.5} strokeLinecap="round" opacity={0.9} />
-                          <line x1={start.x} y1={start.y} x2={local.x} y2={local.y} stroke={item.color} strokeWidth={2} strokeLinecap="round" />
-                          <circle cx={local.x} cy={local.y} r={6.5} fill="#ffffff" />
-                          <circle cx={local.x} cy={local.y} r={4.5} fill={item.color} />
+                          <path d={path} fill="none" stroke="#ffffff" strokeWidth={5.5} strokeLinecap="round" opacity={0.92} />
+                          <path d={path} fill="none" stroke={ink} strokeWidth={2.25} strokeLinecap="round" />
+                          <circle cx={local.x} cy={local.y} r={8.5} fill="#ffffff" fillOpacity={0.85} />
+                          <circle cx={local.x} cy={local.y} r={5.75} fill="none" stroke={ink} strokeWidth={2.25} />
+                          <circle cx={local.x} cy={local.y} r={2.25} fill={ink} />
                         </svg>
                         {isEditing ? (
                           <input
@@ -3099,16 +3149,18 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                             onChange={(e) => updateItem(item.id, { text: e.target.value, edited: true })}
                             onBlur={() => setEditingId((prev) => (prev === item.id ? null : prev))}
                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setEditingId(null) }}
-                            className="relative h-full w-full rounded-full bg-white px-3 text-center text-[13px] font-semibold text-slate-900 outline-none"
-                            style={{ boxShadow: `0 0 0 2px ${item.color}, 0 4px 10px -4px rgba(15,23,42,0.35)` }}
+                            className={`relative h-full w-full bg-white px-3 text-center text-[13px] font-semibold text-slate-900 outline-none ${tall ? 'rounded-xl' : 'rounded-full'}`}
+                            style={{ boxShadow: `0 0 0 2px ${ink}, 0 6px 14px -6px rgba(124,45,18,0.5)` }}
                           />
                         ) : (
                           <div
-                            className={`relative flex h-full w-full cursor-grab items-center justify-center bg-white text-slate-900 active:cursor-grabbing ${item.h > 34 ? 'rounded-2xl px-3 text-center text-[12px] font-semibold leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden' : 'truncate rounded-full px-3 text-[13px] font-semibold'}`}
-                            style={{ boxShadow: `0 0 0 2px ${item.color}, 0 4px 10px -4px rgba(15,23,42,0.35)`, fontFamily: 'Inter, system-ui, sans-serif' }}
+                            className={`relative flex h-full w-full cursor-grab items-center justify-center bg-white px-3 text-center active:cursor-grabbing ${tall ? 'rounded-xl' : 'rounded-full'}`}
+                            style={{ boxShadow: `0 0 0 2px ${ink}, 0 6px 14px -6px rgba(124,45,18,0.5)`, fontFamily: 'Inter, system-ui, sans-serif', color: '#292524' }}
                             title={item.text}
                           >
-                            {item.text}
+                            <span className={tall ? 'text-[12px] leading-[1.25] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden' : 'block w-full truncate text-[13px] leading-tight'}>
+                              <b className="font-semibold" style={{ color: ink }}>{head}</b>{rest}
+                            </span>
                           </div>
                         )}
                       </>
@@ -3118,10 +3170,10 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   {item.type === 'image' && <img src={item.src} alt="" className="h-full w-full rounded-md object-cover shadow-sm" draggable={false} />}
                   {item.type === 'image' && canEdit && selectedIdSet.has(item.id) && !draggingRef.current && (
                     <div className="absolute left-1/2 top-full z-10 flex gap-1.5 pt-2" style={{ transform: `translateX(-50%) scale(${1 / zoom})`, transformOrigin: 'top center' }}>
-                      <button type="button" disabled={cutting.has(item.id)} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); if (item.origSrc) restoreOriginal(item.id); else void cutoutRef.current(item.id) }}
+                      {!item.src.startsWith('data:image/svg') && <button type="button" disabled={cutting.has(item.id)} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); if (item.origSrc) restoreOriginal(item.id); else void cutoutRef.current(item.id) }}
                         className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-lg hover:brightness-110 disabled:opacity-60">
                         {cutting.has(item.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scissors className="h-3.5 w-3.5" />}{item.origSrc ? tl("Ripristina sfondo") : tl("Scontorna")}
-                      </button>
+                      </button>}
                       {onModelFromImage && (
                         <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onModelFromImage(item.id) }}
                           className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-lg hover:brightness-110">
@@ -3157,6 +3209,15 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                       </div>
                       {qrFor === item.id && <ModelQrPopover model={item} onClose={() => setQrFor(null)} />}
                     </div>
+                  )}
+
+                  {item.type === 'board' && (
+                    <CanvasBoardTable
+                      data={item} canEdit={canEdit && !lockedByOther}
+                      onChange={(next) => updateItem(item.id, { title: next.title, columns: next.columns, cards: next.cards } as Partial<CanvasItem>)}
+                      onFocusEdit={() => { beginInteraction(); emitLock(item.id) }} onBlurEdit={() => { emitUnlock(item.id); endInteraction() }}
+                      onWiden={(n) => updateItem(item.id, { w: Math.max(420, Math.round(item.w * n / Math.max(item.columns.length, 1))) } as Partial<CanvasItem>)}
+                    />
                   )}
 
                   {item.type === 'table' && (
@@ -3317,14 +3378,14 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           )}
           {contextMenu.itemId && canEdit && canvasDoc.items.find((i) => i.id === contextMenu.itemId)?.type === 'image' && (
             <>
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50" onClick={() => {
+              {!(canvasDoc.items.find((i) => i.id === contextMenu.itemId) as { src?: string } | undefined)?.src?.startsWith('data:image/svg') && <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50" onClick={() => {
                 const id = contextMenu.itemId!
                 const image = canvasDoc.items.find((i) => i.id === id)
                 closeContextMenu()
                 if (image?.type === 'image' && image.origSrc) restoreOriginal(id); else void cutoutRef.current(id)
               }}>
                 <Scissors className="h-3 w-3" />{(() => { const image = canvasDoc.items.find((i) => i.id === contextMenu.itemId); return image?.type === 'image' && image.origSrc ? tl("Ripristina lo sfondo") : tl("Scontorna (rimuovi sfondo)") })()}
-              </button>
+              </button>}
               {onModelFromImage && (
                 <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50" onClick={() => { onModelFromImage(contextMenu.itemId!); closeContextMenu() }}>
                   <Box className="h-3 w-3" />{tl("Crea modello 3D")}

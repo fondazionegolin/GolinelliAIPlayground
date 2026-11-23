@@ -4,11 +4,12 @@
  * a change log between two states and a pixel rendering of the whole board.
  */
 import type { CanvasDoc, CanvasItem } from './CollaborativeCanvas'
-import { calloutTarget, layoutCallouts, leaderStart } from './canvasCallouts'
+import { calloutInk, calloutTarget, layoutCallouts, leaderStart } from './canvasCallouts'
 import { fitWindow, plotGeometry, type PlotArea, type PlotExtra, type PlotRiemann, type PlotSpec, type PlotVLine } from './canvasPlot'
 import { explicitFunction, graphWindow } from './canvasMath'
 import type { Scene } from './motion/spec'
 import { canvasLabelColor, shapeStrokeFor } from './canvasColors'
+import { HAND_FONT } from './CanvasBoardTable'
 
 export type ShapeKind = 'rect' | 'rounded-rect' | 'ellipse' | 'diamond' | 'triangle' | 'star' | 'hexagon' | 'parallelogram'
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
@@ -111,6 +112,10 @@ function pickAnchors(from: CanvasItem, to: CanvasItem): [Anchor, Anchor] {
 const TEXT_STYLE = (fontSize = 14, weight: 'normal' | '600' = 'normal') =>
   ({ fontFamily: 'Inter, system-ui, sans-serif', fontSize, fontWeight: weight, fontStyle: 'normal' as const })
 
+/** Sticky notes and the text inside shapes are handwritten (bigger: the face is small). */
+const HAND_STYLE = (fontSize = 16, weight: 'normal' | '600' = 'normal') =>
+  ({ fontFamily: HAND_FONT, fontSize: fontSize + 2, fontWeight: weight, fontStyle: 'italic' as const })
+
 function buildItem(op: AiOp): CanvasItem | null {
   const id = op.id as string
   const x = op.x ?? 0, y = op.y ?? 0
@@ -118,11 +123,11 @@ function buildItem(op: AiOp): CanvasItem | null {
     case 'shape':
       // Tone on tone: without an explicit border the figure takes a slightly darker shade of its own fill.
       return { id, ai: true, type: 'shape', shape: op.shape || 'rounded-rect', x, y, w: op.w ?? 200, h: op.h ?? 100,
-        fill: op.fill || '#dbeafe', fillOpacity: op.opacity, stroke: op.stroke || shapeStrokeFor(op.fill || '#dbeafe'), borderWidth: op.opacity !== undefined && op.opacity < 0.6 ? 2 : 1.5, borderStyle: 'solid', text: op.text || '', textColor: '#171717', textStyle: TEXT_STYLE(op.font_size ?? 15, op.bold ? '600' : 'normal') }
+        fill: op.fill || '#dbeafe', fillOpacity: op.opacity, stroke: op.stroke || shapeStrokeFor(op.fill || '#dbeafe'), borderWidth: op.opacity !== undefined && op.opacity < 0.6 ? 2 : 1.5, borderStyle: 'solid', text: op.text || '', textColor: '#171717', textStyle: HAND_STYLE(op.font_size ?? 14, op.bold ? '600' : 'normal') }
     case 'text':
       return { id, ai: true, type: 'text', x, y, w: op.w ?? 280, h: op.h ?? 60, text: op.text || '', color: op.stroke || '#171717', textStyle: TEXT_STYLE(op.font_size ?? 16, op.bold ? '600' : 'normal') }
     case 'note':
-      return { id, ai: true, type: 'postit', x, y, w: op.w ?? 180, h: op.h ?? 140, text: op.text || '', color: op.fill || '#fef9c3', textStyle: TEXT_STYLE(op.font_size ?? 14, op.bold ? '600' : 'normal') }
+      return { id, ai: true, type: 'postit', x, y, w: op.w ?? 180, h: op.h ?? 140, text: op.text || '', color: op.fill || '#fef9c3', textStyle: HAND_STYLE(op.font_size ?? 14, op.bold ? '600' : 'normal') }
     case 'frame':
       return { id, ai: true, type: 'frame', x, y, w: op.w ?? 480, h: op.h ?? 320, text: op.text || 'Sezione', color: op.stroke || '#3ea9f4',
         backgroundColor: op.fill ? `${op.fill}66` : '#ffffff99', borderWidth: 2, borderStyle: 'dashed', textStyle: TEXT_STYLE(op.font_size ?? 13, '600') }
@@ -483,6 +488,7 @@ export function describeDoc(doc: CanvasDoc): { items: SceneItem[]; toAlias: Reco
       case 'shape': return { ...base, text: CLEAN(item.text, 600), detail: [item.shape, parent].filter(Boolean).join(', ') }
       case 'connector': return { ...base, text: '', detail: `da ${toAlias[item.fromId] || '?'} a ${toAlias[item.toId] || '?'}` }
       case 'image': return { ...base, text: '', detail: 'immagine incollata' }
+      case 'board': return { ...base, text: CLEAN([item.title, ...item.columns.map((c) => `${c.title}: ${item.cards.filter((k) => k.col === c.id).map((k) => k.text).join(' / ')}`)].filter(Boolean).join(' | '), 600), detail: `tabella-board ${item.columns.length} colonne, ${item.cards.length} schede` }
       case 'model3d': return { ...base, text: CLEAN(item.title || '', 200), detail: 'modello 3D interattivo' }
       case 'table': return { ...base, text: CLEAN(item.data.slice(0, 6).map((row) => row.join(' | ')).join(' / '), 600), detail: `tabella ${item.data.length} righe` }
       case 'path': return { ...base, text: '', detail: 'disegno a mano libera' }
@@ -644,6 +650,21 @@ export async function renderDocToPng(doc: CanvasDoc, aliases: Record<string, str
       const image = images.get(item.id)
       if (image) ctx.drawImage(image, item.x, item.y, item.w, item.h)
       else { ctx.fillStyle = '#e2e8f0'; ctx.fillRect(item.x, item.y, item.w, item.h); drawText(ctx, '(immagine non leggibile)', item.x, item.y, item.w, item.h, 14, '#475569', true) }
+    } else if (item.type === 'board') {
+      const card = new Path2D(); card.roundRect(item.x, item.y, item.w, item.h, 16); ctx.fillStyle = '#f8fafc'; ctx.fill(card)
+      drawText(ctx, item.title || '', item.x, item.y - 2, item.w, 28, 14, '#1e293b', false)
+      const n = Math.max(item.columns.length, 1), cw = (item.w - 12) / n
+      item.columns.forEach((col, ci) => {
+        const cx = item.x + 6 + ci * cw
+        ctx.fillStyle = `${col.color}`; ctx.fillRect(cx, item.y + 30, cw - 6, item.h - 36)
+        drawText(ctx, col.title, cx, item.y + 30, cw - 6, 22, 13, '#1e293b', false)
+        item.cards.filter((k) => k.col === col.id).forEach((k, ki) => {
+          const cy = item.y + 56 + ki * 54
+          if (cy + 48 > item.y + item.h) return
+          ctx.fillStyle = '#ffffffcc'; ctx.fillRect(cx + 4, cy, cw - 14, 48)
+          drawText(ctx, k.text, cx + 4, cy, cw - 14, 48, 13, '#1e293b', false)
+        })
+      })
     } else if (item.type === 'table') {
       const rows = item.data.length || 1, cols = Math.max(...item.data.map((r) => r.length), 1)
       const cw = item.w / cols, rh = item.h / rows
@@ -695,10 +716,11 @@ export async function renderDocToPng(doc: CanvasDoc, aliases: Record<string, str
     } else if (item.type === 'callout') {
       const t = calloutTarget(item, doc.items)
       const st = leaderStart(item.w, item.h, { x: t.x - item.x, y: t.y - item.y })
-      ctx.strokeStyle = item.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(item.x + st.x, item.y + st.y); ctx.lineTo(t.x, t.y); ctx.stroke()
-      ctx.fillStyle = item.color; ctx.beginPath(); ctx.arc(t.x, t.y, 5, 0, Math.PI * 2); ctx.fill()
+      const ink = calloutInk(item.color)
+      ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(item.x + st.x, item.y + st.y); ctx.lineTo(t.x, t.y); ctx.stroke()
+      ctx.fillStyle = ink; ctx.beginPath(); ctx.arc(t.x, t.y, 5, 0, Math.PI * 2); ctx.fill()
       const pill = new Path2D(); pill.roundRect(item.x, item.y, item.w, item.h, item.h / 2)
-      ctx.fillStyle = '#ffffff'; ctx.fill(pill); ctx.strokeStyle = item.color; ctx.lineWidth = 2; ctx.stroke(pill)
+      ctx.fillStyle = '#ffffff'; ctx.fill(pill); ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.stroke(pill)
       drawText(ctx, item.text, item.x, item.y, item.w, item.h, 13, '#0f172a', true)
     } else if (item.type === 'line') {
       const x1 = item.flipX ? item.x + item.w : item.x, x2 = item.flipX ? item.x : item.x + item.w

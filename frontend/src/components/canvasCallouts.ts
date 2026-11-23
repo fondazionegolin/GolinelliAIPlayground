@@ -10,7 +10,10 @@ type ImageItem = Extract<CanvasItem, { type: 'image' }>
 export type CalloutItem = Extract<CanvasItem, { type: 'callout' }>
 
 export const CALLOUT_H = 30
-export const CALLOUT_COLOR = '#e11d48'
+/** Intense dark orange: the leader line, the target ring and the card outline. */
+export const CALLOUT_COLOR = '#c2410c'
+/** Flags made before the orange default were red: they are drawn orange too. */
+export const calloutInk = (color: string) => (color === '#e11d48' ? CALLOUT_COLOR : color)
 const GAP = 56
 const SPACING = 8
 
@@ -19,8 +22,36 @@ export const calloutWidth = (text: string) => clamp(Math.round(text.length * 7.4
 
 /** Where the flag points, in world pixels: on the image when it is still there, else where it was last placed. */
 export function calloutTarget(item: CalloutItem, items: CanvasItem[]): { x: number; y: number } {
-  const image = item.imageId ? items.find((i): i is ImageItem => i.id === item.imageId && i.type === 'image') : undefined
-  return image ? { x: image.x + item.rx * image.w, y: image.y + item.ry * image.h } : { x: item.tx, y: item.ty }
+  const host = item.imageId ? items.find((i): i is Exclude<CanvasItem, { type: 'connector' }> => i.id === item.imageId && 'w' in i) : undefined
+  return host ? { x: host.x + item.rx * host.w, y: host.y + item.ry * host.h } : { x: item.tx, y: item.ty }
+}
+
+export type Rect = { x: number; y: number; w: number; h: number }
+const hits = (a: Rect, b: Rect, gap: number) => a.x < b.x + b.w + gap && a.x + a.w > b.x - gap && a.y < b.y + b.h + gap && a.y + a.h > b.y - gap
+
+/** What a flag must not cover: every visible element except frames (containers), flags, drawings and `ignore`d ones. */
+export function flagObstacles(items: CanvasItem[], ignore: Set<string> = new Set()): Rect[] {
+  return items
+    .filter((i): i is Exclude<CanvasItem, { type: 'connector' }> => 'w' in i && i.type !== 'frame' && i.type !== 'callout' && i.type !== 'path' && i.type !== 'line' && !ignore.has(i.id))
+    .map((i) => ({ x: i.x, y: i.y, w: i.w, h: i.h }))
+}
+
+/**
+ * The free spot nearest to `idealY` for a flag of w×h: tries each candidate column x in turn at growing vertical offsets
+ * (down, up, further down…), so a flag moves aside rather than landing on content or on another flag. Falls back to the ideal spot.
+ */
+export function placeFlag(xs: number[], idealY: number, w: number, h: number, obstacles: Rect[], taken: Rect[]): { x: number; y: number } {
+  const step = h + 8
+  for (let k = 0; k <= 16; k += 1) {
+    for (const dir of k === 0 ? [0] : [1, -1]) {
+      const y = idealY + dir * k * step
+      for (const x of xs) {
+        const rect = { x, y, w, h }
+        if (!obstacles.some((o) => hits(rect, o, 8)) && !taken.some((t) => hits(rect, t, 6))) return { x, y }
+      }
+    }
+  }
+  return { x: xs[0], y: idealY }
 }
 
 /** Point on the flag's border facing `target` (leader line start), in the flag's own coordinates. */
@@ -63,6 +94,8 @@ export function layoutCallouts(items: CanvasItem[], ops: AiOp[], newId: () => st
       move.side = move.side === 'left' ? 'right' : 'left'
     }
     const minTop = image.y - 24
+    const obstacles = flagObstacles(out, new Set([imageId]))
+    const taken: Rect[] = out.filter((i) => i.type === 'callout').map((i) => ({ x: i.x, y: i.y, w: i.w, h: i.h }))
     for (const side of ['left', 'right'] as const) {
       const column = pending.filter((p) => p.side === side).sort((a, b) => a.ry - b.ry)
       if (!column.length) continue
@@ -76,7 +109,10 @@ export function layoutCallouts(items: CanvasItem[], ops: AiOp[], newId: () => st
         const id = newId()
         if (p.op.id) idMap[p.op.id] = id
         const x = side === 'left' ? image.x - GAP - p.w : image.x + image.w + GAP
-        out.push({ id, ai: true, type: 'callout', x, y: tops[i], w: p.w, h: CALLOUT_H, text: p.text, color: CALLOUT_COLOR,
+        const altX = side === 'left' ? image.x + image.w + GAP : image.x - GAP - p.w
+        const spot = placeFlag([x, altX], tops[i], p.w, CALLOUT_H, obstacles, taken)
+        taken.push({ x: spot.x, y: spot.y, w: p.w, h: CALLOUT_H })
+        out.push({ id, ai: true, type: 'callout', x: spot.x, y: spot.y, w: p.w, h: CALLOUT_H, text: p.text, color: CALLOUT_COLOR,
           imageId, rx: p.rx, ry: p.ry, tx: image.x + p.rx * image.w, ty: image.y + p.ry * image.h })
         created.push(id)
       })

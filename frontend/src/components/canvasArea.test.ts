@@ -42,3 +42,14 @@ describe('canvasArea', () => {
     expect(areaContext(doc, pointsBox(square), square)).toContain('Resistenza da 220 ohm')
   })
 })
+
+describe('flag placement', () => {
+  it('moves a flag aside instead of covering another element', () => {
+    const box = pointsBox(square)
+    const blocker = { id: 'b', type: 'postit', x: box.x - 48 - 224, y: 90, w: 224, h: 70, text: 'x', color: '#fff' } as Extract<CanvasItem, { type: 'postit' }>
+    const { items } = layoutAreaCallouts([blocker], box, [{ name: 'A', x: 10, y: 5 }], id)
+    const flag = items.find((i) => i.type === 'callout') as Extract<CanvasItem, { type: 'callout' }>
+    const clear = flag.y >= blocker.y + blocker.h + 8 || flag.y + flag.h <= blocker.y - 8 || flag.x >= blocker.x + blocker.w + 8 || flag.x + flag.w <= blocker.x - 8
+    expect(clear).toBe(true)
+  })
+})

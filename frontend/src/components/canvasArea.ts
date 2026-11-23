@@ -4,6 +4,7 @@
  * pinpointed in % of that region); here they become `callout` items laid out in the margins beside the area.
  */
 import { describeDoc, type SceneItem } from './canvasAi'
+import { CALLOUT_COLOR, flagObstacles, placeFlag, type Rect } from './canvasCallouts'
 import type { CanvasDoc, CanvasItem } from './CollaborativeCanvas'
 
 export type Pt = { x: number; y: number }
@@ -12,7 +13,7 @@ export type AreaLabelResult = { name: string; note?: string; x: number; y: numbe
 
 export const AREA_FLAG_H = 46
 export const AREA_FLAG_W = 224
-export const AREA_FLAG_COLOR = '#e11d48'
+export const AREA_FLAG_COLOR = CALLOUT_COLOR
 const GAP = 48
 const SPACING = 10
 
@@ -77,19 +78,23 @@ export function layoutAreaCallouts(items: CanvasItem[], box: Box, labels: AreaLa
     const move = [...from].sort((a, b) => Math.abs(a.wx - mid) - Math.abs(b.wx - mid))[0]
     move.side = move.side === 'left' ? 'right' : 'left'
   }
-  const taken = (rect: Box) => out.some((i) => i.type === 'callout' && overlaps(rect, { x: i.x, y: i.y, w: i.w, h: i.h }, 6))
+  // what the flags must stay clear of: all board elements except the ones the flags point at (they are the subject)
+  const subject = new Set(out.filter((i) => 'w' in i && i.type !== 'frame' && pending.some((p) => p.wx >= i.x && p.wx <= i.x + i.w && p.wy >= i.y && p.wy <= i.y + i.h)).map((i) => i.id))
+  const obstacles = flagObstacles(out, subject)
+  const taken: Rect[] = out.filter((i) => i.type === 'callout').map((i) => ({ x: i.x, y: i.y, w: i.w, h: i.h }))
   for (const side of ['left', 'right'] as const) {
     let floor = -Infinity
     for (const p of pending.filter((q) => q.side === side)) {
       const x = side === 'left' ? box.x - GAP - AREA_FLAG_W : box.x + box.w + GAP
-      let y = Math.max(p.wy - AREA_FLAG_H / 2, floor)
-      for (let guard = 0; guard < 24 && taken({ x, y, w: AREA_FLAG_W, h: AREA_FLAG_H }); guard += 1) y += AREA_FLAG_H + SPACING
-      floor = y + AREA_FLAG_H + SPACING
-      const image = [...out].reverse().find((i) => i.type === 'image' && p.wx >= i.x && p.wx <= i.x + i.w && p.wy >= i.y && p.wy <= i.y + i.h)
+      const altX = side === 'left' ? box.x + box.w + GAP : box.x - GAP - AREA_FLAG_W
+      const spot = placeFlag([x, altX], Math.max(p.wy - AREA_FLAG_H / 2, floor), AREA_FLAG_W, AREA_FLAG_H, obstacles, taken)
+      taken.push({ x: spot.x, y: spot.y, w: AREA_FLAG_W, h: AREA_FLAG_H })
+      floor = spot.x === x ? spot.y + AREA_FLAG_H + SPACING : floor
+      const host = [...out].reverse().find((i) => 'w' in i && i.type !== 'frame' && i.type !== 'callout' && p.wx >= i.x && p.wx <= i.x + i.w && p.wy >= i.y && p.wy <= i.y + i.h)
       const id = newId()
       out.push({
-        id, ai: true, type: 'callout', x, y, w: AREA_FLAG_W, h: AREA_FLAG_H, text: p.text, color: AREA_FLAG_COLOR,
-        imageId: image?.id, rx: image && 'w' in image ? (p.wx - image.x) / image.w : 0, ry: image && 'h' in image ? (p.wy - image.y) / image.h : 0, tx: p.wx, ty: p.wy,
+        id, ai: true, type: 'callout', x: spot.x, y: spot.y, w: AREA_FLAG_W, h: AREA_FLAG_H, text: p.text, color: AREA_FLAG_COLOR,
+        imageId: host?.id, rx: host && 'w' in host ? (p.wx - host.x) / host.w : 0, ry: host && 'h' in host ? (p.wy - host.y) / host.h : 0, tx: p.wx, ty: p.wy,
       } as CanvasItem)
       created.push(id)
     }
