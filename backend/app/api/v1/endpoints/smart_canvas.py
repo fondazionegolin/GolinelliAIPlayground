@@ -438,6 +438,138 @@ async def label_image(canvas_id: uuid.UUID, body: LabelBody, actor: Actor, db: D
         raise HTTPException(status_code=502, detail="Non sono riuscito a riconoscere i componenti, riprova.")
 
 
+class AskAreaBody(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    request_id: uuid.UUID
+    question: str = Field(min_length=1, max_length=2000)
+    crop: str = Field(min_length=30, max_length=11_200_000, description="Ritaglio della lavagna: area a colori, resto sbiadito")
+    context: str = Field(default="", max_length=5000, description="Testo degli elementi nella zona")
+
+
+@router.post("/{canvas_id}/ask-area")
+async def ask_area(canvas_id: uuid.UUID, body: AskAreaBody, actor: Actor, db: Db):
+    """A question about a selected area: the answer plus flags (name + short note, pinpointed on the part) that the client
+    lays out around the area. Stored in the board's conversation like any other turn."""
+    row = await load(db, canvas_id, actor)
+    live = await session_canvas(db, row)
+    if not assistant_allowed(row, live, actor):
+        raise HTTPException(status_code=403, detail=ASSISTANT_DENIED)
+    history = list(row.messages or [])
+    replay = next((m for m in history if m.get("request_id") == str(body.request_id) and m.get("role") == "assistant"), None)
+    if replay:
+        return {"message": replay, "labels": replay.get("area_labels", []), "duplicate": True}
+    recent = "\n".join(f"{'Utente' if m.get('role') == 'user' else 'Assistente'}: {str(m.get('content', ''))[:400]}" for m in history[-6:])
+    track = await tracker(actor)
+    try:
+        result = await ai.ask_area(body.crop, body.question, body.context, recent, track)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Smart canvas ask-area failed")
+        raise HTTPException(status_code=504 if isinstance(exc, TimeoutError) else 502, detail="Non sono riuscito a rispondere su quest'area, riprova.") from exc
+    author = actor_name(actor)
+    now = datetime.now(timezone.utc).isoformat()
+    user_message = {"id": str(uuid.uuid4()), "request_id": str(body.request_id), "role": "user", "content": f"Area selezionata · {body.question}",
+                    "author": author, "created_at": now}
+    assistant = {"id": str(uuid.uuid4()), "request_id": str(body.request_id), "role": "assistant", "content": result["answer"],
+                 "area_labels": result["labels"], "created_at": now}
+    async with AsyncSessionLocal() as db2:
+        stored = (await db2.execute(select(SmartCanvas).where(SmartCanvas.id == canvas_id).with_for_update())).scalar_one()
+        stored.messages = [*(stored.messages or []), user_message, assistant][-200:]
+        await db2.commit()
+    return {"message": assistant, "labels": result["labels"], "user_message": user_message}
+
+
+class ModelCheckBody(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    image: str = Field(min_length=30, max_length=11_200_000, description="L'immagine (data URL), meglio già scontornata")
+
+
+@router.post("/{canvas_id}/model-check")
+async def model_check(canvas_id: uuid.UUID, body: ModelCheckBody, actor: Actor, db: Db):
+    """Is this picture a good source for an image-to-3D model? Cheap vision check before spending Meshy credits."""
+    await load(db, canvas_id, actor)
+    track = await tracker(actor)
+    try:
+        return await ai.check_model_source(body.image, track)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Smart canvas model-check failed")
+        raise HTTPException(status_code=502, detail="Non sono riuscito a valutare l'immagine, riprova.")
+
+
+MESHY_ASSET_HOSTS = {"assets.meshy.ai", "cdn.meshy.ai"}
+MAX_MODEL_BYTES = 60 * 1024 * 1024
+
+
+class StoreModelBody(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    glb_url: str = Field(min_length=10, max_length=2000)
+    thumbnail_url: str | None = Field(default=None, max_length=2000)
+    usdz_url: str | None = Field(default=None, max_length=2000, description="iOS AR Quick Look reads USDZ directly: no slow on-device conversion")
+
+
+@router.post("/{canvas_id}/models")
+async def store_model(canvas_id: uuid.UUID, body: StoreModelBody, actor: Actor, db: Db):
+    """Meshy links are signed and expire: copy the finished GLB (and its preview) into our own storage, so the board
+    keeps the model and the phone opened from the QR code can fetch it."""
+    from pathlib import Path
+    from urllib.parse import urlparse
+
+    import httpx
+
+    await load(db, canvas_id, actor)
+    for url in (body.glb_url, body.thumbnail_url, body.usdz_url):
+        if url and (urlparse(url).scheme != "https" or urlparse(url).netloc not in MESHY_ASSET_HOSTS):
+            raise HTTPException(status_code=400, detail="Indirizzo del modello non consentito")
+    folder = Path("uploads/smart_canvas") / str(canvas_id)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    async def fetch(client: httpx.AsyncClient, url: str, limit: int) -> bytes:
+        async with client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            data = bytearray()
+            async for chunk in resp.aiter_bytes(65536):
+                data.extend(chunk)
+                if len(data) > limit:
+                    raise HTTPException(status_code=413, detail="Il modello è troppo grande")
+            return bytes(data)
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+            glb = await fetch(client, body.glb_url, MAX_MODEL_BYTES)
+            poster = None
+            usdz = None
+            if body.thumbnail_url:
+                try:
+                    poster = await fetch(client, body.thumbnail_url, 8 * 1024 * 1024)
+                except Exception:
+                    poster = None
+            if body.usdz_url:
+                try:
+                    usdz = await fetch(client, body.usdz_url, MAX_MODEL_BYTES)
+                except Exception:
+                    usdz = None  # iOS then falls back to converting the GLB on the device
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Smart canvas model download failed")
+        raise HTTPException(status_code=502, detail="Non riesco a scaricare il modello da Meshy, riprova.")
+    if glb[:4] != b"glTF":
+        raise HTTPException(status_code=502, detail="Il file ricevuto non è un modello GLB valido")
+    name = uuid.uuid4().hex
+    (folder / f"{name}.glb").write_bytes(glb)
+    result = {"src": f"/uploads/smart_canvas/{canvas_id}/{name}.glb", "poster": None, "usdz": None}
+    if usdz and usdz[:2] == b"PK":
+        (folder / f"{name}.usdz").write_bytes(usdz)
+        result["usdz"] = f"/uploads/smart_canvas/{canvas_id}/{name}.usdz"
+    if poster:
+        (folder / f"{name}.png").write_bytes(poster)
+        result["poster"] = f"/uploads/smart_canvas/{canvas_id}/{name}.png"
+    return result
+
+
 class AnimateBody(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     brief: str = Field(min_length=3, max_length=3000, description="Cosa deve mostrare l'animazione, fase per fase")

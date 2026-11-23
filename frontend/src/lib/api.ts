@@ -1535,7 +1535,7 @@ export const filesApi = {
 }
 
 export type DriveView = 'folder' | 'recent' | 'starred' | 'trash' | 'shared' | 'search'
-export type DriveShareTarget = { target_type: 'session' | 'class' | 'teacher'; target_id?: string; email?: string; role: 'viewer' | 'editor' }
+export type DriveShareTarget = { target_type: 'session' | 'class' | 'teacher' | 'student'; target_id?: string; email?: string; role: 'viewer' | 'editor' }
 
 export const driveApi = {
   tree: () => api.get('/drive/tree'),
@@ -1566,6 +1566,8 @@ export const driveApi = {
   exportItem: (itemId: string, format?: string) =>
     api.get(`/drive/items/${itemId}/export`, { params: { format }, responseType: 'blob', timeout: 0 }),
   zip: (ids: string[]) => api.post('/drive/zip', { ids }, { responseType: 'blob', timeout: 0 }),
+  autoRename: (ids: string[]) => api.post('/drive/auto-rename', { ids }, { timeout: 0 }),
+  addShares: (ids: string[], shares: DriveShareTarget[]) => api.post('/drive/shares', { ids, shares }),
   shareTargets: () => api.get('/drive/share-targets'),
   getShares: (itemId: string) => api.get(`/drive/items/${itemId}/shares`),
   putShares: (itemId: string, shares: DriveShareTarget[]) => api.put(`/drive/items/${itemId}/shares`, { shares }),

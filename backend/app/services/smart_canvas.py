@@ -616,19 +616,13 @@ def _prepare_refine_crop(data_url: str, item: LabelItem) -> tuple[str, tuple[int
     return _to_data_url(crop), (left, top, side)
 
 
-async def label_image(data_url: str, hint: str, on_usage: Callable[[LLMResponse, str], Awaitable[None]]) -> dict:
-    """Two passes: (1) the model names and locates the parts on a gridded image; (2) every point is re-checked on a
-    magnified crop (in parallel) and moved onto the part when it was off. Returns percentages of the original image."""
-    clean = await asyncio.to_thread(_normalize, data_url)
-    gridded, (width, height) = await asyncio.to_thread(_prepare_label_image, clean)
-    instruction = "Etichetta le parti di questa immagine." + (f"\nL'utente chiede di concentrarsi su: {hint}" if hint.strip() else "")
-    async with asyncio.timeout(120):
-        reply = await generate_validated("canvas-label", instruction, LabelReply, LabelReply.model_validate, gridded, on_usage,
-                                         max_tokens=3500, system_prompt=LABEL_PROMPT, role="vision.canvas", think=True)
-    items = reply.labels[:14]
+async def _refine_items(clean: str, size: tuple[int, int], items: list, on_usage: Callable[[LLMResponse, str], Awaitable[None]]) -> list:
+    """Second pass of every locator: each point is re-checked on a magnified crop (in parallel) and moved onto the part
+    when it was off. Works on any LabelItem subclass (extra fields are kept)."""
+    width, height = size
     gate = asyncio.Semaphore(5)
 
-    async def refine_one(item: LabelItem) -> LabelItem:
+    async def refine_one(item):
         async with gate:
             try:
                 crop, (left, top, side) = await asyncio.to_thread(_prepare_refine_crop, clean, item)
@@ -640,7 +634,6 @@ async def label_image(data_url: str, hint: str, on_usage: Callable[[LLMResponse,
                 return item
         if not fix.found:
             return item
-        # crop % -> original %, using the same scaling as the crop (square of `side` px in the thumbnail space)
         nx = (left + fix.x / 100 * side) / width * 100
         ny = (top + fix.y / 100 * side) / height * 100
         # a jump of more than ~60% of the window is more likely a mistake than a fix
@@ -648,7 +641,19 @@ async def label_image(data_url: str, hint: str, on_usage: Callable[[LLMResponse,
             return item
         return item.model_copy(update={"x": min(max(nx, 0), 100), "y": min(max(ny, 0), 100)})
 
-    refined = await asyncio.gather(*(refine_one(i) for i in items))
+    return list(await asyncio.gather(*(refine_one(i) for i in items)))
+
+
+async def label_image(data_url: str, hint: str, on_usage: Callable[[LLMResponse, str], Awaitable[None]]) -> dict:
+    """Two passes: (1) the model names and locates the parts on a gridded image; (2) every point is re-checked on a
+    magnified crop (in parallel) and moved onto the part when it was off. Returns percentages of the original image."""
+    clean = await asyncio.to_thread(_normalize, data_url)
+    gridded, (width, height) = await asyncio.to_thread(_prepare_label_image, clean)
+    instruction = "Etichetta le parti di questa immagine." + (f"\nL'utente chiede di concentrarsi su: {hint}" if hint.strip() else "")
+    async with asyncio.timeout(120):
+        reply = await generate_validated("canvas-label", instruction, LabelReply, LabelReply.model_validate, gridded, on_usage,
+                                         max_tokens=3500, system_prompt=LABEL_PROMPT, role="vision.canvas", think=True)
+    refined = await _refine_items(clean, (width, height), reply.labels[:14], on_usage)
     seen: set[str] = set()
     labels = []
     for item in refined:
@@ -659,6 +664,84 @@ async def label_image(data_url: str, hint: str, on_usage: Callable[[LLMResponse,
         labels.append({"name": item.name.strip(), "x": round(item.x, 2), "y": round(item.y, 2),
                        "x1": round(item.x1, 2), "y1": round(item.y1, 2), "x2": round(item.x2, 2), "y2": round(item.y2, 2)})
     return {"subject": reply.subject, "labels": labels}
+
+
+# ─── Asking about an area: an answer plus precise, contextual flags on the selected part ─────────────
+
+class AreaLabel(LabelItem):
+    note: str = Field(default="", max_length=90, description="Chiarimento contestuale: che ruolo ha QUI, in una frase breve")
+
+
+class AreaReply(DataModel):
+    answer: str = Field(max_length=3000, description="Risposta alla domanda, in italiano, markdown leggero")
+    labels: list[AreaLabel] = Field(default_factory=list, max_length=8)
+
+
+AREA_PROMPT = """Sei un docente paziente. Lo studente o il collega ha selezionato un'AREA della lavagna e fa una domanda su quella parte. In italiano, solo JSON.
+L'immagine è un ritaglio della lavagna: l'area selezionata è a colori pieni con un contorno tratteggiato rosa, il resto è sbiadito (serve solo come contesto).
+Una GRIGLIA ogni 10% (etichette 10..90 sui bordi, 50 più marcato) ti serve per leggere le coordinate. Ti arriva anche il testo degli elementi della lavagna in quella zona.
+1) answer: rispondi alla domanda su ciò che è DENTRO l'area: cosa è, a cosa serve, come funziona, come si collega al resto (usa il contesto). Concreto, 2-6 frasi o un elenco breve,
+niente preamboli. Se dall'immagine non si capisce abbastanza, dillo e di' cosa servirebbe: non inventare.
+2) labels (da 1 a 6, solo se aiutano davvero a capire; zero se la domanda non riguarda parti identificabili): chiarimenti messi DIRETTAMENTE sulle parti dell'area.
+ - name: nome tecnico della parte, 1-4 parole. note: cosa fa QUI, in questo disegno o schema (≤ 80 caratteri, non una definizione da enciclopedia).
+ - x,y = il PUNTO sulla parte (al suo centro, MAI nello sfondo o su un'altra parte); x1,y1,x2,y2 = riquadro STRETTO attorno alla sola parte. Leggi colonne e righe dalla griglia.
+ - Solo parti dentro l'area selezionata, niente duplicati, la più importante per prima. Se la domanda cerca un errore o un problema, metti le etichette dove si trova."""
+
+
+def _area_instruction(question: str, context: str, history: str) -> str:
+    parts = [f"Domanda: {question.strip()}"]
+    if context.strip():
+        parts.append(f"Elementi della lavagna nella zona (testo):\n{context.strip()[:3500]}")
+    if history.strip():
+        parts.append(f"Conversazione precedente (per capire i riferimenti):\n{history.strip()[:2000]}")
+    return "\n\n".join(parts)
+
+
+async def ask_area(data_url: str, question: str, context: str, history: str, on_usage: Callable[[LLMResponse, str], Awaitable[None]]) -> dict:
+    clean = await asyncio.to_thread(_normalize, data_url)
+    gridded, (width, height) = await asyncio.to_thread(_prepare_label_image, clean)
+    async with asyncio.timeout(130):
+        reply = await generate_validated("canvas-area", _area_instruction(question, context, history), AreaReply, AreaReply.model_validate,
+                                         gridded, on_usage, max_tokens=3500, system_prompt=AREA_PROMPT, role="vision.canvas", think=True)
+    refined = await _refine_items(clean, (width, height), reply.labels[:6], on_usage)
+    seen: set[str] = set()
+    labels = []
+    for item in refined:
+        key = item.name.strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        labels.append({"name": item.name.strip(), "note": item.note.strip(), "x": round(item.x, 2), "y": round(item.y, 2),
+                       "x1": round(item.x1, 2), "y1": round(item.y1, 2), "x2": round(item.x2, 2), "y2": round(item.y2, 2)})
+    return {"answer": reply.answer.strip(), "labels": labels}
+
+
+class ModelCheckReply(DataModel):
+    subject: str = Field(max_length=160, description="Cosa mostra l'immagine, in una frase")
+    feasible: bool = Field(description="Meshy può ricavarne un buon modello 3D con texture")
+    score: int = Field(ge=0, le=100, description="Qualità dell'immagine come riferimento per il 3D")
+    kind: Literal["oggetto", "personaggio", "animale", "veicolo", "edificio", "pianta", "scena", "schema", "testo_o_grafico", "altro"]
+    issues: list[str] = Field(default_factory=list, max_length=5, description="Problemi concreti, frasi brevi")
+    advice: str = Field(default="", max_length=240, description="Cosa fare per migliorare, una frase")
+    needs_cutout: bool = Field(description="Lo sfondo disturba: conviene prima scontornare")
+
+
+MODEL_CHECK_PROMPT = """Valuti se una immagine è adatta come riferimento per generare un modello 3D texturizzato con Meshy (image-to-3D). In italiano, solo JSON.
+Adatte: UN soggetto solido e riconoscibile (oggetto, giocattolo, strumento, animale, personaggio, veicolo, edificio, pianta), intero e
+inquadrato senza tagli, ben illuminato, nitido, vista frontale o tre quarti, sfondo semplice o già rimosso.
+NON adatte (feasible=false): schemi, diagrammi, grafici, testo, screenshot di interfacce, mappe piane, scene affollate con molti soggetti,
+soggetto tagliato dai bordi o molto piccolo, immagini sfocate o a bassissima risoluzione, soggetti trasparenti/riflettenti, disegni piatti senza volume
+(in tal caso spiega che il risultato sarebbe un rilievo piatto). Un'immagine con sfondo ricco ma soggetto chiaro resta feasible, con needs_cutout=true.
+score: 0-100. issues: solo problemi reali che vedi, niente generalità."""
+
+
+async def check_model_source(data_url: str, on_usage: Callable[[LLMResponse, str], Awaitable[None]]) -> dict:
+    clean = await asyncio.to_thread(_normalize, data_url)
+    async with asyncio.timeout(60):
+        reply = await generate_validated("canvas-model-check", "Valuta questa immagine come riferimento per un modello 3D.", ModelCheckReply,
+                                         ModelCheckReply.model_validate, clean, on_usage, max_tokens=700,
+                                         system_prompt=MODEL_CHECK_PROMPT, role="vision.canvas")
+    return reply.model_dump()
 
 
 def _normalize(data_url: str) -> str:

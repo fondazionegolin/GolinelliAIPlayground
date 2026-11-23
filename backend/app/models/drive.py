@@ -49,13 +49,13 @@ class DriveItem(Base):
 
 
 class DriveShare(Base):
-    """Grants a session, a class or a colleague teacher access to a drive item and everything below it."""
+    """Grants a session, a class, a teacher or an individual student access to a drive item and everything below it."""
 
     __tablename__ = "drive_shares"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     item_id = Column(UUID(as_uuid=True), ForeignKey("drive_items.id", ondelete="CASCADE"), nullable=False, index=True)
-    target_type = Column(String(16), nullable=False)  # session | class | teacher
+    target_type = Column(String(16), nullable=False)  # session | class | teacher | student
     target_id = Column(UUID(as_uuid=True), nullable=False)
     role = Column(String(16), nullable=False, default="viewer")  # viewer | editor
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -483,6 +483,7 @@ export function describeDoc(doc: CanvasDoc): { items: SceneItem[]; toAlias: Reco
       case 'shape': return { ...base, text: CLEAN(item.text, 600), detail: [item.shape, parent].filter(Boolean).join(', ') }
       case 'connector': return { ...base, text: '', detail: `da ${toAlias[item.fromId] || '?'} a ${toAlias[item.toId] || '?'}` }
       case 'image': return { ...base, text: '', detail: 'immagine incollata' }
+      case 'model3d': return { ...base, text: CLEAN(item.title || '', 200), detail: 'modello 3D interattivo' }
       case 'table': return { ...base, text: CLEAN(item.data.slice(0, 6).map((row) => row.join(' | ')).join(' / '), 600), detail: `tabella ${item.data.length} righe` }
       case 'path': return { ...base, text: '', detail: 'disegno a mano libera' }
       case 'line': return { ...base, text: '', detail: item.arrow ? 'freccia' : 'linea' }
@@ -593,14 +594,15 @@ function arrowHead(ctx: CanvasRenderingContext2D, fromX: number, fromY: number, 
 }
 
 /** Draws the whole board (what a person would see after "zoom to fit") with each item tagged by its alias. */
-export async function renderDocToPng(doc: CanvasDoc, aliases: Record<string, string>, maxSide = 1600, jpeg?: number): Promise<string> {
+export async function renderDocToPng(doc: CanvasDoc, aliases: Record<string, string>, maxSide = 1600, jpeg?: number, region?: { box: { x: number; y: number; w: number; h: number }; mask: Array<{ x: number; y: number }> }): Promise<string> {
   const boxes = doc.items.map(bounds).filter((b): b is NonNullable<typeof b> => !!b)
   const xs = boxes.flatMap((b) => [b.x, b.x + b.w])
   const ys = boxes.flatMap((b) => [b.y, b.y + b.h])
   const margin = 40
-  const minX = (xs.length ? Math.min(...xs) : 0) - margin, minY = (ys.length ? Math.min(...ys) : 0) - margin
-  const width = (xs.length ? Math.max(...xs) : 400) + margin - minX, height = (ys.length ? Math.max(...ys) : 300) + margin - minY
-  const scale = Math.min(1, maxSide / Math.max(width, height))
+  const minX = region ? region.box.x : (xs.length ? Math.min(...xs) : 0) - margin, minY = region ? region.box.y : (ys.length ? Math.min(...ys) : 0) - margin
+  const width = region ? region.box.w : (xs.length ? Math.max(...xs) : 400) + margin - minX, height = region ? region.box.h : (ys.length ? Math.max(...ys) : 300) + margin - minY
+  // a selected area is magnified (up to 2x) so small parts stay legible
+  const scale = Math.min(region ? 2 : 1, maxSide / Math.max(width, height))
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(Math.round(width * scale), 64)
   canvas.height = Math.max(Math.round(height * scale), 64)
@@ -725,6 +727,20 @@ export async function renderDocToPng(doc: CanvasDoc, aliases: Record<string, str
     const w = ctx.measureText(tag).width + 8
     ctx.fillStyle = 'rgba(15,23,42,.78)'; ctx.fillRect(b.x, b.y - 16, w, 16)
     ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.fillText(tag, b.x + 4, b.y - 2)
+  }
+  if (region && region.mask.length > 2) {
+    // fade everything outside the selection, then outline it: the model reads «what is selected» straight from the pixels
+    ctx.save()
+    const outside = new Path2D()
+    outside.rect(minX - 10, minY - 10, width + 20, height + 20)
+    outside.moveTo(region.mask[0].x, region.mask[0].y)
+    for (const p of region.mask.slice(1)) outside.lineTo(p.x, p.y)
+    outside.closePath()
+    ctx.fillStyle = 'rgba(255,255,255,0.68)'
+    ctx.fill(outside, 'evenodd')
+    ctx.strokeStyle = '#e85c8d'; ctx.lineWidth = 2.5 / scale; ctx.setLineDash([8 / scale, 5 / scale]); ctx.lineJoin = 'round'
+    ctx.beginPath(); ctx.moveTo(region.mask[0].x, region.mask[0].y); for (const p of region.mask.slice(1)) ctx.lineTo(p.x, p.y); ctx.closePath(); ctx.stroke()
+    ctx.restore()
   }
   return jpeg ? canvas.toDataURL('image/jpeg', jpeg) : canvas.toDataURL('image/png')
 }

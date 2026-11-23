@@ -71,7 +71,7 @@ class DrivePrincipal:
         if self.teacher:
             return [("teacher", self.teacher.id)]
         assert self.student is not None
-        targets = [("session", self.student.session_id)]
+        targets = [("student", self.student.id), ("session", self.student.session_id)]
         if self.student_class_id:
             targets.append(("class", self.student_class_id))
         return targets

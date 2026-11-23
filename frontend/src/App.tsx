@@ -29,6 +29,7 @@ const PublicCodingSitePage = lazy(() => import('@/pages/PublicCodingSitePage'))
 const PublicTeacherbotChatPage = lazy(() => import('@/pages/PublicTeacherbotChatPage'))
 const PublicLiveInteractionPage = lazy(() => import('@/pages/PublicLiveInteractionPage'))
 const PublicSolidModelPage = lazy(() => import('@/pages/PublicSolidModelPage'))
+const PublicArPage = lazy(() => import('@/pages/PublicArPage'))
 const PublicWorkflowPage = lazy(() => import('@/pages/PublicWorkflowPage'))
 const PublicDocumentPage = lazy(() => import('@/pages/PublicDocumentPage'))
 const CallPage = lazy(() => import('@/pages/CallPage'))
@@ -76,6 +77,7 @@ function App() {
           <Route path="/bot/:token" element={<PublicTeacherbotChatPage />} />
           <Route path="/live/:token" element={<PublicLiveInteractionPage />} />
           <Route path="/3d/:token" element={<PublicSolidModelPage />} />
+          <Route path="/ar" element={<PublicArPage />} />
           <Route path="/dataflow/:token" element={<PublicWorkflowPage />} />
           <Route path="/d/:token" element={<PublicDocumentPage />} />
           <Route path="/call" element={<CallPage />} />

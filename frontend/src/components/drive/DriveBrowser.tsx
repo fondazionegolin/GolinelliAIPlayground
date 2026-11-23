@@ -92,6 +92,10 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; item: DriveItem } | null>(null)
   const [preview, setPreview] = useState<DriveItem | null>(null)
+  const [shareItems, setShareItems] = useState<DriveItem[] | null>(null)
+  const [selectMode, setSelectMode] = useState(false)
+  const [autoName, setAutoName] = useState(() => readStored('drive:autoName', 'true') === 'true')
+  const [naming, setNaming] = useState(false)
   const [shareItem, setShareItem] = useState<DriveItem | null>(null)
   const [moveIds, setMoveIds] = useState<string[] | null>(null)
   const [newFolderOpen, setNewFolderOpen] = useState(false)
@@ -120,7 +124,6 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   const tree = useQuery<DriveFolderNode[]>({
     queryKey: ['drive', 'tree'],
     queryFn: async () => (await driveApi.tree()).data,
-    enabled: isTeacher,
     staleTime: 15_000,
   })
   const usage = useQuery<{ used_bytes: number; quota_bytes: number }>({
@@ -255,6 +258,17 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   }
 
   // ── Upload ───────────────────────────────────────────────────────────────
+  const renameFromContent = async (targets: DriveItem[]) => {
+    if (!targets.length || naming) return
+    setNaming(true)
+    try {
+      const { data } = await driveApi.autoRename(targets.map((item) => item.id))
+      const errors = data.results.filter((result: { error?: string }) => result.error)
+      toast({ title: tl("Rinominati {0} file", data.results.length - errors.length), description: errors.length ? tl("{0} file conservano il nome originale: {1}", errors.length, errors[0].error) : undefined })
+      refresh()
+    } catch (err) { fail(tl("Rinomina non riuscita"))(err) }
+    finally { setNaming(false) }
+  }
   const uploadFiles = useCallback(async (picked: PickedFile[], parentId: string | null) => {
     if (!picked.length) return
     const batches: PickedFile[][] = []
@@ -275,15 +289,22 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
       const label = batch.length === 1 ? batch[0].file.name : `${batch.length} file`
       setUploads((jobs) => [...jobs, { id, label, progress: 0, status: 'uploading' }])
       try {
-        await driveApi.upload(batch.map((entry) => entry.file), parentId, batch.map((entry) => entry.path), (fraction) =>
+        const uploaded = await driveApi.upload(batch.map((entry) => entry.file), parentId, batch.map((entry) => entry.path), (fraction) =>
           setUploads((jobs) => jobs.map((job) => (job.id === id ? { ...job, progress: fraction } : job))))
+        if (autoName) {
+          try {
+            const { data } = await driveApi.autoRename(uploaded.data.items.map((item: DriveItem) => item.id))
+            const errors = data.results.filter((result: { error?: string }) => result.error)
+            if (errors.length) toast({ title: tl("File caricati"), description: tl("{0} file conservano il nome originale: {1}", errors.length, errors[0].error) })
+          } catch { toast({ title: tl("File caricati"), description: tl("Rinomina automatica non disponibile: nomi originali conservati") }) }
+        }
         setUploads((jobs) => jobs.map((job) => (job.id === id ? { ...job, progress: 1, status: 'done' } : job)))
       } catch (err: any) {
         setUploads((jobs) => jobs.map((job) => (job.id === id ? { ...job, status: 'error', error: err?.response?.data?.detail || tl("Caricamento non riuscito") } : job)))
       }
       refresh()
     }
-  }, [refresh])
+  }, [refresh, autoName, toast])
 
   const onPickFiles = (list: FileList | null, useRelative: boolean) => {
     if (!list) return
@@ -346,13 +367,13 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   const clickItem = (event: ReactMouseEvent, item: DriveItem) => {
     event.stopPropagation()
     setMenu(null)
-    if (coarsePointer && !event.metaKey && !event.ctrlKey && !event.shiftKey) { open(item); return }
+    if (coarsePointer && !selectMode && !event.metaKey && !event.ctrlKey && !event.shiftKey) { open(item); return }
     if (event.shiftKey && anchorRef.current) {
       const ids = items.map((entry) => entry.id)
       const [a, b] = [ids.indexOf(anchorRef.current), ids.indexOf(item.id)].sort((x, y) => x - y)
       if (a >= 0) { setSelected(new Set(ids.slice(a, b + 1))); return }
     }
-    if (event.metaKey || event.ctrlKey) {
+    if (selectMode || event.metaKey || event.ctrlKey) {
       setSelected((current) => { const next = new Set(current); next.has(item.id) ? next.delete(item.id) : next.add(item.id); return next })
     } else {
       setSelected(new Set([item.id]))
@@ -364,12 +385,12 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
     event.preventDefault()
     event.stopPropagation()
     if (!selected.has(item.id)) setSelected(new Set([item.id]))
-    setMenu({ x: Math.min(event.clientX, window.innerWidth - 248), y: Math.min(event.clientY, window.innerHeight - 380), item })
+    setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 248)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 440)), item })
   }
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (preview || shareItem || moveIds || newFolderOpen || renamingId) return
+      if (preview || shareItem || shareItems || moveIds || newFolderOpen || renamingId) return
       const target = event.target as HTMLElement
       if (target.closest('input, textarea, select, [contenteditable="true"]')) return
       const mod = event.metaKey || event.ctrlKey
@@ -398,7 +419,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
 
   // ── Rendering helpers ────────────────────────────────────────────────────
   const breadcrumb = listing.data?.breadcrumb ?? []
-  const sharedLabel = isTeacher ? VIEW_LABEL.shared : tl("Condivisi con la classe")
+  const sharedLabel = isTeacher ? VIEW_LABEL.shared : tl("Condivisi con me")
   const rootLabel = isTeacher ? (folderId && breadcrumb.length && listing.data?.role !== 'owner' ? sharedLabel : VIEW_LABEL[folderId ? 'folder' : effectiveView]) : listing.data?.role === 'owner' ? tl('I miei file') : sharedLabel
   const rootView: DriveView = folderId && listing.data?.role !== 'owner' ? 'shared' : folderId ? 'folder' : effectiveView
   const title = debounced && isTeacher ? tl("Risultati per «{0}»", debounced) : folderId ? breadcrumb[breadcrumb.length - 1]?.name ?? '' : effectiveView === 'shared' ? sharedLabel : VIEW_LABEL[effectiveView]
@@ -424,9 +445,10 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
       single && isDoc && { icon: FileUp, label: 'Esporta in PDF', run: () => doDownload(targets, 'pdf') },
       single && isDoc && { icon: FileUp, label: item.source_type === 'presentation' ? 'Esporta in PowerPoint' : 'Esporta in Word', run: () => doDownload(targets, item.source_type === 'presentation' ? 'pptx' : 'docx') },
       'divider',
-      single && isTeacher && owned && { icon: Share2, label: tl("Condividi"), run: () => setShareItem(item) },
+      owned && { icon: Share2, label: tl("Condividi"), run: () => setShareItems(targets) },
+      editableTargets.length === targets.length && targets.every((entry) => entry.kind !== 'folder') && !naming && { icon: RefreshCw, label: tl("Rinomina dal contenuto"), run: () => renameFromContent(targets) },
       single && editableTargets.length === 1 && { icon: Pencil, label: 'Rinomina', hint: 'F2', run: () => setRenamingId(item.id) },
-      isTeacher && owned && editableTargets.length === targets.length && { icon: FolderInput, label: tl("Sposta in…"), run: () => setMoveIds(targets.map((entry) => entry.id)) },
+      owned && editableTargets.length === targets.length && { icon: FolderInput, label: tl("Sposta in…"), run: () => setMoveIds(targets.map((entry) => entry.id)) },
       isTeacher && owned && { icon: Star, label: targets.every((entry) => entry.starred) ? tl("Rimuovi da Speciali") : tl("Aggiungi a Speciali"), run: () => doStar(targets, !targets.every((entry) => entry.starred)) },
       editableTargets.length > 0 && 'divider',
       editableTargets.length > 0 && { icon: Trash2, label: tl("Sposta nel cestino"), hint: 'Canc', danger: true, run: () => doTrash(editableTargets) },
@@ -447,6 +469,13 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
     onDragStart: (event: DragEvent) => startDrag(event, item),
     onClick: (event: ReactMouseEvent) => clickItem(event, item),
     onDoubleClick: () => open(item),
+    onKeyDown: (event: React.KeyboardEvent) => {
+      if (event.key === ' ') {
+        event.preventDefault()
+        event.stopPropagation()
+        setSelected((current) => { const next = new Set(current); next.has(item.id) ? next.delete(item.id) : next.add(item.id); return next })
+      }
+    },
     onContextMenu: (event: ReactMouseEvent) => openMenu(event, item),
     ...(item.kind === 'folder' && !inTrash ? folderDropProps(item.id, canEdit(item.role)) : {}),
   })
@@ -554,7 +583,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
             )}
           </div>
 
-          {!isTeacher && <div className="flex gap-2 py-2"><Button tone="neutral" surface="ghost" className={rootView === 'folder' ? 'ds-selected' : ''} onClick={() => go({view: 'folder'})}>{tl('I miei file')}</Button><Button tone="neutral" surface="ghost" className={rootView === 'shared' ? 'ds-selected' : ''} onClick={() => go({view: 'shared'})}>{tl('Condivisi con la classe')}</Button><Button tone="neutral" surface="ghost" onClick={music.open}>{tl('Musica e playlist')}</Button></div>}
+          {!isTeacher && <div className="flex gap-2 py-2"><Button tone="neutral" surface="ghost" className={rootView === 'folder' ? 'ds-selected' : ''} onClick={() => go({view: 'folder'})}>{tl('I miei file')}</Button><Button tone="neutral" surface="ghost" className={rootView === 'shared' ? 'ds-selected' : ''} onClick={() => go({view: 'shared'})}>{tl('Condivisi con me')}</Button><Button tone="neutral" surface="ghost" onClick={music.open}>{tl('Musica e playlist')}</Button></div>}
           <div className="flex flex-wrap items-center gap-2">
             {selectedItems.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1 rounded-2xl bg-[var(--app-accent-soft)] px-2 py-1">
@@ -583,15 +612,13 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
                 ))}
               </div>
             )}
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex flex-wrap items-center gap-1">
+              <Button tone="neutral" surface="ghost" density="compact" aria-pressed={selectMode} onClick={() => setSelectMode((value) => !value)}>{selectMode ? tl("Fine selezione") : tl("Seleziona")}</Button>
+              {selectMode && <Button tone="neutral" surface="ghost" density="compact" onClick={() => setSelected(new Set(items.map((item) => item.id)))}>{tl("Seleziona tutto")}</Button>}
+              {writable && <label className="flex items-center gap-2 px-2 text-xs text-[var(--text-secondary)]"><input type="checkbox" checked={autoName} onChange={(event) => { setAutoName(event.target.checked); writeStored('drive:autoName', String(event.target.checked)) }} />{tl("Nomi automatici al caricamento")}</label>}
+              {naming && <span role="status" className="text-xs">{tl("Analisi del contenuto…")}</span>}
               {writable && (
-                <div className="flex items-center gap-1 lg:hidden">
-                  <IconTool icon={FolderPlus} label={tl("Nuova cartella")} onClick={() => setNewFolderOpen(true)} />
-                  <IconTool icon={Upload} label={tl("Carica file")} onClick={() => fileInputRef.current?.click()} />
-                </div>
-              )}
-              {!isTeacher && writable && (
-                <div className="hidden items-center gap-1 lg:flex">
+                <div className={`flex items-center gap-1 ${isTeacher ? 'lg:hidden' : ''}`}>
                   <IconTool icon={FolderPlus} label={tl("Nuova cartella")} onClick={() => setNewFolderOpen(true)} />
                   <IconTool icon={Upload} label={tl("Carica file")} onClick={() => fileInputRef.current?.click()} />
                 </div>
@@ -630,7 +657,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
             <EmptyState
               icon={inTrash ? Trash2 : effectiveView === 'shared' ? Users : effectiveView === 'starred' ? Star : Folder}
               title={inTrash ? tl("Il cestino è vuoto") : effectiveView === 'shared' ? tl("Nessun file condiviso") : effectiveView === 'starred' ? tl("Nessun elemento speciale") : debounced ? tl("Nessun risultato") : filter !== 'all' ? tl("Nessun elemento di questo tipo") : tl("Questa cartella è vuota")}
-              text={inTrash ? tl("Gli elementi eliminati restano qui finché non svuoti il cestino.") : effectiveView === 'shared' ? (isTeacher ? tl("Qui trovi ciò che i colleghi condividono con te.") : tl("Qui trovi i materiali che il docente condivide con la classe.")) : writable ? tl("Trascina qui file o cartelle dal computer, oppure usa «Nuovo».") : ''}
+              text={inTrash ? tl("Gli elementi eliminati restano qui finché non svuoti il cestino.") : effectiveView === 'shared' ? (isTeacher ? tl("Qui trovi file e cartelle condivisi con te da docenti e studenti.") : tl("Qui trovi file e cartelle condivisi con te da docenti e studenti.")) : writable ? tl("Trascina qui file o cartelle dal computer, oppure usa «Nuovo».") : ''}
             />
           ) : layout === 'grid' ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
@@ -668,7 +695,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
       <input ref={folderInputRef} type="file" multiple hidden {...{ webkitdirectory: '', directory: '' }} onChange={(event) => { onPickFiles(event.target.files, true); event.target.value = '' }} />
 
       {menu && (
-        <div className="ds-popover rounded-[var(--ds-radius-panel)] fixed z-[70] w-60 p-1.5" style={{ left: menu.x, top: menu.y }} onClick={(event) => event.stopPropagation()} onContextMenu={(event) => event.preventDefault()}>
+        <div className="ds-popover rounded-[var(--ds-radius-panel)] fixed z-[70] max-h-[calc(100dvh-16px)] overflow-y-auto w-60 p-1.5" style={{ left: menu.x, top: menu.y }} onClick={(event) => event.stopPropagation()} onContextMenu={(event) => event.preventDefault()}>
           {menuActions(menu.item).map((action, index) => action === 'divider'
             ? <div key={`d${index}`} className="my-1 h-px bg-slate-100" />
             : <MenuButton key={action.label} icon={action.icon} label={action.label} hint={action.hint} danger={action.danger} onClick={() => { setMenu(null); void action.run() }} />)}
@@ -680,9 +707,10 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
       )}
       {preview && (
         <DrivePreview item={preview} items={items} isTeacher={isTeacher} onNavigate={setPreview} onClose={() => setPreview(null)}
-          onShare={isTeacher ? (item) => { setPreview(null); setShareItem(item) } : undefined} />
+          onShare={preview.role === 'owner' ? (item) => { setPreview(null); setShareItem(item) } : undefined} />
       )}
-      {shareItem && <DriveShareDialog item={shareItem} onClose={() => setShareItem(null)} onChanged={refresh} />}
+      {shareItems && <DriveShareDialog item={shareItems[0]} items={shareItems} isTeacher={isTeacher} onClose={() => setShareItems(null)} onChanged={refresh} />}
+      {shareItem && <DriveShareDialog isTeacher={isTeacher} item={shareItem} onClose={() => setShareItem(null)} onChanged={refresh} />}
       {moveIds && <DriveMoveDialog folders={tree.data ?? []} movingIds={moveIds} onClose={() => setMoveIds(null)} onConfirm={(parentId) => doMove(moveIds, parentId)} />}
       {newFolderOpen && <NewFolderDialog onClose={() => setNewFolderOpen(false)} onCreate={createFolder} />}
     </div>

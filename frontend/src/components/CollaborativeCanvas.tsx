@@ -3,12 +3,13 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { ColorPicker } from '@/components/ui/ColorPicker'
 import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
+import { Button as DsButton } from '@/design'
 import { Input } from '@/components/ui/input'
 import { chatApi, teacherApi, studentApi } from '@/lib/api'
 import {
   Eraser, StickyNote, Type, ImagePlus, Table, Pencil, Frame, MoveRight,
   RectangleHorizontal, Circle, Undo2, Redo2, Maximize, Minimize,
-  LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Move, Sparkles,
+  LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Move, Sparkles, Scissors, Box, QrCode, Loader2,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 import { BRAINSTORM_ACTIONS } from './canvasBrainstorm'
@@ -26,12 +27,15 @@ import { CanvasMinimap, type MinimapItem } from './CanvasMinimap'
 import { plainToLatex } from './canvasMath'
 import { calloutTarget, leaderStart } from './canvasCallouts'
 import type { PlotArea, PlotExtra, PlotRiemann, PlotVLine } from './canvasPlot'
+import { ModelExplorerDialog, ModelQrPopover, ModelViewer } from './CanvasModel3D'
+import { cutoutImage } from './canvasCutout'
+import { areaContext, layoutAreaCallouts, pointsBox, thin, type AreaLabelResult, type Box as AreaBox, type Pt } from './canvasArea'
 import { findFreeRect, graphFromFormula, makePath, normalizePath, applyAiOps, describeDoc, renderDocToPng, collectImages, plotGeometry, type AiOp, type SceneItem } from './canvasAi'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type CanvasRole = 'teacher' | 'student'
-type Tool = 'select' | 'hand' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'connector' | 'rect' | 'ellipse' | 'diamond' | 'star' | 'hexagon' | 'line' | 'arrow' | 'formula' | 'move'
+type Tool = 'select' | 'hand' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'connector' | 'rect' | 'ellipse' | 'diamond' | 'star' | 'hexagon' | 'line' | 'arrow' | 'formula' | 'move' | 'ask'
 const SHAPE_TOOLS: Tool[] = ['roundedRect', 'ellipse']
 
 type Point = { x: number; y: number }
@@ -66,7 +70,9 @@ type CanvasItem =
   | (CanvasPositionedItemBase & { type: 'animation'; scene: Scene })
   | (CanvasPositionedItemBase & { type: 'formula'; latex: string; src?: string; fontSize: number; color: string })
   | (CanvasPositionedItemBase & { type: 'plot'; expr: string; xMin: number; xMax: number; yMin: number; yMax: number; color: string; title?: string; marks?: Array<{ x: number; y: number; label?: string }>; areas?: PlotArea[]; extra?: PlotExtra[]; vlines?: PlotVLine[]; riemann?: PlotRiemann })
-  | (CanvasPositionedItemBase & { type: 'image'; src: string })
+  | (CanvasPositionedItemBase & { type: 'image'; src: string; /** The picture before «Rimuovi sfondo», to restore it. */ origSrc?: string })
+  /** A 3D model (GLB stored by the board): orbitable in place, QR code for AR on a phone. */
+  | (CanvasPositionedItemBase & { type: 'model3d'; src: string; poster?: string; usdz?: string; title?: string })
   /** A flag naming a point of an image: `rx/ry` = the point in 0..1 of the image box (so it follows the image), `tx/ty` = last known world point. */
   | (CanvasPositionedItemBase & { type: 'callout'; text: string; color: string; imageId?: string; rx: number; ry: number; tx: number; ty: number; edited?: boolean })
   | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
@@ -87,6 +93,10 @@ export interface CanvasHandle {
   getDoc(): CanvasDoc
   /** Lays the built-in tutorial out on the board (beside existing content) and zooms to its first station. */
   insertTutorial(): void
+  /** Local background removal on an image item. `confident` is false when the background was not plain enough. */
+  cutoutImage(id: string): Promise<{ ok: boolean; confident: boolean }>
+  /** Puts a 3D model beside an image (or in free space) and returns its id. */
+  addModel(nearId: string | null, model: { src: string; poster?: string; usdz?: string; title?: string }): string | null
 }
 
 interface CollaborativeCanvasProps {
@@ -110,6 +120,10 @@ interface CollaborativeCanvasProps {
   onImageAdded?: (imageId: string) => void
   /** Context-menu action «Etichetta i componenti» on an image. */
   onLabelImage?: (imageId: string) => void
+  /** Context-menu / pill action «Crea modello 3D» on an image (check, then Meshy). */
+  onModelFromImage?: (imageId: string) => void
+  /** «Chiedi su un'area»: the question about the outlined part of the board (+ its picture and nearby text). Resolves with the flags to lay on it. */
+  onAskArea?: (question: string, area: { crop: string; context: string }) => Promise<AreaLabelResult[]>
   /** Controls at the far left of the top bar (e.g. back to the list). */
   leading?: React.ReactNode
   /** Shows the «Guida» button, which lays the tutorial out on the board. */
@@ -469,6 +483,7 @@ const collectFrameDescendants = (items: CanvasItem[], frameId: string): string[]
 
 // ─── Tool button (module-level to avoid remount on parent re-render) ──────────
 
+const AskAreaIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><path d="M5.5 9.5C4.5 6.5 7.5 4 11 4.5c3.6.5 6.5 2.4 6.2 5.2-.3 2.6-3.2 3.6-5.8 3.8-2.5.2-5-.4-5.9-3.9z" strokeDasharray="2.6 2.4" /><path d="M10.5 13.5c-.3 2 .6 3.2 1.8 4.2" /><path d="M17.5 15.2v4.6M15.2 17.5h4.6" /></svg>
 const GrabHandIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11" /><path d="M11 10.5V5a1.5 1.5 0 0 1 3 0v5.5" /><path d="M14 10.5V6.5a1.5 1.5 0 0 1 3 0V14c0 4-2.5 6.5-6 6.5-2.4 0-3.7-1-5-3L4 14.2a1.4 1.4 0 0 1 2.3-1.6L8 14.5V12" /></svg>
 const SigmaIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><path d="M18 5H6l6 7-6 7h12" /></svg>
 const AnimationIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><rect x="3" y="4" width="18" height="14" rx="2" /><path d="M10 8.5v5l4-2.5z" /><path d="M8 21h8" /></svg>
@@ -526,6 +541,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   onAssist,
   onImageAdded,
   onLabelImage,
+  onModelFromImage,
+  onAskArea,
   onPermissionChange,
   leading,
   tutorial = false,
@@ -601,6 +618,16 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [qrFor, setQrFor] = useState<string | null>(null)
+  const lassoRef = useRef<Pt[] | null>(null)
+  const lassoRafRef = useRef<number | null>(null)
+  const [lassoPts, setLassoPts] = useState<Pt[]>([])
+  const [askArea, setAskArea] = useState<{ points: Pt[]; box: AreaBox } | null>(null)
+  const [askText, setAskText] = useState('')
+  const [askBusy, setAskBusy] = useState(false)
+  const [explorerFor, setExplorerFor] = useState<string | null>(null)
+  const [cutting, setCutting] = useState<Set<string>>(() => new Set())
+  const [notice, setNotice] = useState<string | null>(null)
   const [connectorDrag, setConnectorDrag] = useState<{
     fromId: string; fromAnchor: Anchor; fromPoint?: Point; toPoint: Point; hoverTarget?: { id: string; anchor: Anchor }
   } | null>(null)
@@ -900,10 +927,73 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     window.setTimeout(() => focusItemsRef.current([added[0].id]), 120)
   }
 
+  const submitAsk = async () => {
+    const question = askText.trim()
+    if (!askArea || !question || askBusy || !onAskArea) return
+    setAskBusy(true)
+    try {
+      const pad = Math.max(24, Math.max(askArea.box.w, askArea.box.h) * 0.08)
+      const region = pointsBox(askArea.points, pad)
+      const doc = parseCanvasDoc(latestSerializedRef.current)
+      const withoutFlags = { ...doc, items: doc.items.filter((i) => i.type !== 'callout') }
+      const crop = await renderDocToPng(withoutFlags, {}, 1400, 0.9, { box: region, mask: askArea.points })
+      const labels = await onAskArea(question, { crop, context: areaContext(withoutFlags, askArea.box, askArea.points) })
+      if (labels.length) {
+        let created: string[] = []
+        setCanvasDoc((prev) => { const laid = layoutAreaCallouts(prev.items, region, labels, mkId); created = laid.created; return { ...prev, items: laid.items } })
+        window.setTimeout(() => focusItems(created), 60)
+      }
+      setAskArea(null); setAskText('')
+    } catch (err) {
+      setNotice(err instanceof Error && err.message ? err.message : tl("Non sono riuscito a rispondere su quest’area."))
+    } finally {
+      setAskBusy(false)
+    }
+  }
+  useEffect(() => { if (tool !== 'ask') { setAskArea(null); lassoRef.current = null; setLassoPts([]) } }, [tool])
+
+  const cutoutRef = useRef<(id: string) => Promise<{ ok: boolean; confident: boolean }>>(async () => ({ ok: false, confident: false }))
+  cutoutRef.current = async (id: string) => {
+    const item = canvasDoc.items.find((i) => i.id === id)
+    if (!canEdit || !item || item.type !== 'image') return { ok: false, confident: false }
+    setCutting((prev) => new Set(prev).add(id))
+    try {
+      const result = await cutoutImage(item.src)
+      // keep the subject's size: fit the cut-out (cropped to the subject) inside the old box, centred
+      const fit = Math.min(item.w / result.width, item.h / result.height)
+      const w = Math.max(40, Math.round(result.width * fit)), h = Math.max(40, Math.round(result.height * fit))
+      updateItem(id, { src: result.src, origSrc: item.origSrc || item.src, x: item.x + (item.w - w) / 2, y: item.y + (item.h - h) / 2, w, h } as Partial<CanvasItem>)
+      if (!result.confident) setNotice(tl("Lo sfondo non era uniforme: controlla il risultato. Puoi ripristinare l’originale dal menu."))
+      return { ok: true, confident: result.confident }
+    } catch {
+      setNotice(tl("Non sono riuscito a scontornare questa immagine."))
+      return { ok: false, confident: false }
+    } finally {
+      setCutting((prev) => { const next = new Set(prev); next.delete(id); return next })
+    }
+  }
+  const restoreOriginal = (id: string) => {
+    const item = canvasDoc.items.find((i) => i.id === id)
+    if (item?.type === 'image' && item.origSrc) updateItem(id, { src: item.origSrc, origSrc: undefined } as Partial<CanvasItem>)
+  }
+  const addModelRef = useRef<(nearId: string | null, model: { src: string; poster?: string; usdz?: string; title?: string }) => string | null>(() => null)
+  addModelRef.current = (nearId, model) => {
+    if (!canEdit) return null
+    const near = nearId ? canvasDoc.items.find((i) => i.id === nearId) : null
+    const w = 340, h = 340
+    const base = near && isPositioned(near) ? { x: near.x + near.w + 40, y: near.y } : { x: (-pan.x + 200) / zoom, y: (-pan.y + 120) / zoom }
+    const item: CanvasItem = { id: mkId(), type: 'model3d', x: base.x, y: base.y, w, h, src: model.src, poster: model.poster, usdz: model.usdz, title: model.title }
+    setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, { ...item, parentFrameId: getParentFrameId(item, prev.items) }] }))
+    setSelectedId(item.id); setSelectedIds([item.id])
+    return item.id
+  }
+
   useImperativeHandle(handleRef, () => ({
     getDoc: () => parseCanvasDoc(latestSerializedRef.current),
     focusItems,
     insertTutorial: () => insertTutorialRef.current(),
+    cutoutImage: (id: string) => cutoutRef.current(id),
+    addModel: (nearId: string | null, model: { src: string; poster?: string; usdz?: string; title?: string }) => addModelRef.current(nearId, model),
     applyOps: (ops: AiOp[]) => {
       const current = parseCanvasDoc(latestSerializedRef.current)
       const result = applyAiOps(current, ops)
@@ -1262,7 +1352,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
         startTextEditingRef.current(selected.id, e.key.length === 1 ? e.key : '')
         return
       }
-      if (e.key === 'Escape') { setSelectedId(null); setSelectedIds([]); setEditingId(null); setTool('select'); setContextMenu(null) }
+      if (e.key === 'Escape') { setAskArea(null); lassoRef.current = null; setLassoPts([]); setSelectedId(null); setSelectedIds([]); setEditingId(null); setTool('select'); setContextMenu(null) }
       if ((e.key === 'Delete' || e.key === 'Backspace') && canEdit) deleteSelectedRef.current()
       if (!e.ctrlKey && !e.metaKey) {
         if (e.key === 'v' || e.key === 'V') setTool('select')
@@ -1273,6 +1363,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           if (e.key === 't' || e.key === 'T') setTool('text')
           if (e.key === 'r' || e.key === 'R') setTool('roundedRect')
           if (e.key === 'g' || e.key === 'G') setTool('move')
+          if ((e.key === 'a' || e.key === 'A') && onAskArea) setTool('ask')
           if (e.key === 'o' || e.key === 'O') setTool('ellipse')
           if (e.key === 'm' || e.key === 'M') setTool('formula')
           if (e.key === 'c' || e.key === 'C') setTool('connector')
@@ -1632,11 +1723,24 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       return Math.hypot(a.x - point.x, a.y - point.y) < Math.hypot(b.x - point.x, b.y - point.y) ? anchor : best
     }, ANCHORS[0])
 
+  const startLasso = (e: ReactPointerEvent) => {
+    e.preventDefault()
+    containerRef.current?.setPointerCapture(e.pointerId)
+    activePointerIdRef.current = e.pointerId
+    setAskArea(null)
+    const wp = toWorld(e.clientX, e.clientY)
+    lassoRef.current = [wp]
+    setLassoPts([wp])
+  }
+
   const onPointerDownItem = (e: ReactPointerEvent, item: CanvasItem) => {
     e.stopPropagation()
     if (pinchRef.current) return
     if (e.button !== 0 && e.pointerType !== 'touch') return
     activePointerIdRef.current = e.pointerId
+
+    // Ask-about-area tool: the outline starts anywhere, also on top of an element.
+    if (canEdit && tool === 'ask') { startLasso(e); return }
 
     // Connector tool: pressing on an element starts the arrow from its nearest connection point.
     if (canEdit && tool === 'connector' && isPositioned(item)) {
@@ -1683,6 +1787,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     const tag = (e.target as HTMLElement).tagName
     const isInteractiveTarget = tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON'
     if (isTextEditable(item) && editingId === item.id && isInteractiveTarget) return
+    if (item.type === 'model3d' && editingId === item.id) return // orbiting the model, not moving the item
     if (isTextEditable(item) && editingId !== item.id) { e.preventDefault(); setEditingId(null) }
     if (!canEdit || isConnector(item) || isLockedByOther(item.id)) return
 
@@ -1708,6 +1813,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       return
     }
     if (!canEdit) return
+    if (tool === 'ask') { startLasso(e) ; return }
     if (tool === 'select' || tool === 'move') {
       const wp = toWorld(e.clientX, e.clientY)
       marqueeRef.current = { start: wp, current: wp, additive: e.shiftKey || e.ctrlKey || e.metaKey }
@@ -1801,6 +1907,14 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
         if (p1) connectorPreviewRef.current.setAttribute('d', connectorCurve(p1, fromItem ? anchorDirection(connectorDrag.fromAnchor) : null, wp, null))
       }
       connectorDrag.toPoint = wp
+      return
+    }
+
+    if (lassoRef.current && canEdit) {
+      const point = toWorld(e.clientX, e.clientY)
+      const previous = lassoRef.current[lassoRef.current.length - 1]
+      if (!previous || Math.hypot(point.x - previous.x, point.y - previous.y) >= 3 / zoomRef.current) lassoRef.current.push(point)
+      if (!lassoRafRef.current) lassoRafRef.current = window.requestAnimationFrame(() => { lassoRafRef.current = null; setLassoPts(lassoRef.current ? [...lassoRef.current] : []) })
       return
     }
 
@@ -2065,6 +2179,17 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
         setTool('select')
         endInteraction()
       }
+      return
+    }
+
+    if (lassoRef.current) {
+      const points = thin(lassoRef.current, 4 / zoomRef.current)
+      lassoRef.current = null
+      if (lassoRafRef.current) { window.cancelAnimationFrame(lassoRafRef.current); lassoRafRef.current = null }
+      setLassoPts([])
+      const box = points.length > 3 ? pointsBox(points) : null
+      if (box && box.w * zoomRef.current >= 24 && box.h * zoomRef.current >= 24) { setAskArea({ points, box }); setAskText('') }
+      activePointerIdRef.current = null
       return
     }
 
@@ -2578,6 +2703,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           <div className="theme-keep absolute left-3 top-1/2 z-20 flex max-h-[calc(100%-1.5rem)] -translate-y-1/2 w-[52px] flex-col items-center gap-0.5 overflow-y-auto rounded-[26px] px-1 py-1.5 backdrop-blur-xl [scrollbar-width:none]" style={{ colorScheme: 'light', background: 'rgba(255,255,255,0.78)', border: '1px solid rgba(255,255,255,0.9)', boxShadow: '0 8px 30px rgba(15,23,42,0.14), 0 0 0 1px rgba(15,23,42,0.05)' }}>
             <ToolButton activeTool={tool} t="select" icon={MousePointer} label={tl("Seleziona (V)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="hand" icon={Move} label={tl("Sposta la vista (H)")} onSetTool={setTool} />
+            {onAskArea && <ToolButton activeTool={tool} t="ask" icon={AskAreaIcon} label={tl("Chiedi su un’area: disegna il contorno e fai una domanda (A)")} onSetTool={setTool} />}
             <ToolButton activeTool={tool} t="move" icon={GrabHandIcon} label={tl("Sposta gli elementi: trascina quelli selezionati (G)")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
             <ToolButton activeTool={tool} t="postit" icon={StickyNote} label={tl("Post-it — trascina per dimensionare (P)")} onSetTool={setTool} />
@@ -2682,6 +2808,47 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
               )}
             </svg>
 
+            {/* Ask-about-area: the outline being drawn / waiting for a question, and its question box */}
+            {(lassoPts.length > 1 || askArea) && (
+              <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={1} style={{ zIndex: 999_998 }} aria-hidden="true">
+                <polygon points={(askArea ? askArea.points : lassoPts).map((p) => `${p.x},${p.y}`).join(' ')} fill="rgba(232,92,141,0.10)" stroke="#e85c8d" strokeWidth={2.5 / zoom} strokeDasharray={`${8 / zoom} ${5 / zoom}`} strokeLinejoin="round" />
+              </svg>
+            )}
+            {askArea && onAskArea && (
+              <div className="absolute z-[1000001] w-80" style={{ left: askArea.box.x + askArea.box.w / 2, top: askArea.box.y + askArea.box.h + 12 / zoom, transform: `translateX(-50%) scale(${1 / zoom})`, transformOrigin: 'top center' }}
+                onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+                <div className="ds-popover grid gap-2 rounded-2xl p-3">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]"><Sparkles className="h-3.5 w-3.5 text-[#e85c8d]" />{tl("Chiedi su quest’area")}</p>
+                  <textarea
+                    autoFocus
+                    rows={2}
+                    value={askText}
+                    disabled={askBusy}
+                    onChange={(e) => setAskText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') { setAskArea(null); return }
+                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submitAsk() }
+                    }}
+                    placeholder={tl("Es. Non capisco a cosa serve questa parte")}
+                    className="ds-field w-full resize-none px-3 py-2 text-sm"
+                  />
+                  {!askBusy && !askText && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {[tl("A cosa serve?"), tl("Spiegami come funziona"), tl("C’è qualcosa di sbagliato?")].map((q) => (
+                        <DsButton key={q} type="button" surface="soft" density="compact" onClick={() => setAskText(q)}>{q}</DsButton>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <DsButton type="button" surface="ghost" density="compact" disabled={askBusy} onClick={() => setAskArea(null)}>{tl("Annulla")}</DsButton>
+                    <DsButton type="button" tone="accent" surface="solid" density="compact" disabled={askBusy || !askText.trim()} onClick={() => void submitAsk()}>
+                      {askBusy ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{tl("Guardo l’area…")}</> : tl("Chiedi")}
+                    </DsButton>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Painted directly during pointer movement to keep marquee selection smooth. */}
             <div
               ref={marqueeElementRef}
@@ -2729,7 +2896,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   data-canvas-x={item.x}
                   data-canvas-y={item.y}
                   data-canvas-type={item.type}
-                  className={`absolute ${selectedIdSet.has(item.id) ? (tool === 'move' ? 'ring-2 ring-pink-500 ring-offset-2' : 'ring-2 ring-blue-500 ring-offset-1') : ''} ${lockedByOther ? 'opacity-60' : ''}`}
+                  className={`absolute ${selectedIdSet.has(item.id) ? (tool === 'move' ? 'ring-2 ring-pink-500 ring-offset-2' : 'ring-2 ring-blue-500 ring-offset-1') : ''} ${lockedByOther ? 'opacity-60' : ''} ${canEdit && !lockedByOther && !isEditing && (tool === 'select' || tool === 'move') && item.type !== 'path' ? 'cursor-grab active:cursor-grabbing [&_*:not(button)]:!cursor-grab [&_*:not(button)]:active:!cursor-grabbing' : ''}`}
                   style={{
                     left: item.x, top: item.y, width: item.w, height: item.h,
                     zIndex: itemZIndex.get(item.id) || 1,
@@ -2738,7 +2905,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   }}
                   onPointerDown={(e) => onPointerDownItem(e, item)}
                   onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={() => { if (!canEdit) return; if (item.type === 'formula' || item.type === 'callout') { setSelectedId(item.id); setSelectedIds([item.id]); setEditingId(item.id) } else if (isTextEditable(item)) startTextEditingRef.current(item.id) }}
+                  onDoubleClick={() => { if (!canEdit) return; if (item.type === 'formula' || item.type === 'callout' || item.type === 'model3d') { setSelectedId(item.id); setSelectedIds([item.id]); setEditingId(item.id) } else if (isTextEditable(item)) startTextEditingRef.current(item.id) }}
                   onContextMenu={(e) => openContextMenu(e, item.id)}
                 >
                   {item.type === 'postit' && (
@@ -2937,7 +3104,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                           />
                         ) : (
                           <div
-                            className="relative flex h-full w-full cursor-grab items-center justify-center truncate rounded-full bg-white px-3 text-[13px] font-semibold text-slate-900 active:cursor-grabbing"
+                            className={`relative flex h-full w-full cursor-grab items-center justify-center bg-white text-slate-900 active:cursor-grabbing ${item.h > 34 ? 'rounded-2xl px-3 text-center text-[12px] font-semibold leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden' : 'truncate rounded-full px-3 text-[13px] font-semibold'}`}
                             style={{ boxShadow: `0 0 0 2px ${item.color}, 0 4px 10px -4px rgba(15,23,42,0.35)`, fontFamily: 'Inter, system-ui, sans-serif' }}
                             title={item.text}
                           >
@@ -2949,16 +3116,46 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   })()}
 
                   {item.type === 'image' && <img src={item.src} alt="" className="h-full w-full rounded-md object-cover shadow-sm" draggable={false} />}
-                  {item.type === 'image' && onLabelImage && canEdit && selectedIdSet.has(item.id) && !labeledImageIds.has(item.id) && !draggingRef.current && (
-                    <div className="absolute left-1/2 top-full z-10 pt-2" style={{ transform: `translateX(-50%) scale(${1 / zoom})`, transformOrigin: 'top center' }}>
-                      <button
-                        type="button"
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.stopPropagation(); onLabelImage(item.id) }}
-                        className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[#e85c8d] px-3 py-1.5 text-xs font-bold text-white shadow-lg hover:brightness-95"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />{tl("Auto-etichettatura")}
+                  {item.type === 'image' && canEdit && selectedIdSet.has(item.id) && !draggingRef.current && (
+                    <div className="absolute left-1/2 top-full z-10 flex gap-1.5 pt-2" style={{ transform: `translateX(-50%) scale(${1 / zoom})`, transformOrigin: 'top center' }}>
+                      <button type="button" disabled={cutting.has(item.id)} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); if (item.origSrc) restoreOriginal(item.id); else void cutoutRef.current(item.id) }}
+                        className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-lg hover:brightness-110 disabled:opacity-60">
+                        {cutting.has(item.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scissors className="h-3.5 w-3.5" />}{item.origSrc ? tl("Ripristina sfondo") : tl("Scontorna")}
                       </button>
+                      {onModelFromImage && (
+                        <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onModelFromImage(item.id) }}
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-lg hover:brightness-110">
+                          <Box className="h-3.5 w-3.5" />{tl("Modello 3D")}
+                        </button>
+                      )}
+                      {onLabelImage && !labeledImageIds.has(item.id) && (
+                        <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onLabelImage(item.id) }}
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[#e85c8d] px-3 py-1.5 text-xs font-semibold text-white shadow-lg hover:brightness-95">
+                          <Sparkles className="h-3.5 w-3.5" />{tl("Auto-etichettatura")}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {item.type === 'model3d' && (
+                    <div className="h-full w-full overflow-hidden rounded-2xl bg-[var(--ds-well-tile,#eef1f5)] shadow-sm">
+                      <ModelViewer src={item.src} poster={item.poster} interactive={isEditing} autoRotate={!isEditing} />
+                      {!isEditing && <p className="pointer-events-none absolute inset-x-0 bottom-2 text-center text-[11px] font-medium text-slate-500">{tl("Doppio clic per esplorarlo")}</p>}
+                    </div>
+                  )}
+                  {item.type === 'model3d' && selectedIdSet.has(item.id) && !draggingRef.current && (
+                    <div className="absolute left-1/2 top-full z-20 flex flex-col items-center gap-2 pt-2" style={{ transform: `translateX(-50%) scale(${1 / zoom})`, transformOrigin: 'top center' }}>
+                      <div className="flex gap-1.5">
+                        <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setExplorerFor(item.id) }}
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-lg hover:brightness-110">
+                          <Maximize2 className="h-3.5 w-3.5" />{tl("Esplora")}
+                        </button>
+                        <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setQrFor((v) => (v === item.id ? null : item.id)) }}
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[#e85c8d] px-3 py-1.5 text-xs font-semibold text-white shadow-lg hover:brightness-95">
+                          <QrCode className="h-3.5 w-3.5" />{tl("Vedi in AR")}
+                        </button>
+                      </div>
+                      {qrFor === item.id && <ModelQrPopover model={item} onClose={() => setQrFor(null)} />}
                     </div>
                   )}
 
@@ -3091,6 +3288,16 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
         </div>
       </div>
 
+      {explorerFor && (() => {
+        const model = canvasDoc.items.find((i) => i.id === explorerFor)
+        return model?.type === 'model3d' ? <ModelExplorerDialog model={model} onClose={() => setExplorerFor(null)} /> : null
+      })()}
+      {notice && (
+        <div className="fixed bottom-6 left-1/2 z-[210] flex -translate-x-1/2 items-center gap-3 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-xl" role="status">
+          {notice}
+          <button type="button" className="font-semibold text-pink-300" onClick={() => setNotice(null)}>{tl("Ok")}</button>
+        </div>
+      )}
       {/* ── Context menu ────────────────────────────────────────────────── */}
       {contextMenu && (
         <div
@@ -3106,6 +3313,33 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                 <Users className="h-3 w-3" /> {tl("Richiama gli studenti qui")}
               </button>
               <div className="mx-2 my-1 h-px bg-slate-100" />
+            </>
+          )}
+          {contextMenu.itemId && canEdit && canvasDoc.items.find((i) => i.id === contextMenu.itemId)?.type === 'image' && (
+            <>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50" onClick={() => {
+                const id = contextMenu.itemId!
+                const image = canvasDoc.items.find((i) => i.id === id)
+                closeContextMenu()
+                if (image?.type === 'image' && image.origSrc) restoreOriginal(id); else void cutoutRef.current(id)
+              }}>
+                <Scissors className="h-3 w-3" />{(() => { const image = canvasDoc.items.find((i) => i.id === contextMenu.itemId); return image?.type === 'image' && image.origSrc ? tl("Ripristina lo sfondo") : tl("Scontorna (rimuovi sfondo)") })()}
+              </button>
+              {onModelFromImage && (
+                <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50" onClick={() => { onModelFromImage(contextMenu.itemId!); closeContextMenu() }}>
+                  <Box className="h-3 w-3" />{tl("Crea modello 3D")}
+                </button>
+              )}
+            </>
+          )}
+          {contextMenu.itemId && canvasDoc.items.find((i) => i.id === contextMenu.itemId)?.type === 'model3d' && (
+            <>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50" onClick={() => { setExplorerFor(contextMenu.itemId!); closeContextMenu() }}>
+                <Maximize2 className="h-3 w-3" />{tl("Esplora il modello")}
+              </button>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50" onClick={() => { setQrFor(contextMenu.itemId!); setSelectedId(contextMenu.itemId!); setSelectedIds([contextMenu.itemId!]); closeContextMenu() }}>
+                <QrCode className="h-3 w-3" />{tl("Codice QR per l’AR")}
+              </button>
             </>
           )}
           {contextMenu.itemId && onLabelImage && canvasDoc.items.find((i) => i.id === contextMenu.itemId)?.type === 'image' && (

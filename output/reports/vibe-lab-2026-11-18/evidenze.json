@@ -1,0 +1,1028 @@
+{
+  "date": "2026-11-18",
+  "captured_at": "2026-11-18T20:30:04.041023+00:00",
+  "timezone": "Europe/Rome",
+  "stack": "dev_golinelli_ai",
+  "sources": [
+    "background_jobs",
+    "coding_projects",
+    "coding_messages",
+    "coding_versions",
+    "credit_transactions",
+    "Docker logs: dev_golinelli_ai-nginx-1"
+  ],
+  "totals": {
+    "jobs": 64,
+    "failed": 17,
+    "cancelled": 4,
+    "succeeded": 43,
+    "projects": 10,
+    "student_projects": 9,
+    "student_accounts": 8,
+    "affected_student_projects": 8,
+    "affected_student_accounts": 8,
+    "class_sessions": 2,
+    "student_jobs": 61,
+    "student_failed_jobs": 17,
+    "student_cancelled_jobs": 4,
+    "student_succeeded_jobs": 40
+  },
+  "projects": [
+    {
+      "project_id": "3e98d448-9bd9-4cc0-9016-d6d412894ff4",
+      "title": "Prova Hackaton",
+      "session_id": "7a58619e-af66-44ec-b980-e558d798c538",
+      "owner_type": "teacher",
+      "attempts": 3,
+      "failed": 0,
+      "cancelled": 0,
+      "succeeded": 3,
+      "first_attempt": "10:11:23",
+      "first_generated_delay_seconds": 167.911,
+      "max_attempt_seconds": 167.911,
+      "current_build_status": "ready",
+      "assessment": "Prova docente del mattino: 3 generazioni concluse, nessun job failed.",
+      "evidence": "Avviso F2: dati meteo hardcoded anziché reali alle 10:14:11; successivo brief_repaired alle 10:16:18. Il progetto usava milestone e il primo prevedeva dati di esempio: l’avviso intermedio non basta per dichiarare fallito il progetto. Separato dal gruppo studenti pomeridiano."
+    },
+    {
+      "project_id": "faa52804-830c-4f4f-8c45-3dc1325b38ab",
+      "title": "V0.1",
+      "session_id": "e9d1c5af-bb6f-4843-9b17-cf2b6fff025d",
+      "owner_type": "student",
+      "attempts": 12,
+      "failed": 6,
+      "cancelled": 4,
+      "succeeded": 2,
+      "first_attempt": "15:27:45",
+      "first_generated_delay_seconds": 1182.628,
+      "max_attempt_seconds": 181.88,
+      "current_build_status": "ready",
+      "assessment": "6 fallimenti, 4 annullamenti; prima versione generata dopo 19m 43s. Ultima generazione conclusa alle 16:05:21.",
+      "evidence": "Ripetuti tentativi senza file validi. Un tentativo si arresta nel completamento di 2 file mancanti. Un rollback. Due richieste contemporanee in alcuni intervalli."
+    },
+    {
+      "project_id": "c46e55fb-2a45-4446-9a5f-d26fee5a6950",
+      "title": "True Politics",
+      "session_id": "e9d1c5af-bb6f-4843-9b17-cf2b6fff025d",
+      "owner_type": "student",
+      "attempts": 6,
+      "failed": 2,
+      "cancelled": 0,
+      "succeeded": 4,
+      "first_attempt": "15:29:53",
+      "first_generated_delay_seconds": 25.937,
+      "max_attempt_seconds": 71.559,
+      "current_build_status": "ready",
+      "assessment": "2 fallimenti, 4 generazioni concluse e 3 rollback.",
+      "evidence": "Il 15:44:41 diventa 15:44:48 senza file validi, pur con piano pronto; un altro tentativo fallisce alle 15:46:54. L’utente chiede spiegazioni sull’errore dell’anteprima. La causa specifica dell’anteprima non è memorizzata."
+    },
+    {
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "title": "TruePolitics",
+      "session_id": "e9d1c5af-bb6f-4843-9b17-cf2b6fff025d",
+      "owner_type": "student",
+      "attempts": 24,
+      "failed": 2,
+      "cancelled": 0,
+      "succeeded": 22,
+      "first_attempt": "15:34:25",
+      "first_generated_delay_seconds": 90.13,
+      "max_attempt_seconds": 382.437,
+      "current_build_status": "ready",
+      "assessment": "2 fallimenti, 22 generazioni concluse; 5 richieste di correzione runtime.",
+      "evidence": "PartyDetail.tsx: accesso a length su undefined; SearchPage.tsx: operatore in su undefined. La valutazione automatica visiva delle 18:57:58 è ancora 5/10: layout mobile/taglio ricerca, chatbot sovrapposto al footer, contenuti placeholder. Non è una valutazione umana di usabilità."
+    },
+    {
+      "project_id": "dae65b88-973e-403d-b78f-cc0988d511a6",
+      "title": "SpaceTalent",
+      "session_id": "e9d1c5af-bb6f-4843-9b17-cf2b6fff025d",
+      "owner_type": "student",
+      "attempts": 7,
+      "failed": 4,
+      "cancelled": 0,
+      "succeeded": 3,
+      "first_attempt": "15:35:13",
+      "first_generated_delay_seconds": 1092.785,
+      "max_attempt_seconds": 426.9,
+      "current_build_status": "ready",
+      "assessment": "4 fallimenti, 3 generazioni concluse. Prima versione dopo 18m 13s; una generazione dura 7m 07s.",
+      "evidence": "Tre fallimenti iniziali senza file validi; ultimo tentativo (correzione visiva) fallito alle 16:06:52. Esiste una versione precedente salvata, ma il tentativo finale non ha apportato una correzione valida."
+    },
+    {
+      "project_id": "8d009783-452b-474d-87be-857bd9ab883b",
+      "title": "creami un app che dica tutti gli eventi in Sardegna con",
+      "session_id": "e9d1c5af-bb6f-4843-9b17-cf2b6fff025d",
+      "owner_type": "student",
+      "attempts": 1,
+      "failed": 1,
+      "cancelled": 0,
+      "succeeded": 0,
+      "first_attempt": "16:02:14",
+      "first_generated_delay_seconds": null,
+      "max_attempt_seconds": 158.691,
+      "current_build_status": "pending",
+      "assessment": "1 tentativo fallito; nessuna versione di codice generata.",
+      "evidence": "Primo milestone, scheletro navigabile: tentativo 16:02:14–16:04:52, 2m 39s. Rimane solo la versione iniziale pending: progetto mai arrivato a una generazione di codice salvata."
+    },
+    {
+      "project_id": "08122c97-c99e-477e-b2e2-0d297b84b46e",
+      "title": "veribot",
+      "session_id": "e9d1c5af-bb6f-4843-9b17-cf2b6fff025d",
+      "owner_type": "student",
+      "attempts": 3,
+      "failed": 2,
+      "cancelled": 0,
+      "succeeded": 1,
+      "first_attempt": "16:04:39",
+      "first_generated_delay_seconds": 438.914,
+      "max_attempt_seconds": 438.914,
+      "current_build_status": "needs_review",
+      "assessment": "2 fallimenti; unica generazione conclusa in 7m 19s. Versione attuale needs_review.",
+      "evidence": "Il controllo statico interpreta la stopword from come istruzione di import e la virgola fra stringhe come nome di pacchetto. Falso positivo riprodotto sui file salvati. Richiesto Python/Streamlit, prodotti file React/TypeScript: requisito di stack non rispettato. La revisione visiva segnala l’azione Verifica non visibile."
+    },
+    {
+      "project_id": "2283ac45-e15d-4ed6-9159-c0ed8d394d43",
+      "title": "SOCCORSO IMMEDIATO",
+      "session_id": "e9d1c5af-bb6f-4843-9b17-cf2b6fff025d",
+      "owner_type": "student",
+      "attempts": 2,
+      "failed": 0,
+      "cancelled": 0,
+      "succeeded": 2,
+      "first_attempt": "16:12:40",
+      "first_generated_delay_seconds": 184.371,
+      "max_attempt_seconds": 184.371,
+      "current_build_status": "ready",
+      "assessment": "0 job failed; 2 job succeeded, 3 rollback e un errore di build persistente nella consegna automatica.",
+      "evidence": "Alle 16:22:57 App.tsx importa DEMO_USERS da types.ts, che non lo esporta. La versione automatica viene comunque salvata con needs_review. La versione corrente è un successivo salvataggio manuale marcato ready: questo non documenta un test funzionale riuscito."
+    },
+    {
+      "project_id": "a834b028-afb9-4698-93bc-43888c332e1c",
+      "title": "SOCCORSO IMMEDIATO",
+      "session_id": "e9d1c5af-bb6f-4843-9b17-cf2b6fff025d",
+      "owner_type": "student",
+      "attempts": 2,
+      "failed": 0,
+      "cancelled": 0,
+      "succeeded": 2,
+      "first_attempt": "16:27:50",
+      "first_generated_delay_seconds": 180.571,
+      "max_attempt_seconds": 180.571,
+      "current_build_status": "ready",
+      "assessment": "2 generazioni concluse; nessun errore esplicito negli archivi esaminati.",
+      "evidence": "È il nuovo progetto SOCCORSO IMMEDIATO creato alle 16:27:50, distinto da quello creato alle 16:12:40. Assenza di segnalazioni non dimostra il collaudo funzionale."
+    },
+    {
+      "project_id": "82f2037d-bb74-4c8a-b37c-166cae583aa6",
+      "title": "SOCCORSI IMMEDIATI",
+      "session_id": "e9d1c5af-bb6f-4843-9b17-cf2b6fff025d",
+      "owner_type": "student",
+      "attempts": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "succeeded": 4,
+      "first_attempt": "16:29:20",
+      "first_generated_delay_seconds": 59.127,
+      "max_attempt_seconds": 59.127,
+      "current_build_status": "ready",
+      "assessment": "0 job failed; 4 job succeeded, ma 3 correzioni per crash reali.",
+      "evidence": "EmergencySelection.tsx usa type.replace, ma la route monta il componente senza passare type. Seguono requests is not iterable in App.tsx e navigate is not defined. Le correzioni successive risultano salvate, senza prova persistente di collaudo completo finale."
+    }
+  ],
+  "evidence_messages": [
+    {
+      "id": "24b656bb-eeb8-43cc-9a4e-28a665abb4e2",
+      "project_id": "3e98d448-9bd9-4cc0-9016-d6d412894ff4",
+      "created_at": "2026-11-18T09:14:11.261638+00:00",
+      "kind": "brief_warning",
+      "content": "Dal confronto con il brief queste funzioni risultano ancora mancanti o incomplete:\n- F2 (incompleta): Dati meteo attuali per provincia.** Il pannello mostra temperatura (°C), vento (km/h) e umidità (%) della provincia selezionata. — I valori mostrati sono hardcoded in types.ts e non provengono da un servizio meteo: non c'è alcuna chiamata ai dati reali (ad esempio Open-Meteo), né caricamento, né gestione degli errori. La funzionalità di visualizzazione esiste, ma il dato non è reale.\nChiedimi di completarle (es. «completa le funzioni mancanti») e le aggiungo.",
+      "metadata": {
+        "gaps": [
+          {
+            "id": "F2",
+            "why": "I valori mostrati sono hardcoded in types.ts e non provengono da un servizio meteo: non c'è alcuna chiamata ai dati reali (ad esempio Open-Meteo), né caricamento, né gestione degli errori. La funzionalità di visualizzazione esiste, ma il dato non è reale.",
+            "text": "Dati meteo attuali per provincia.** Il pannello mostra temperatura (°C), vento (km/h) e umidità (%) della provincia selezionata.",
+            "status": "partial"
+          }
+        ],
+        "kind": "brief_warning",
+        "version_id": "b40eb4ee-fa99-42e1-b0b5-213588fa2162"
+      }
+    },
+    {
+      "id": "e794a23d-678c-45a0-8996-6d2d6586159e",
+      "project_id": "c46e55fb-2a45-4446-9a5f-d26fee5a6950",
+      "created_at": "2026-11-18T14:35:46.9067+00:00",
+      "kind": "agent_feedback",
+      "content": "Rollback completato: la versione 3 e` stata ripristinata come versione 4.",
+      "metadata": {
+        "kind": "agent_feedback",
+        "version_id": "3edebe66-cf6e-4846-901b-f3041a95f5ca",
+        "rollback_from_version_id": "aee7ff0f-9627-4dca-b3fe-82972388f46c"
+      }
+    },
+    {
+      "id": "dcb1bfc0-d17b-49b0-9c41-c2aa913e139c",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T14:39:24.7092+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 6/10. L’interfaccia è leggibile, ma nella vista mostrata non presenta la disposizione e le separazioni cromatiche richieste.\n- [alta] Disposizione delle sezioni: Le tre sezioni sono impilate e occupano tutte la larghezza disponibile, anziché mostrare una sezione centrale ampia il doppio di quelle laterali. → In modalità desktop, disporre le sezioni su tre colonne con proporzioni 1:2:1.\n- [media] Colori delle sezioni: Le sezioni principali hanno tutte uno sfondo bianco e si distinguono soprattutto per sottili bordi colorati. → Applicare colori di sfondo distinti alle sezioni, mantenendo un contrasto adeguato per i testi.\n- [media] Elenco dei partiti: I nomi dei partiti non hanno un’evidente indicazione visiva di interattività, pur essendo selezionabili. → Usare pulsanti o elementi con stile interattivo e prevedere uno stato visibile per il partito selezionato.\n- [bassa] Stato vuoto delle fonti: Il messaggio parla di fonti per «questo partito» anche se non è stato selezionato alcun partito. → Prima della selezione, invitare a scegliere un partito; mostrare l’assenza di fonti solo dopo la selezione.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 6,
+        "issues": [
+          {
+            "fix": "In modalità desktop, disporre le sezioni su tre colonne con proporzioni 1:2:1.",
+            "area": "Disposizione delle sezioni",
+            "problem": "Le tre sezioni sono impilate e occupano tutte la larghezza disponibile, anziché mostrare una sezione centrale ampia il doppio di quelle laterali.",
+            "severity": "alta"
+          },
+          {
+            "fix": "Applicare colori di sfondo distinti alle sezioni, mantenendo un contrasto adeguato per i testi.",
+            "area": "Colori delle sezioni",
+            "problem": "Le sezioni principali hanno tutte uno sfondo bianco e si distinguono soprattutto per sottili bordi colorati.",
+            "severity": "media"
+          },
+          {
+            "fix": "Usare pulsanti o elementi con stile interattivo e prevedere uno stato visibile per il partito selezionato.",
+            "area": "Elenco dei partiti",
+            "problem": "I nomi dei partiti non hanno un’evidente indicazione visiva di interattività, pur essendo selezionabili.",
+            "severity": "media"
+          },
+          {
+            "fix": "Prima della selezione, invitare a scegliere un partito; mostrare l’assenza di fonti solo dopo la selezione.",
+            "area": "Stato vuoto delle fonti",
+            "problem": "Il messaggio parla di fonti per «questo partito» anche se non è stato selezionato alcun partito.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "d3acde25-28d8-4d7c-b0a6-35695d021a3c"
+      }
+    },
+    {
+      "id": "5350ee1b-cb26-489e-b83e-6d47a9ae58a2",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T14:40:24.205563+00:00",
+      "kind": "agent_fix_request",
+      "content": "Rifinisco 4 difetto/i visivo/i con modifiche mirate:\n- [alta] Disposizione delle sezioni: Le tre sezioni sono impilate e occupano tutte la larghezza disponibile, anziché mostrare una sezione centrale ampia il doppio di quelle laterali. → In modalità desktop, disporre le sezioni su tre colonne con proporzioni 1:2:1.\n- [media] Colori delle sezioni: Le sezioni principali hanno tutte uno sfondo bianco e si distinguono soprattutto per sottili bordi colorati. → Applicare colori di sfondo distinti alle sezioni, mantenendo un contrasto adeguato per i testi.\n- [media] Elenco dei partiti: I nomi dei partiti non hanno un’evidente indicazione visiva di interattività, pur essendo selezionabili. → Usare pulsanti o elementi con stile interattivo e prevedere uno stato visibile per il partito selezionato.\n- [bassa] Stato vuoto delle fonti: Il messaggio parla di fonti per «questo partito» anche se non è stato selezionato alcun partito. → Prima della selezione, invitare a scegliere un partito; mostrare l’assenza di fonti solo dopo la selezione.",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "[alta] Disposizione delle sezioni: Le tre sezioni sono impilate e occupano tutte la larghezza disponibile, anziché mostrare una sezione centrale ampia il doppio di quelle laterali. → In modalità desktop, disporre le sezioni su tre colonne con proporzioni 1:2:1.",
+          "[media] Colori delle sezioni: Le sezioni principali hanno tutte uno sfondo bianco e si distinguono soprattutto per sottili bordi colorati. → Applicare colori di sfondo distinti alle sezioni, mantenendo un contrasto adeguato per i testi.",
+          "[media] Elenco dei partiti: I nomi dei partiti non hanno un’evidente indicazione visiva di interattività, pur essendo selezionabili. → Usare pulsanti o elementi con stile interattivo e prevedere uno stato visibile per il partito selezionato.",
+          "[bassa] Stato vuoto delle fonti: Il messaggio parla di fonti per «questo partito» anche se non è stato selezionato alcun partito. → Prima della selezione, invitare a scegliere un partito; mostrare l’assenza di fonti solo dopo la selezione."
+        ],
+        "visual": true
+      }
+    },
+    {
+      "id": "badfb94d-6127-4b67-a751-518cc0280112",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T14:43:16.873169+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 7/10. L’interfaccia è leggibile, ma le sezioni non seguono una palette uniforme e gli stati iniziali sono poco distinti.\n- [media] Sezioni della pagina: Le sezioni esterne a quella bianca usano blu, grigio e blu scuro anziché un colore unico a tema. → Uniformare il colore delle sezioni esterne, mantenendo bianca quella centrale.\n- [media] Stati iniziali delle sezioni: Tre messaggi chiedono di selezionare un partito, ma senza titoli che distinguano chiaramente informazioni, scheda e fonti. → Aggiungere un titolo visibile a ogni sezione e rendere i messaggi di stato vuoto più distinti.\n- [bassa] Elenco Partiti Politici: Le voci non mostrano un’indicazione evidente che possano essere selezionate. → Aggiungere un indicatore visivo, come una freccia, e prevedere uno stato selezionato riconoscibile.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 7,
+        "issues": [
+          {
+            "fix": "Uniformare il colore delle sezioni esterne, mantenendo bianca quella centrale.",
+            "area": "Sezioni della pagina",
+            "problem": "Le sezioni esterne a quella bianca usano blu, grigio e blu scuro anziché un colore unico a tema.",
+            "severity": "media"
+          },
+          {
+            "fix": "Aggiungere un titolo visibile a ogni sezione e rendere i messaggi di stato vuoto più distinti.",
+            "area": "Stati iniziali delle sezioni",
+            "problem": "Tre messaggi chiedono di selezionare un partito, ma senza titoli che distinguano chiaramente informazioni, scheda e fonti.",
+            "severity": "media"
+          },
+          {
+            "fix": "Aggiungere un indicatore visivo, come una freccia, e prevedere uno stato selezionato riconoscibile.",
+            "area": "Elenco Partiti Politici",
+            "problem": "Le voci non mostrano un’indicazione evidente che possano essere selezionate.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "bafe3511-889c-4c8e-ac31-59a569ba111c"
+      }
+    },
+    {
+      "id": "50f7b59d-7bd1-4b55-a20b-7f43106a6a91",
+      "project_id": "faa52804-830c-4f4f-8c45-3dc1325b38ab",
+      "created_at": "2026-11-18T14:47:34.742258+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 8/10. Interfaccia leggibile e ordinata, con due piccoli problemi di spaziatura e continuità dello sfondo.\n- [media] Sfondo della pagina: Lo sfondo blu termina bruscamente sotto la mappa, lasciando una fascia nera nella parte inferiore dello screenshot. → Estendere lo sfondo della pagina almeno all’intera altezza della viewport.\n- [bassa] Istruzione sotto la mappa: Il testo è quasi a filo del bordo sinistro del riquadro interno. → Aggiungere padding orizzontale e inferiore coerente con quello del contenitore.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 8,
+        "issues": [
+          {
+            "fix": "Estendere lo sfondo della pagina almeno all’intera altezza della viewport.",
+            "area": "Sfondo della pagina",
+            "problem": "Lo sfondo blu termina bruscamente sotto la mappa, lasciando una fascia nera nella parte inferiore dello screenshot.",
+            "severity": "media"
+          },
+          {
+            "fix": "Aggiungere padding orizzontale e inferiore coerente con quello del contenitore.",
+            "area": "Istruzione sotto la mappa",
+            "problem": "Il testo è quasi a filo del bordo sinistro del riquadro interno.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "bf853632-6af8-4ed8-be99-6a751ff41c26"
+      }
+    },
+    {
+      "id": "d09885ef-e3e6-477e-b6d6-9afc0292ea90",
+      "project_id": "faa52804-830c-4f4f-8c45-3dc1325b38ab",
+      "created_at": "2026-11-18T14:48:52.638695+00:00",
+      "kind": "agent_feedback",
+      "content": "Rollback completato: la versione 2 e` stata ripristinata come versione 3.",
+      "metadata": {
+        "kind": "agent_feedback",
+        "version_id": "086889f5-15ac-41b8-adf6-53b5bc4a5c21",
+        "rollback_from_version_id": "bf853632-6af8-4ed8-be99-6a751ff41c26"
+      }
+    },
+    {
+      "id": "1a0be70e-4a61-4c6c-8ed6-fc453a57f37b",
+      "project_id": "c46e55fb-2a45-4446-9a5f-d26fee5a6950",
+      "created_at": "2026-11-18T14:49:04.739928+00:00",
+      "kind": "agent_feedback",
+      "content": "Rollback completato: la versione 6 e` stata ripristinata come versione 7.",
+      "metadata": {
+        "kind": "agent_feedback",
+        "version_id": "bf5c85fe-6f5a-4851-94d8-b49f5fc5161a",
+        "rollback_from_version_id": "fe45e3f0-305b-44da-84ec-06686cbc0185"
+      }
+    },
+    {
+      "id": "1183e0fb-ac7f-4bc0-aad7-58e5715c85fe",
+      "project_id": "c46e55fb-2a45-4446-9a5f-d26fee5a6950",
+      "created_at": "2026-11-18T14:49:20.148389+00:00",
+      "kind": "agent_feedback",
+      "content": "Rollback completato: la versione 7 e` stata ripristinata come versione 8.",
+      "metadata": {
+        "kind": "agent_feedback",
+        "version_id": "1d7c5f4f-545d-451a-87f2-6d2e05903a2f",
+        "rollback_from_version_id": "bf5c85fe-6f5a-4851-94d8-b49f5fc5161a"
+      }
+    },
+    {
+      "id": "eb9f100c-1d53-4011-b759-f06f0d0f94a5",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T14:53:53.382579+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 8/10. L'interfaccia è leggibile e mostra le informazioni richieste, ma la selezione dei partiti e gli stati vuoti possono essere più chiari.\n- [media] Elenco Partiti Politici: Le voci sembrano testo statico e non indicano chiaramente che possono essere selezionate. → Rendi le voci riconoscibili come elementi interattivi, ad esempio con un'icona o un'indicazione visibile.\n- [bassa] Stati vuoti in fondo alla pagina: Due messaggi separati chiedono di selezionare un partito, creando una ripetizione visiva. → Unifica le istruzioni in un solo stato vuoto che anticipi la comparsa della scheda e delle fonti.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 8,
+        "issues": [
+          {
+            "fix": "Rendi le voci riconoscibili come elementi interattivi, ad esempio con un'icona o un'indicazione visibile.",
+            "area": "Elenco Partiti Politici",
+            "problem": "Le voci sembrano testo statico e non indicano chiaramente che possono essere selezionate.",
+            "severity": "media"
+          },
+          {
+            "fix": "Unifica le istruzioni in un solo stato vuoto che anticipi la comparsa della scheda e delle fonti.",
+            "area": "Stati vuoti in fondo alla pagina",
+            "problem": "Due messaggi separati chiedono di selezionare un partito, creando una ripetizione visiva.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "6fa5b8a0-3bbb-4660-bbc1-c60099063e6c"
+      }
+    },
+    {
+      "id": "0ed03d35-de7d-43e6-a2e0-b71df8edaef0",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:04:27.841398+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 8/10. L’interfaccia è leggibile e ordinata, ma la selezione dei partiti e la relativa scheda sono poco collegate visivamente.\n- [media] Elenco dei partiti: Le voci non mostrano un chiaro indizio di interattività, anche se lo stato vuoto invita a selezionarne una. → Rendere le voci riconoscibili come elementi selezionabili, ad esempio con un indicatore e stati visivi di hover e focus.\n- [media] Scheda del partito: Il messaggio che invita a selezionare un partito è separato dall’elenco dall’intera sezione sul governo, rendendo meno evidente il legame tra selezione e scheda. → Posizionare la scheda o il suo stato vuoto vicino all’elenco dei partiti.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 8,
+        "issues": [
+          {
+            "fix": "Rendere le voci riconoscibili come elementi selezionabili, ad esempio con un indicatore e stati visivi di hover e focus.",
+            "area": "Elenco dei partiti",
+            "problem": "Le voci non mostrano un chiaro indizio di interattività, anche se lo stato vuoto invita a selezionarne una.",
+            "severity": "media"
+          },
+          {
+            "fix": "Posizionare la scheda o il suo stato vuoto vicino all’elenco dei partiti.",
+            "area": "Scheda del partito",
+            "problem": "Il messaggio che invita a selezionare un partito è separato dall’elenco dall’intera sezione sul governo, rendendo meno evidente il legame tra selezione e scheda.",
+            "severity": "media"
+          }
+        ],
+        "version_id": "ada94f81-3ada-4d8f-a3e2-40a7101efa36"
+      }
+    },
+    {
+      "id": "ccfeeea6-8799-4376-8076-25bf0f08abef",
+      "project_id": "dae65b88-973e-403d-b78f-cc0988d511a6",
+      "created_at": "2026-11-18T15:04:42.367702+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 7/10. Interfaccia leggibile e coerente, ma con uno spazio vuoto iniziale e alcune aree troppo compresse.\n- [media] Parte superiore della pagina: Una fascia nera vuota occupa una porzione significativa dello schermo sopra l’intestazione. → Eliminare la fascia o ridurne l’altezza se fa parte della pagina.\n- [media] Schede del percorso: I testi sono molto vicini ai bordi interni delle schede, soprattutto sul lato sinistro e in basso. → Aumentare il padding interno e mantenere uno spazio uniforme attorno ai contenuti.\n- [media] Pulsanti e testi arancioni: Il testo bianco sui pulsanti arancioni e alcune etichette arancioni su sfondo chiaro hanno un contrasto limitato. → Scurire l’arancione o modificare i colori per ottenere un contrasto adeguato al testo.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 7,
+        "issues": [
+          {
+            "fix": "Eliminare la fascia o ridurne l’altezza se fa parte della pagina.",
+            "area": "Parte superiore della pagina",
+            "problem": "Una fascia nera vuota occupa una porzione significativa dello schermo sopra l’intestazione.",
+            "severity": "media"
+          },
+          {
+            "fix": "Aumentare il padding interno e mantenere uno spazio uniforme attorno ai contenuti.",
+            "area": "Schede del percorso",
+            "problem": "I testi sono molto vicini ai bordi interni delle schede, soprattutto sul lato sinistro e in basso.",
+            "severity": "media"
+          },
+          {
+            "fix": "Scurire l’arancione o modificare i colori per ottenere un contrasto adeguato al testo.",
+            "area": "Pulsanti e testi arancioni",
+            "problem": "Il testo bianco sui pulsanti arancioni e alcune etichette arancioni su sfondo chiaro hanno un contrasto limitato.",
+            "severity": "media"
+          }
+        ],
+        "version_id": "26c45762-6586-484f-bbf7-b64380828ba4"
+      }
+    },
+    {
+      "id": "025a5dd8-ac72-4e67-bd7a-05ee8b3f540e",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:05:17.24316+00:00",
+      "kind": "agent_fix_request",
+      "content": "Rifinisco 2 difetto/i visivo/i con modifiche mirate:\n- [media] Elenco dei partiti: Le voci non mostrano un chiaro indizio di interattività, anche se lo stato vuoto invita a selezionarne una. → Rendere le voci riconoscibili come elementi selezionabili, ad esempio con un indicatore e stati visivi di hover e focus.\n- [media] Scheda del partito: Il messaggio che invita a selezionare un partito è separato dall’elenco dall’intera sezione sul governo, rendendo meno evidente il legame tra selezione e scheda. → Posizionare la scheda o il suo stato vuoto vicino all’elenco dei partiti.",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "[media] Elenco dei partiti: Le voci non mostrano un chiaro indizio di interattività, anche se lo stato vuoto invita a selezionarne una. → Rendere le voci riconoscibili come elementi selezionabili, ad esempio con un indicatore e stati visivi di hover e focus.",
+          "[media] Scheda del partito: Il messaggio che invita a selezionare un partito è separato dall’elenco dall’intera sezione sul governo, rendendo meno evidente il legame tra selezione e scheda. → Posizionare la scheda o il suo stato vuoto vicino all’elenco dei partiti."
+        ],
+        "visual": true
+      }
+    },
+    {
+      "id": "c214a7fb-e098-4593-909e-15086ec8e490",
+      "project_id": "dae65b88-973e-403d-b78f-cc0988d511a6",
+      "created_at": "2026-11-18T15:05:36.754069+00:00",
+      "kind": "agent_fix_request",
+      "content": "Rifinisco 3 difetto/i visivo/i con modifiche mirate:\n- [media] Parte superiore della pagina: Una fascia nera vuota occupa una porzione significativa dello schermo sopra l’intestazione. → Eliminare la fascia o ridurne l’altezza se fa parte della pagina.\n- [media] Schede del percorso: I testi sono molto vicini ai bordi interni delle schede, soprattutto sul lato sinistro e in basso. → Aumentare il padding interno e mantenere uno spazio uniforme attorno ai contenuti.\n- [media] Pulsanti e testi arancioni: Il testo bianco sui pulsanti arancioni e alcune etichette arancioni su sfondo chiaro hanno un contrasto limitato. → Scurire l’arancione o modificare i colori per ottenere un contrasto adeguato al testo.",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "[media] Parte superiore della pagina: Una fascia nera vuota occupa una porzione significativa dello schermo sopra l’intestazione. → Eliminare la fascia o ridurne l’altezza se fa parte della pagina.",
+          "[media] Schede del percorso: I testi sono molto vicini ai bordi interni delle schede, soprattutto sul lato sinistro e in basso. → Aumentare il padding interno e mantenere uno spazio uniforme attorno ai contenuti.",
+          "[media] Pulsanti e testi arancioni: Il testo bianco sui pulsanti arancioni e alcune etichette arancioni su sfondo chiaro hanno un contrasto limitato. → Scurire l’arancione o modificare i colori per ottenere un contrasto adeguato al testo."
+        ],
+        "visual": true
+      }
+    },
+    {
+      "id": "c8f1e719-67f1-44ca-a2bc-4eece48c5568",
+      "project_id": "dae65b88-973e-403d-b78f-cc0988d511a6",
+      "created_at": "2026-11-18T15:08:41.708613+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 7/10. L’interfaccia è ordinata, ma presenta problemi di contrasto e uno stato di errore senza un’azione di ripristino.\n- [media] Navigazione: Le voci arancioni e il testo bianco sulla scheda attiva hanno un contrasto ridotto rispetto ai rispettivi sfondi. → Scurire l’arancione delle voci e dello sfondo della scheda attiva per migliorare il contrasto.\n- [media] Risultati di compatibilità: Il messaggio invita a riprovare, ma non è visibile un pulsante per ripetere il calcolo. → Aggiungere un pulsante «Riprova» nello stato di errore.\n- [bassa] Intestazione: Il saluto e il badge sono a filo del bordo sinistro, mentre il contenuto principale ha un margine interno. → Allineare l’intestazione al margine orizzontale del contenuto principale.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 7,
+        "issues": [
+          {
+            "fix": "Scurire l’arancione delle voci e dello sfondo della scheda attiva per migliorare il contrasto.",
+            "area": "Navigazione",
+            "problem": "Le voci arancioni e il testo bianco sulla scheda attiva hanno un contrasto ridotto rispetto ai rispettivi sfondi.",
+            "severity": "media"
+          },
+          {
+            "fix": "Aggiungere un pulsante «Riprova» nello stato di errore.",
+            "area": "Risultati di compatibilità",
+            "problem": "Il messaggio invita a riprovare, ma non è visibile un pulsante per ripetere il calcolo.",
+            "severity": "media"
+          },
+          {
+            "fix": "Allineare l’intestazione al margine orizzontale del contenuto principale.",
+            "area": "Intestazione",
+            "problem": "Il saluto e il badge sono a filo del bordo sinistro, mentre il contenuto principale ha un margine interno.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "a7e766c6-69ba-462c-b8ed-818953e2a3b0"
+      }
+    },
+    {
+      "id": "9c6fdc3a-a813-478f-a09a-fc0b0bd72364",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:11:14.281671+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 8/10. L’interfaccia è leggibile e applica il blu richiesto alla barra con il titolo bianco, ma presenta un riquadro vuoto evidente.\n- [media] Parte inferiore della pagina: Un ampio riquadro vuoto occupa spazio senza indicare il proprio scopo. → Rimuovere il riquadro se non serve oppure mostrare un contenuto o uno stato vuoto esplicito.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 8,
+        "issues": [
+          {
+            "fix": "Rimuovere il riquadro se non serve oppure mostrare un contenuto o uno stato vuoto esplicito.",
+            "area": "Parte inferiore della pagina",
+            "problem": "Un ampio riquadro vuoto occupa spazio senza indicare il proprio scopo.",
+            "severity": "media"
+          }
+        ],
+        "version_id": "acd30b96-ecfb-4035-8592-1a425d2ced22"
+      }
+    },
+    {
+      "id": "94827402-b22e-4f17-bfda-4399b4b156a5",
+      "project_id": "08122c97-c99e-477e-b2e2-0d297b84b46e",
+      "created_at": "2026-11-18T15:11:57.960035+00:00",
+      "kind": "build_warning",
+      "content": "Il controllo di build segnala ancora problemi che potrebbero rompere l'anteprima: types.ts:1: importa il pacchetto \",\" ma non e' tra le librerie consentite: aggiungilo a package.json (solo se consentito) oppure scrivi il codice a mano. Se l'anteprima non parte, chiedi una correzione.",
+      "metadata": {
+        "kind": "build_warning",
+        "issues": [
+          {
+            "file": "types.ts",
+            "line": 1,
+            "rule": "undeclared-package",
+            "message": "importa il pacchetto \",\" ma non e' tra le librerie consentite: aggiungilo a package.json (solo se consentito) oppure scrivi il codice a mano",
+            "severity": "error"
+          }
+        ],
+        "version_id": "b86a13b9-f15a-47f9-918c-ff1a4cdd65a0"
+      }
+    },
+    {
+      "id": "b69c6ddc-45d7-4699-b7cd-ef7c01c131fb",
+      "project_id": "08122c97-c99e-477e-b2e2-0d297b84b46e",
+      "created_at": "2026-11-18T15:12:04.216657+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 7/10. Interfaccia leggibile e coerente, ma manca un’azione visibile per avviare la verifica.\n- [alta] Verifica una notizia: Sotto il campo di testo non è visibile un pulsante per verificare la notizia né un’indicazione che la verifica avvenga automaticamente. → Aggiungi un pulsante «Verifica» oppure indica chiaramente che il controllo parte automaticamente.\n- [bassa] Database di confronto: I punti elenco sporgono a sinistra rispetto al margine del titolo e del resto del contenuto. → Aggiungi un rientro alla lista per allineare i punti elenco al contenuto della pagina.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 7,
+        "issues": [
+          {
+            "fix": "Aggiungi un pulsante «Verifica» oppure indica chiaramente che il controllo parte automaticamente.",
+            "area": "Verifica una notizia",
+            "problem": "Sotto il campo di testo non è visibile un pulsante per verificare la notizia né un’indicazione che la verifica avvenga automaticamente.",
+            "severity": "alta"
+          },
+          {
+            "fix": "Aggiungi un rientro alla lista per allineare i punti elenco al contenuto della pagina.",
+            "area": "Database di confronto",
+            "problem": "I punti elenco sporgono a sinistra rispetto al margine del titolo e del resto del contenuto.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "b86a13b9-f15a-47f9-918c-ff1a4cdd65a0"
+      }
+    },
+    {
+      "id": "3d909cf3-f405-4727-b0ae-84c86a38b0ac",
+      "project_id": "08122c97-c99e-477e-b2e2-0d297b84b46e",
+      "created_at": "2026-11-18T15:14:20.129947+00:00",
+      "kind": "agent_fix_request",
+      "content": "Rifinisco 2 difetto/i visivo/i con modifiche mirate:\n- [alta] Verifica una notizia: Sotto il campo di testo non è visibile un pulsante per verificare la notizia né un’indicazione che la verifica avvenga automaticamente. → Aggiungi un pulsante «Verifica» oppure indica chiaramente che il controllo parte automaticamente.\n- [bassa] Database di confronto: I punti elenco sporgono a sinistra rispetto al margine del titolo e del resto del contenuto. → Aggiungi un rientro alla lista per allineare i punti elenco al contenuto della pagina.",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "[alta] Verifica una notizia: Sotto il campo di testo non è visibile un pulsante per verificare la notizia né un’indicazione che la verifica avvenga automaticamente. → Aggiungi un pulsante «Verifica» oppure indica chiaramente che il controllo parte automaticamente.",
+          "[bassa] Database di confronto: I punti elenco sporgono a sinistra rispetto al margine del titolo e del resto del contenuto. → Aggiungi un rientro alla lista per allineare i punti elenco al contenuto della pagina."
+        ],
+        "visual": true
+      }
+    },
+    {
+      "id": "e5f8edcf-b4cc-4a02-9ebb-8c2724f7c378",
+      "project_id": "2283ac45-e15d-4ed6-9159-c0ed8d394d43",
+      "created_at": "2026-11-18T15:16:30.75825+00:00",
+      "kind": "agent_feedback",
+      "content": "Rollback completato: la versione 2 e` stata ripristinata come versione 3.",
+      "metadata": {
+        "kind": "agent_feedback",
+        "version_id": "45b77a15-d40a-4bf5-b5cd-390db1b11bc3",
+        "rollback_from_version_id": "e505c6a8-0263-4881-9a5c-7e3215c4ce54"
+      }
+    },
+    {
+      "id": "3bce18ca-5fda-44bd-a7cc-f71dac2c76dc",
+      "project_id": "2283ac45-e15d-4ed6-9159-c0ed8d394d43",
+      "created_at": "2026-11-18T15:19:18.139296+00:00",
+      "kind": "agent_feedback",
+      "content": "Rollback completato: la versione 3 e` stata ripristinata come versione 4.",
+      "metadata": {
+        "kind": "agent_feedback",
+        "version_id": "c9c1a336-16de-46d3-8f46-c5721c187d8e",
+        "rollback_from_version_id": "45b77a15-d40a-4bf5-b5cd-390db1b11bc3"
+      }
+    },
+    {
+      "id": "5efbae49-7851-4fda-bab5-e9edbf33a309",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:19:28.206031+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 7/10. L’interfaccia è leggibile, ma la biografia richiesta non è visibile e rimane un ampio riquadro vuoto.\n- [alta] Biografia del politico: Non è visibile una scheda della biografia del politico colorata; il blu è applicato invece all’intero elenco dei partiti. → Mostra la scheda biografica e applica il colore alla sua tab, lasciando non colorata la linea del titolo.\n- [media] Riquadro inferiore: Un grande riquadro vuoto occupa spazio senza indicare contenuti o funzione. → Rimuovilo se non serve oppure mostra un contenuto o uno stato vuoto esplicito.\n- [bassa] Pulsante Chat: La dicitura «Chat» non chiarisce che il pulsante serve a fare ricerche con un chatbot. → Usa un’etichetta come «Cerca con chatbot» o aggiungi una breve descrizione accessibile.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 7,
+        "issues": [
+          {
+            "fix": "Mostra la scheda biografica e applica il colore alla sua tab, lasciando non colorata la linea del titolo.",
+            "area": "Biografia del politico",
+            "problem": "Non è visibile una scheda della biografia del politico colorata; il blu è applicato invece all’intero elenco dei partiti.",
+            "severity": "alta"
+          },
+          {
+            "fix": "Rimuovilo se non serve oppure mostra un contenuto o uno stato vuoto esplicito.",
+            "area": "Riquadro inferiore",
+            "problem": "Un grande riquadro vuoto occupa spazio senza indicare contenuti o funzione.",
+            "severity": "media"
+          },
+          {
+            "fix": "Usa un’etichetta come «Cerca con chatbot» o aggiungi una breve descrizione accessibile.",
+            "area": "Pulsante Chat",
+            "problem": "La dicitura «Chat» non chiarisce che il pulsante serve a fare ricerche con un chatbot.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "987da688-44d4-45d5-83d3-49cec1f23c75"
+      }
+    },
+    {
+      "id": "f0a50cb8-1ab5-432d-927d-ad5bf5702a55",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:20:57.297922+00:00",
+      "kind": "agent_fix_request",
+      "content": "Rifinisco 3 difetto/i visivo/i con modifiche mirate:\n- [alta] Biografia del politico: Non è visibile una scheda della biografia del politico colorata; il blu è applicato invece all’intero elenco dei partiti. → Mostra la scheda biografica e applica il colore alla sua tab, lasciando non colorata la linea del titolo.\n- [media] Riquadro inferiore: Un grande riquadro vuoto occupa spazio senza indicare contenuti o funzione. → Rimuovilo se non serve oppure mostra un contenuto o uno stato vuoto esplicito.\n- [bassa] Pulsante Chat: La dicitura «Chat» non chiarisce che il pulsante serve a fare ricerche con un chatbot. → Usa un’etichetta come «Cerca con chatbot» o aggiungi una breve descrizione accessibile.",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "[alta] Biografia del politico: Non è visibile una scheda della biografia del politico colorata; il blu è applicato invece all’intero elenco dei partiti. → Mostra la scheda biografica e applica il colore alla sua tab, lasciando non colorata la linea del titolo.",
+          "[media] Riquadro inferiore: Un grande riquadro vuoto occupa spazio senza indicare contenuti o funzione. → Rimuovilo se non serve oppure mostra un contenuto o uno stato vuoto esplicito.",
+          "[bassa] Pulsante Chat: La dicitura «Chat» non chiarisce che il pulsante serve a fare ricerche con un chatbot. → Usa un’etichetta come «Cerca con chatbot» o aggiungi una breve descrizione accessibile."
+        ],
+        "visual": true
+      }
+    },
+    {
+      "id": "f647db36-61ec-4352-b803-771e8dac40c1",
+      "project_id": "2283ac45-e15d-4ed6-9159-c0ed8d394d43",
+      "created_at": "2026-11-18T15:22:26.959802+00:00",
+      "kind": "agent_feedback",
+      "content": "Rollback completato: la versione 4 e` stata ripristinata come versione 5.",
+      "metadata": {
+        "kind": "agent_feedback",
+        "version_id": "5d8edbd9-2415-407b-a2df-ed0ab61d44cd",
+        "rollback_from_version_id": "c9c1a336-16de-46d3-8f46-c5721c187d8e"
+      }
+    },
+    {
+      "id": "f3edefd8-c2cd-4a0a-863b-c4de974e81f4",
+      "project_id": "2283ac45-e15d-4ed6-9159-c0ed8d394d43",
+      "created_at": "2026-11-18T15:22:57.218407+00:00",
+      "kind": "build_warning",
+      "content": "Il controllo di build segnala ancora problemi che potrebbero rompere l'anteprima: App.tsx:25: No matching export in \"types.ts\" for import \"DEMO_USERS\" — l'import non corrisponde a un export di quel file (default vs named?). Se l'anteprima non parte, chiedi una correzione.",
+      "metadata": {
+        "kind": "build_warning",
+        "issues": [
+          {
+            "file": "App.tsx",
+            "line": 25,
+            "rule": "esbuild",
+            "message": "No matching export in \"types.ts\" for import \"DEMO_USERS\" — l'import non corrisponde a un export di quel file (default vs named?)",
+            "severity": "error"
+          }
+        ],
+        "version_id": "20d38e4d-e8b5-40a1-8afc-31594ab8e9b6"
+      }
+    },
+    {
+      "id": "dfc666dc-5920-4d64-a16a-9987153b325a",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:25:43.273965+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 7/10. L'interfaccia è leggibile, ma il pulsante del chatbot si sovrappone allo stato vuoto e non rispetta la forma richiesta.\n- [media] Stato vuoto e pulsante chatbot: Il pulsante «Cerca con chatbot» copre parte del testo dello stato vuoto. → Riposizionare il pulsante o riservargli spazio, evitando sovrapposizioni.\n- [media] Pulsante «Cerca con chatbot»: Il pulsante è arrotondato, mentre la richiesta chiede di squadrarlo. → Ridurre il raggio degli angoli per renderlo rettangolare.\n- [bassa] Testo dello stato vuoto: L'istruzione indica l'elenco «a sinistra», ma in questa schermata l'elenco è sopra. → Usare un'indicazione indipendente dalla posizione, come «Seleziona un partito dall'elenco».",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 7,
+        "issues": [
+          {
+            "fix": "Riposizionare il pulsante o riservargli spazio, evitando sovrapposizioni.",
+            "area": "Stato vuoto e pulsante chatbot",
+            "problem": "Il pulsante «Cerca con chatbot» copre parte del testo dello stato vuoto.",
+            "severity": "media"
+          },
+          {
+            "fix": "Ridurre il raggio degli angoli per renderlo rettangolare.",
+            "area": "Pulsante «Cerca con chatbot»",
+            "problem": "Il pulsante è arrotondato, mentre la richiesta chiede di squadrarlo.",
+            "severity": "media"
+          },
+          {
+            "fix": "Usare un'indicazione indipendente dalla posizione, come «Seleziona un partito dall'elenco».",
+            "area": "Testo dello stato vuoto",
+            "problem": "L'istruzione indica l'elenco «a sinistra», ma in questa schermata l'elenco è sopra.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "5020fa0d-6ea9-46d7-904c-dd6d0f1b90f4"
+      }
+    },
+    {
+      "id": "513072fd-4497-4885-b6b5-512738c394df",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:31:03.733615+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 7/10. L'interfaccia è leggibile e rispetta le modifiche visibili alla barra, ma la selezione dei partiti è poco chiara.\n- [media] Elenco partiti e scheda vuota: La scheda invita a selezionare un partito «dall'elenco a sinistra», ma l'elenco si trova sopra ed è separato dalla scheda dalla lunga sezione sul governo. → Colloca elenco e scheda affiancati quando lo spazio lo consente; altrimenti avvicinali e aggiorna il testo indicando che l'elenco è sopra.\n- [media] Elenco partiti: Le voci sembrano semplici righe informative e non indicano chiaramente che possono essere selezionate. → Rendi evidente l'interattività con uno stile da pulsante o un'icona e prevedi stati visibili di passaggio, focus e selezione.\n- [bassa] Navigazione: Home e Fonti hanno lo stesso aspetto, senza indicare quale pagina sia attiva. → Evidenzia la voce corrente con un indicatore visibile, ad esempio una sottolineatura.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 7,
+        "issues": [
+          {
+            "fix": "Colloca elenco e scheda affiancati quando lo spazio lo consente; altrimenti avvicinali e aggiorna il testo indicando che l'elenco è sopra.",
+            "area": "Elenco partiti e scheda vuota",
+            "problem": "La scheda invita a selezionare un partito «dall'elenco a sinistra», ma l'elenco si trova sopra ed è separato dalla scheda dalla lunga sezione sul governo.",
+            "severity": "media"
+          },
+          {
+            "fix": "Rendi evidente l'interattività con uno stile da pulsante o un'icona e prevedi stati visibili di passaggio, focus e selezione.",
+            "area": "Elenco partiti",
+            "problem": "Le voci sembrano semplici righe informative e non indicano chiaramente che possono essere selezionate.",
+            "severity": "media"
+          },
+          {
+            "fix": "Evidenzia la voce corrente con un indicatore visibile, ad esempio una sottolineatura.",
+            "area": "Navigazione",
+            "problem": "Home e Fonti hanno lo stesso aspetto, senza indicare quale pagina sia attiva.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "b404474a-9e40-4a24-9751-48bde23afb30"
+      }
+    },
+    {
+      "id": "125ecf1e-ca91-4453-abe8-23a7db47b786",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:34:02.092562+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 7/10. L'interfaccia è leggibile, ma la relazione tra elenco e scheda del partito è poco chiara.\n- [media] Stato vuoto della scheda partito: Il messaggio indica un elenco «a sinistra», ma l'elenco è sopra e separato dalla sezione Governo Italiano. → Posiziona la scheda vicino all'elenco e aggiorna il messaggio in base alla disposizione visibile.\n- [media] Elenco Partiti Politici: Le righe non mostrano un'indicazione evidente che siano selezionabili, nonostante lo stato vuoto richieda di scegliere un partito. → Aggiungi un indicatore di apertura e uno stile riconoscibile per le righe interattive e per quella selezionata.\n- [bassa] Logo nell'intestazione: Il simbolo interno del logo è molto piccolo e i suoi dettagli risultano difficili da distinguere. → Aumenta leggermente la dimensione del logo o usa una versione leggibile anche a dimensioni ridotte.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 7,
+        "issues": [
+          {
+            "fix": "Posiziona la scheda vicino all'elenco e aggiorna il messaggio in base alla disposizione visibile.",
+            "area": "Stato vuoto della scheda partito",
+            "problem": "Il messaggio indica un elenco «a sinistra», ma l'elenco è sopra e separato dalla sezione Governo Italiano.",
+            "severity": "media"
+          },
+          {
+            "fix": "Aggiungi un indicatore di apertura e uno stile riconoscibile per le righe interattive e per quella selezionata.",
+            "area": "Elenco Partiti Politici",
+            "problem": "Le righe non mostrano un'indicazione evidente che siano selezionabili, nonostante lo stato vuoto richieda di scegliere un partito.",
+            "severity": "media"
+          },
+          {
+            "fix": "Aumenta leggermente la dimensione del logo o usa una versione leggibile anche a dimensioni ridotte.",
+            "area": "Logo nell'intestazione",
+            "problem": "Il simbolo interno del logo è molto piccolo e i suoi dettagli risultano difficili da distinguere.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "427b3727-a993-4c41-826a-51146c432497"
+      }
+    },
+    {
+      "id": "ffb59747-9622-425e-b988-ab0e8c461f97",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:35:09.751499+00:00",
+      "kind": "agent_fix_request",
+      "content": "Rifinisco 3 difetto/i visivo/i con modifiche mirate:\n- [media] Stato vuoto della scheda partito: Il messaggio indica un elenco «a sinistra», ma l'elenco è sopra e separato dalla sezione Governo Italiano. → Posiziona la scheda vicino all'elenco e aggiorna il messaggio in base alla disposizione visibile.\n- [media] Elenco Partiti Politici: Le righe non mostrano un'indicazione evidente che siano selezionabili, nonostante lo stato vuoto richieda di scegliere un partito. → Aggiungi un indicatore di apertura e uno stile riconoscibile per le righe interattive e per quella selezionata.\n- [bassa] Logo nell'intestazione: Il simbolo interno del logo è molto piccolo e i suoi dettagli risultano difficili da distinguere. → Aumenta leggermente la dimensione del logo o usa una versione leggibile anche a dimensioni ridotte.",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "[media] Stato vuoto della scheda partito: Il messaggio indica un elenco «a sinistra», ma l'elenco è sopra e separato dalla sezione Governo Italiano. → Posiziona la scheda vicino all'elenco e aggiorna il messaggio in base alla disposizione visibile.",
+          "[media] Elenco Partiti Politici: Le righe non mostrano un'indicazione evidente che siano selezionabili, nonostante lo stato vuoto richieda di scegliere un partito. → Aggiungi un indicatore di apertura e uno stile riconoscibile per le righe interattive e per quella selezionata.",
+          "[bassa] Logo nell'intestazione: Il simbolo interno del logo è molto piccolo e i suoi dettagli risultano difficili da distinguere. → Aumenta leggermente la dimensione del logo o usa una versione leggibile anche a dimensioni ridotte."
+        ],
+        "visual": true
+      }
+    },
+    {
+      "id": "7e64d5df-99b2-43c5-8456-39dab1f45612",
+      "project_id": "82f2037d-bb74-4c8a-b37c-166cae583aa6",
+      "created_at": "2026-11-18T15:35:27.392628+00:00",
+      "kind": "agent_fix_request",
+      "content": "Ho eseguito l'app e ho trovato 2 errore/i. Li correggo con modifiche mirate:\n- Runtime: Uncaught TypeError: Cannot read properties of undefined (reading 'replace') (EmergencySelection.tsx:56)\n- Runtime: Errore durante il rendering: Cannot read properties of undefined (reading 'replace') | at EmergencySelection (https://2-19-8-sandpack.codesandbox.io/components/EmergencySelection.tsx:22:5)     at RenderedRoute (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:675:22)     at Routes (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:1148:18)",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "Runtime: Uncaught TypeError: Cannot read properties of undefined (reading 'replace') (EmergencySelection.tsx:56)",
+          "Runtime: Errore durante il rendering: Cannot read properties of undefined (reading 'replace') | at EmergencySelection (https://2-19-8-sandpack.codesandbox.io/components/EmergencySelection.tsx:22:5)     at RenderedRoute (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:675:22)     at Routes (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:1148:18)"
+        ]
+      }
+    },
+    {
+      "id": "6f4c5f10-759f-49b1-902b-940f37a53c81",
+      "project_id": "82f2037d-bb74-4c8a-b37c-166cae583aa6",
+      "created_at": "2026-11-18T15:36:11.859501+00:00",
+      "kind": "agent_fix_request",
+      "content": "Ho eseguito l'app e ho trovato 2 errore/i. Li correggo con modifiche mirate:\n- Runtime: Promise non gestita: requests is not iterable\n- Compilazione /App.tsx:62: requests is not iterable",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "Runtime: Promise non gestita: requests is not iterable",
+          "Compilazione /App.tsx:62: requests is not iterable"
+        ]
+      }
+    },
+    {
+      "id": "e0e28d40-bea3-49bb-8f16-4c61d5838252",
+      "project_id": "82f2037d-bb74-4c8a-b37c-166cae583aa6",
+      "created_at": "2026-11-18T15:36:56.831522+00:00",
+      "kind": "agent_fix_request",
+      "content": "Ho eseguito l'app e ho trovato 5 errore/i. Li correggo con modifiche mirate:\n- Compilazione /App.tsx:62: requests is not iterable\n- Runtime: Promise non gestita: requests is not iterable\n- Runtime: Uncaught ReferenceError: navigate is not defined (App.tsx:172)\n- Runtime: Uncaught ReferenceError: navigate is not defined (react-dom.development.js:4312)\n- Compilazione /App.tsx:132: navigate is not defined",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "Compilazione /App.tsx:62: requests is not iterable",
+          "Runtime: Promise non gestita: requests is not iterable",
+          "Runtime: Uncaught ReferenceError: navigate is not defined (App.tsx:172)",
+          "Runtime: Uncaught ReferenceError: navigate is not defined (react-dom.development.js:4312)",
+          "Compilazione /App.tsx:132: navigate is not defined"
+        ]
+      }
+    },
+    {
+      "id": "23917405-f5a8-4014-8f29-91ead76481c3",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:39:01.128581+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 4/10. L'interfaccia è leggibile, ma la schermata visibile non presenta i contenuti principali richiesti per la home.\n- [alta] Home: Manca il titolo grande centrato: il contenuto inizia direttamente con l'elenco dei partiti. → Inserire in apertura un titolo TruePolitics grande e centrato.\n- [alta] Home: Non sono visibili la sezione «Chi siamo» né i placeholder delle notizie attuali richiesti. → Aggiungere sotto il titolo una breve presentazione e una sezione notizie con contenuti segnaposto.\n- [media] Scheda del partito: Lo stato vuoto che invita a selezionare un partito è molto distante dall'elenco, sotto l'intera sezione sul governo. → Collocare la scheda vuota vicino all'elenco dei partiti, così da rendere evidente il collegamento.\n- [bassa] Navigazione: I collegamenti Home e Fonti hanno lo stesso aspetto e non indicano quale pagina sia attiva. → Distinguere la voce attiva con uno stile riconoscibile, ad esempio una sottolineatura.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 4,
+        "issues": [
+          {
+            "fix": "Inserire in apertura un titolo TruePolitics grande e centrato.",
+            "area": "Home",
+            "problem": "Manca il titolo grande centrato: il contenuto inizia direttamente con l'elenco dei partiti.",
+            "severity": "alta"
+          },
+          {
+            "fix": "Aggiungere sotto il titolo una breve presentazione e una sezione notizie con contenuti segnaposto.",
+            "area": "Home",
+            "problem": "Non sono visibili la sezione «Chi siamo» né i placeholder delle notizie attuali richiesti.",
+            "severity": "alta"
+          },
+          {
+            "fix": "Collocare la scheda vuota vicino all'elenco dei partiti, così da rendere evidente il collegamento.",
+            "area": "Scheda del partito",
+            "problem": "Lo stato vuoto che invita a selezionare un partito è molto distante dall'elenco, sotto l'intera sezione sul governo.",
+            "severity": "media"
+          },
+          {
+            "fix": "Distinguere la voce attiva con uno stile riconoscibile, ad esempio una sottolineatura.",
+            "area": "Navigazione",
+            "problem": "I collegamenti Home e Fonti hanno lo stesso aspetto e non indicano quale pagina sia attiva.",
+            "severity": "bassa"
+          }
+        ],
+        "version_id": "3c995646-3586-4e9e-aca8-3afce31771a6"
+      }
+    },
+    {
+      "id": "e2bb3ba4-3573-4bff-a122-faeef5942cf4",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:39:26.027714+00:00",
+      "kind": "agent_fix_request",
+      "content": "Rifinisco 4 difetto/i visivo/i con modifiche mirate:\n- [alta] Home: Manca il titolo grande centrato: il contenuto inizia direttamente con l'elenco dei partiti. → Inserire in apertura un titolo TruePolitics grande e centrato.\n- [alta] Home: Non sono visibili la sezione «Chi siamo» né i placeholder delle notizie attuali richiesti. → Aggiungere sotto il titolo una breve presentazione e una sezione notizie con contenuti segnaposto.\n- [media] Scheda del partito: Lo stato vuoto che invita a selezionare un partito è molto distante dall'elenco, sotto l'intera sezione sul governo. → Collocare la scheda vuota vicino all'elenco dei partiti, così da rendere evidente il collegamento.\n- [bassa] Navigazione: I collegamenti Home e Fonti hanno lo stesso aspetto e non indicano quale pagina sia attiva. → Distinguere la voce attiva con uno stile riconoscibile, ad esempio una sottolineatura.",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "[alta] Home: Manca il titolo grande centrato: il contenuto inizia direttamente con l'elenco dei partiti. → Inserire in apertura un titolo TruePolitics grande e centrato.",
+          "[alta] Home: Non sono visibili la sezione «Chi siamo» né i placeholder delle notizie attuali richiesti. → Aggiungere sotto il titolo una breve presentazione e una sezione notizie con contenuti segnaposto.",
+          "[media] Scheda del partito: Lo stato vuoto che invita a selezionare un partito è molto distante dall'elenco, sotto l'intera sezione sul governo. → Collocare la scheda vuota vicino all'elenco dei partiti, così da rendere evidente il collegamento.",
+          "[bassa] Navigazione: I collegamenti Home e Fonti hanno lo stesso aspetto e non indicano quale pagina sia attiva. → Distinguere la voce attiva con uno stile riconoscibile, ad esempio una sottolineatura."
+        ],
+        "visual": true
+      }
+    },
+    {
+      "id": "9083e0ce-289d-4779-a4e4-be0a0aad6917",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:41:15.955904+00:00",
+      "kind": "agent_fix_request",
+      "content": "Ho eseguito l'app e ho trovato 2 errore/i. Li correggo con modifiche mirate:\n- Runtime: Uncaught TypeError: Cannot read properties of undefined (reading 'length') (PartyDetail.tsx:161)\n- Runtime: Errore durante il rendering: Cannot read properties of undefined (reading 'length') | at PartyDetail (https://2-19-8-sandpack.codesandbox.io/components/PartyDetail.tsx:11:5)     at main     at div",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "Runtime: Uncaught TypeError: Cannot read properties of undefined (reading 'length') (PartyDetail.tsx:161)",
+          "Runtime: Errore durante il rendering: Cannot read properties of undefined (reading 'length') | at PartyDetail (https://2-19-8-sandpack.codesandbox.io/components/PartyDetail.tsx:11:5)     at main     at div"
+        ]
+      }
+    },
+    {
+      "id": "a45a91fd-46ca-45bb-8f31-9cc38eaa2735",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:41:47.194445+00:00",
+      "kind": "agent_fix_request",
+      "content": "Ho eseguito l'app e ho trovato 3 errore/i. Li correggo con modifiche mirate:\n- Runtime: Uncaught TypeError: Cannot read properties of undefined (reading 'length') (PartyDetail.tsx:161)\n- Runtime: Errore durante il rendering: Cannot read properties of undefined (reading 'length') | at PartyDetail (https://2-19-8-sandpack.codesandbox.io/components/PartyDetail.tsx:11:5)     at main     at div\n- Compilazione /components/PartyDetail.tsx:109: Cannot read properties of undefined (reading 'length')",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "Runtime: Uncaught TypeError: Cannot read properties of undefined (reading 'length') (PartyDetail.tsx:161)",
+          "Runtime: Errore durante il rendering: Cannot read properties of undefined (reading 'length') | at PartyDetail (https://2-19-8-sandpack.codesandbox.io/components/PartyDetail.tsx:11:5)     at main     at div",
+          "Compilazione /components/PartyDetail.tsx:109: Cannot read properties of undefined (reading 'length')"
+        ]
+      }
+    },
+    {
+      "id": "063fa1bd-7d09-4de7-b094-8cf424555fc8",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:42:12.343937+00:00",
+      "kind": "agent_fix_request",
+      "content": "Ho eseguito l'app e ho trovato 3 errore/i. Li correggo con modifiche mirate:\n- Runtime: Uncaught TypeError: Cannot read properties of undefined (reading 'length') (PartyDetail.tsx:161)\n- Runtime: Errore durante il rendering: Cannot read properties of undefined (reading 'length') | at PartyDetail (https://2-19-8-sandpack.codesandbox.io/components/PartyDetail.tsx:11:5)     at main     at div\n- Compilazione /components/PartyDetail.tsx:109: Cannot read properties of undefined (reading 'length')",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "Runtime: Uncaught TypeError: Cannot read properties of undefined (reading 'length') (PartyDetail.tsx:161)",
+          "Runtime: Errore durante il rendering: Cannot read properties of undefined (reading 'length') | at PartyDetail (https://2-19-8-sandpack.codesandbox.io/components/PartyDetail.tsx:11:5)     at main     at div",
+          "Compilazione /components/PartyDetail.tsx:109: Cannot read properties of undefined (reading 'length')"
+        ]
+      }
+    },
+    {
+      "id": "7b507b56-0bfb-4607-8e8e-250b71f7c710",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:45:49.811772+00:00",
+      "kind": "agent_fix_request",
+      "content": "Ho eseguito l'app e ho trovato 2 errore/i. Li correggo con modifiche mirate:\n- Runtime: Uncaught TypeError: Cannot use 'in' operator to search for 'slug' in undefined (SearchPage.tsx:88)\n- Runtime: Errore durante il rendering: Cannot use 'in' operator to search for 'slug' in undefined | at SearchPage (https://2-19-8-sandpack.codesandbox.io/pages/SearchPage.tsx:19:52)     at RenderedRoute (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:675:22)     at Routes (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:1148:18)",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "Runtime: Uncaught TypeError: Cannot use 'in' operator to search for 'slug' in undefined (SearchPage.tsx:88)",
+          "Runtime: Errore durante il rendering: Cannot use 'in' operator to search for 'slug' in undefined | at SearchPage (https://2-19-8-sandpack.codesandbox.io/pages/SearchPage.tsx:19:52)     at RenderedRoute (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:675:22)     at Routes (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:1148:18)"
+        ]
+      }
+    },
+    {
+      "id": "1950dd8a-fcab-472f-93c9-39c60588e0f6",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T15:46:24.774335+00:00",
+      "kind": "agent_fix_request",
+      "content": "Ho eseguito l'app e ho trovato 2 errore/i. Li correggo con modifiche mirate:\n- Runtime: Uncaught TypeError: Cannot use 'in' operator to search for 'slug' in undefined (SearchPage.tsx:88)\n- Runtime: Errore durante il rendering: Cannot use 'in' operator to search for 'slug' in undefined | at SearchPage (https://2-19-8-sandpack.codesandbox.io/pages/SearchPage.tsx:19:52)     at RenderedRoute (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:675:22)     at Routes (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:1148:18)",
+      "metadata": {
+        "kind": "agent_fix_request",
+        "errors": [
+          "Runtime: Uncaught TypeError: Cannot use 'in' operator to search for 'slug' in undefined (SearchPage.tsx:88)",
+          "Runtime: Errore durante il rendering: Cannot use 'in' operator to search for 'slug' in undefined | at SearchPage (https://2-19-8-sandpack.codesandbox.io/pages/SearchPage.tsx:19:52)     at RenderedRoute (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:675:22)     at Routes (https://2-19-8-sandpack.codesandbox.io/node_modules/react-router/dist/index.js:1148:18)"
+        ]
+      }
+    },
+    {
+      "id": "da180366-bbba-4c1d-b6c8-256dae76c4f9",
+      "project_id": "466fe9c2-97ef-47cb-93a0-63598c8460fe",
+      "created_at": "2026-11-18T17:57:58.764047+00:00",
+      "kind": "visual_review",
+      "content": "Valutazione 5/10. Il titolo è correttamente posizionato sotto il logo, ma la versione mobile presenta problemi di adattamento e contenuti provvisori visibili.\n- [alta] Layout e barra di navigazione: Il contenuto occupa solo una parte della larghezza visibile, mentre la navigazione si estende sulla zona nera a destra; il campo di ricerca risulta tagliato. → Adattare contenitore e navigazione alla larghezza del viewport, usando una disposizione mobile senza overflow orizzontale.\n- [media] Footer: Il pulsante del chatbot si sovrappone al testo del footer, rendendone una parte difficile da leggere. → Riservare spazio al pulsante fisso oppure riposizionarlo in modo che non copra i contenuti.\n- [media] Notizie attuali: Le schede mostrano testi esplicitamente indicati come placeholder e informazioni ancora in verifica. → Sostituire i contenuti provvisori con notizie pubblicabili oppure mostrare uno stato vuoto chiaro.",
+      "metadata": {
+        "kind": "visual_review",
+        "score": 5,
+        "issues": [
+          {
+            "fix": "Adattare contenitore e navigazione alla larghezza del viewport, usando una disposizione mobile senza overflow orizzontale.",
+            "area": "Layout e barra di navigazione",
+            "problem": "Il contenuto occupa solo una parte della larghezza visibile, mentre la navigazione si estende sulla zona nera a destra; il campo di ricerca risulta tagliato.",
+            "severity": "alta"
+          },
+          {
+            "fix": "Riservare spazio al pulsante fisso oppure riposizionarlo in modo che non copra i contenuti.",
+            "area": "Footer",
+            "problem": "Il pulsante del chatbot si sovrappone al testo del footer, rendendone una parte difficile da leggere.",
+            "severity": "media"
+          },
+          {
+            "fix": "Sostituire i contenuti provvisori con notizie pubblicabili oppure mostrare uno stato vuoto chiaro.",
+            "area": "Notizie attuali",
+            "problem": "Le schede mostrano testi esplicitamente indicati come placeholder e informazioni ancora in verifica.",
+            "severity": "media"
+          }
+        ],
+        "version_id": "f80e87e2-ee7d-462d-ae9d-bc799334a7c2"
+      }
+    }
+  ],
+  "notes": [
+    "No historical per-call provider trace or raw failed model answer persisted.",
+    "Current API container created after the hackathon; its logs do not cover the incident.",
+    "HTTP 200 for SSE is not a generation success.",
+    "Project affected means explicit failed job, build warning, or runtime fix request; no inference from 404 reads."
+  ]
+}

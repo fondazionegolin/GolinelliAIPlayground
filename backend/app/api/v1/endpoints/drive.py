@@ -65,7 +65,7 @@ class MoveRequest(ItemIds):
 
 
 class ShareEntry(BaseModel):
-    target_type: Literal["session", "class", "teacher"]
+    target_type: Literal["session", "class", "teacher", "student"]
     target_id: Optional[UUID] = None
     email: Optional[str] = None  # teacher shares may be addressed by email
     role: Literal["viewer", "editor"] = "viewer"
@@ -73,6 +73,10 @@ class ShareEntry(BaseModel):
 
 class SharesUpdate(BaseModel):
     shares: list[ShareEntry] = Field(max_length=200)
+
+
+class BulkSharesUpdate(ItemIds):
+    shares: list[ShareEntry] = Field(min_length=1, max_length=200)
 
 
 class PublicLinkUpdate(BaseModel):
@@ -258,9 +262,18 @@ async def _get_or_create_folder(db: AsyncSession, owner: UUID, tenant_id, parent
     return folder
 
 
-async def _check_targets(db: AsyncSession, teacher: User, entries: list[ShareEntry]) -> list[tuple[str, UUID, str]]:
+async def _check_targets(db: AsyncSession, principal: drive.DrivePrincipal, entries: list[ShareEntry]) -> list[tuple[str, UUID, str]]:
+    teacher = principal.teacher
+    available = await share_targets(db, StudentOrTeacher(teacher=teacher, student=principal.student))
+    allowed_students = {UUID(row["id"]) for row in available["students"]}
+    allowed_teachers = {UUID(row["id"]) for row in available["teachers"]}
     resolved: list[tuple[str, UUID, str]] = []
     for entry in entries:
+        if entry.target_type == "student":
+            if entry.target_id not in allowed_students:
+                raise HTTPException(status_code=403, detail="Studente non accessibile")
+            resolved.append(("student", entry.target_id, entry.role))
+            continue
         if entry.target_type == "teacher":
             target = None
             if entry.target_id:
@@ -271,15 +284,17 @@ async def _check_targets(db: AsyncSession, teacher: User, entries: list[ShareEnt
                 )).scalar_one_or_none()
             if not target or target.role not in (UserRole.TEACHER, UserRole.ADMIN) or not target.is_active:
                 raise HTTPException(status_code=400, detail=f"Docente non trovato: {entry.email or entry.target_id}")
-            if target.id == teacher.id:
+            if not teacher and target.id not in allowed_teachers:
+                raise HTTPException(status_code=403, detail="Docente non accessibile")
+            if teacher and target.id == teacher.id:
                 continue
             resolved.append(("teacher", target.id, entry.role))
         elif entry.target_type == "class":
-            if not entry.target_id or not await teacher_can_access_class(db, teacher, entry.target_id):
+            if not teacher or not entry.target_id or not await teacher_can_access_class(db, teacher, entry.target_id):
                 raise HTTPException(status_code=403, detail="Classe non accessibile")
             resolved.append(("class", entry.target_id, entry.role))
         else:
-            if not entry.target_id or not await teacher_can_access_session(db, teacher, entry.target_id):
+            if not teacher or not entry.target_id or not await teacher_can_access_session(db, teacher, entry.target_id):
                 raise HTTPException(status_code=403, detail="Sessione non accessibile")
             resolved.append(("session", entry.target_id, entry.role))
     return resolved
@@ -291,21 +306,24 @@ async def _check_targets(db: AsyncSession, teacher: User, entries: list[ShareEnt
 @router.get("/tree")
 async def folder_tree(
     db: Annotated[AsyncSession, Depends(get_db)],
-    teacher: Annotated[User, Depends(get_current_teacher)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
 ):
-    """All folders of the teacher's drive (for the sidebar tree and move dialogs). Triggers the auto-sync."""
-    await drive.sync_teacher_drive(db, teacher)
-    folders = (await db.execute(
-        _visible(select(DriveItem))
-        .where(DriveItem.owner_teacher_id == teacher.id, DriveItem.owner_student_id.is_(None))
-        .where(DriveItem.kind == "folder")
-        .where(DriveItem.trashed_at.is_(None))
+    if auth.teacher:
+        await drive.sync_teacher_drive(db, auth.teacher)
+        owned = (DriveItem.owner_teacher_id == auth.teacher.id) & DriveItem.owner_student_id.is_(None)
+    else:
+        await drive.student_root(db, auth.student)
+        await db.commit()
+        owned = DriveItem.owner_student_id == auth.student.id
+    folders = (await db.scalars(
+        _visible(select(DriveItem)).where(owned, DriveItem.kind == "folder", DriveItem.trashed_at.is_(None))
         .order_by(DriveItem.is_system.desc(), DriveItem.name)
-    )).scalars().all()
+    )).all()
+    folder_ids = {folder.id for folder in folders}
     return [
         {
             "id": str(folder.id),
-            "parent_id": str(folder.parent_id) if folder.parent_id else None,
+            "parent_id": str(folder.parent_id) if folder.parent_id in folder_ids else None,
             "name": folder.name,
             "is_system": folder.is_system,
             "class_id": str(folder.class_id) if folder.class_id else None,
@@ -366,7 +384,9 @@ async def list_items(
         )).scalars().all() if best else []
         items = []
         for row in rows:
-            items.extend(await _serialize(db, [row], best[row.id]))
+            effective_role, _ = await drive.resolve_role(db, principal, row)
+            if effective_role:
+                items.extend(await _serialize(db, [row], effective_role))
         return {"items": items, "breadcrumb": [], "role": None}
 
     if principal.is_teacher:
@@ -698,6 +718,56 @@ async def update_item(
     return (await _serialize(db, [item], role))[0]
 
 
+@router.post("/auto-rename")
+async def auto_rename(
+    body: ItemIds,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    from app.services.drive_naming import suggest_name
+    principal = await _principal(db, auth)
+    items = [await _load(db, item_id) for item_id in dict.fromkeys(body.ids)]
+    for item in items:
+        await _require(db, principal, item, "editor")
+        if item.kind == "folder" or item.is_system or item.trashed_at:
+            raise HTTPException(status_code=400, detail="Seleziona solo file attivi")
+    results = []
+    for item in items:
+        old_name = item.name
+        try:
+            if item.kind == "file":
+                data, mime = await _file_bytes(db, item)
+                name = await asyncio.wait_for(suggest_name(item.name, mime, data=data), timeout=40)
+            elif item.source_type in ("document", "presentation"):
+                draft = await _document(db, item)
+                name = await asyncio.wait_for(suggest_name(item.name, item.mime_type or "", text=draft.content_json, preserve_extension=False), timeout=40)
+            else:
+                raise ValueError("Analisi del contenuto non disponibile per questo formato")
+        except (ValueError, HTTPException) as exc:
+            results.append({"id": str(item.id), "name": old_name, "error": str(exc.detail if isinstance(exc, HTTPException) else exc)})
+            continue
+        except Exception:
+            results.append({"id": str(item.id), "name": old_name, "error": "Analisi non disponibile: nome originale conservato"})
+            continue
+        # Avoid ambiguous sibling names, including across a multi-file operation.
+        siblings = set((await db.scalars(select(DriveItem.name).where(
+            DriveItem.parent_id == item.parent_id, DriveItem.id != item.id,
+            DriveItem.owner_teacher_id == item.owner_teacher_id,
+            DriveItem.is_hidden.is_(False), DriveItem.trashed_at.is_(None)))).all())
+        candidate, count = name, 2
+        suffix = PurePosixPath(name).suffix if item.kind == "file" else ""
+        stem = name[:-len(suffix)] if suffix else name
+        while candidate in siblings:
+            candidate = f"{stem} ({count}){suffix}"
+            count += 1
+        item.name = _clean_name(candidate)
+        await _sync_source_name(db, item, item.name)
+        await db.flush()
+        results.append({"id": str(item.id), "name": item.name, "previous_name": old_name})
+    await db.commit()
+    return {"results": results}
+
+
 @router.post("/move")
 async def move_items(
     body: MoveRequest,
@@ -711,7 +781,7 @@ async def move_items(
         await _require(db, principal, item, "editor")
         if item.is_system:
             raise HTTPException(status_code=400, detail=f"«{item.name}» è una cartella automatica e non si può spostare")
-        if item.owner_teacher_id != owner:
+        if item.owner_teacher_id != owner or item.owner_student_id != (target.owner_student_id if target else None):
             raise HTTPException(status_code=400, detail="Non puoi spostare elementi tra drive diversi")
         _, share_root = await drive.resolve_role(db, principal, item)
         if share_root is not None and share_root.id == item.id:
@@ -800,33 +870,56 @@ async def _owned(db: AsyncSession, teacher: User, item_id: UUID) -> DriveItem:
 @router.get("/share-targets")
 async def share_targets(
     db: Annotated[AsyncSession, Depends(get_db)],
-    teacher: Annotated[User, Depends(get_current_teacher)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
 ):
-    member_class_ids = select(ClassTeacher.class_id).where(ClassTeacher.teacher_id == teacher.id)
-    classes = (await db.execute(
-        select(Class).where(or_(Class.teacher_id == teacher.id, Class.id.in_(member_class_ids)))
-        .where(Class.is_system.is_(False)).where(Class.archived_at.is_(None)).order_by(Class.name)
-    )).scalars().all()
-    sessions = (await db.execute(
-        select(Session).where(Session.class_id.in_([cls.id for cls in classes])).where(Session.deleted_at.is_(None))
-        .order_by(Session.created_at.desc())
-    )).scalars().all() if classes else []
+    teacher = auth.teacher
+    if teacher:
+        member_class_ids = select(ClassTeacher.class_id).where(ClassTeacher.teacher_id == teacher.id)
+        classes = (await db.scalars(select(Class).where(or_(Class.teacher_id == teacher.id, Class.id.in_(member_class_ids)))
+            .where(Class.is_system.is_(False), Class.archived_at.is_(None)).order_by(Class.name))).all()
+        sessions = (await db.scalars(select(Session).where(Session.class_id.in_([cls.id for cls in classes]), Session.deleted_at.is_(None))
+            .order_by(Session.created_at.desc()))).all() if classes else []
+        teachers = []  # Colleagues can also be addressed by exact email.
+    else:
+        session = await db.get(Session, auth.student.session_id)
+        sessions = [session] if session and not session.deleted_at else []
+        classes = []
+        teacher_ids = set()
+        if session:
+            cls = await db.get(Class, session.class_id)
+            if cls:
+                teacher_ids.add(cls.teacher_id)
+                teacher_ids.update((await db.scalars(select(ClassTeacher.teacher_id).where(ClassTeacher.class_id == cls.id))).all())
+            if session.created_by_teacher_id:
+                teacher_ids.add(session.created_by_teacher_id)
+            from app.models.invitation import SessionTeacher
+            teacher_ids.update((await db.scalars(select(SessionTeacher.teacher_id).where(SessionTeacher.session_id == session.id))).all())
+        teachers = (await db.scalars(select(User).where(User.id.in_(teacher_ids), User.is_active.is_(True)))).all() if teacher_ids else []
+    students = (await db.execute(select(SessionStudent, Session.title).join(Session, Session.id == SessionStudent.session_id)
+        .where(SessionStudent.session_id.in_([session.id for session in sessions])).order_by(SessionStudent.nickname))).all() if sessions else []
     return {
         "classes": [{"id": str(cls.id), "name": cls.name} for cls in classes],
-        "sessions": [
-            {"id": str(session.id), "name": session.title, "class_id": str(session.class_id), "status": getattr(session.status, "value", session.status)}
-            for session in sessions
-        ],
+        "sessions": [{"id": str(session.id), "name": session.title, "class_id": str(session.class_id), "status": getattr(session.status, "value", session.status)} for session in sessions] if teacher else [],
+        "students": [{"id": str(student.id), "name": student.nickname, "session": title} for student, title in students if not auth.student or student.id != auth.student.id],
+        "teachers": [{"id": str(user.id), "name": f"{user.first_name or ''} {user.last_name or ''}".strip() or "Docente"} for user in teachers],
     }
+
+
+async def _share_owned(db: AsyncSession, auth: StudentOrTeacher, item_id: UUID) -> DriveItem:
+    item = await _load(db, item_id)
+    await _require(db, await _principal(db, auth), item, "owner")
+    if item.trashed_at or any(node.trashed_at or node.is_hidden for node in await drive.ancestors(db, item)):
+        raise HTTPException(status_code=400, detail="Ripristina prima l'elemento dal cestino")
+    return item
 
 
 @router.get("/items/{item_id}/shares")
 async def get_shares(
     item_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    teacher: Annotated[User, Depends(get_current_teacher)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
 ):
-    item = await _owned(db, teacher, item_id)
+    item = await _share_owned(db, auth, item_id)
     shares = (await db.execute(select(DriveShare).where(DriveShare.item_id == item.id).order_by(DriveShare.created_at))).scalars().all()
     labels: dict[tuple[str, UUID], str] = {}
     for share in shares:
@@ -835,6 +928,9 @@ async def get_shares(
             labels[(share.target_type, share.target_id)] = (
                 f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email if user else "Docente"
             )
+        elif share.target_type == "student":
+            student = await db.get(SessionStudent, share.target_id)
+            labels[(share.target_type, share.target_id)] = student.nickname if student else "Studente"
         elif share.target_type == "class":
             cls = await db.get(Class, share.target_id)
             labels[(share.target_type, share.target_id)] = cls.name if cls else "Classe"
@@ -864,10 +960,10 @@ async def put_shares(
     item_id: UUID,
     body: SharesUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    teacher: Annotated[User, Depends(get_current_teacher)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
 ):
-    item = await _owned(db, teacher, item_id)
-    resolved = await _check_targets(db, teacher, body.shares)
+    item = await _share_owned(db, auth, item_id)
+    resolved = await _check_targets(db, await _principal(db, auth), body.shares)
     existing = (await db.execute(select(DriveShare).where(DriveShare.item_id == item.id))).scalars().all()
     wanted = {(kind, target_id): role for kind, target_id, role in resolved}
     for share in existing:
@@ -879,7 +975,29 @@ async def put_shares(
     for (kind, target_id), role in wanted.items():
         db.add(DriveShare(item_id=item.id, target_type=kind, target_id=target_id, role=role))
     await db.commit()
-    return await get_shares(item_id, db, teacher)
+    return await get_shares(item_id, db, auth)
+
+
+@router.post("/shares")
+async def add_bulk_shares(
+    body: BulkSharesUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    items = [await _share_owned(db, auth, item_id) for item_id in dict.fromkeys(body.ids)]
+    resolved = await _check_targets(db, await _principal(db, auth), body.shares)
+    for item in items:
+        existing = {(row.target_type, row.target_id): row for row in (await db.scalars(select(DriveShare).where(DriveShare.item_id == item.id))).all()}
+        for kind, target_id, role in resolved:
+            row = existing.get((kind, target_id))
+            if row:
+                row.role = role
+            else:
+                row = DriveShare(item_id=item.id, target_type=kind, target_id=target_id, role=role)
+                db.add(row)
+                existing[(kind, target_id)] = row
+    await db.commit()
+    return {"updated": len(items)}
 
 
 @router.post("/items/{item_id}/public-link")
