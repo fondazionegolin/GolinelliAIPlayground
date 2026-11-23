@@ -8,15 +8,8 @@ import { findActiveJob, notifyJobsChanged, useTicker, waitForJob } from '@/lib/b
 import { ArrowLeft, CalendarRange, Check, CheckSquare, Square, ListChecks, GanttChartSquare, Edit2, FileUp, GripVertical, KanbanSquare, LayoutTemplate, Loader2, Lock, Palette, Plus, Share2, Sparkles, Tags, Trash2, UserRound, Users, X } from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
 import { Button, SearchPill } from '@/design'
-import {
-  WorkspaceExplorerBadge,
-  WorkspaceExplorerHeader,
-  WorkspaceExplorerItem,
-  WorkspaceExplorerList,
-  WorkspaceExplorerSidebar,
-} from '@/components/WorkspaceExplorerSidebar'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/design/primitives/Dialog'
 import { useMobile } from '@/hooks/useMobile'
-import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 import BoardShareDialog from './BoardShareDialog'
 import BoardLabelsDialog, { type BoardLabel } from './BoardLabelsDialog'
 import BoardSprintsDialog, { type BoardSprint } from './BoardSprintsDialog'
@@ -187,7 +180,6 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   const [viewMode, setViewMode] = useState<'board' | 'timeline'>('board')
   const [boardListSearch, setBoardListSearch] = useState('')
   const [showCreateForm, setShowCreateForm] = useState(false)
-  const [sidebarCollapsed, toggleSidebar] = useSidebarCollapsed('boards')
   const [mobileColumnId, setMobileColumnId] = useState<string | null>(null)
 
   const { data: templates = [] } = useQuery({
@@ -199,7 +191,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
     queryFn: async () => (await boardsApi.list(sessionId)).data as Board[],
   })
 
-  const selectedSummary = useMemo(() => boards.find((board) => board.id === selectedId) || (!isMobile ? boards[0] : null), [boards, isMobile, selectedId])
+  const selectedSummary = useMemo(() => boards.find((board) => board.id === selectedId) || null, [boards, selectedId])
   const filteredBoards = useMemo(() => {
     const query = boardListSearch.trim().toLocaleLowerCase('it')
     if (!query) return boards
@@ -566,183 +558,188 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent text-slate-900 lg:flex-row">
-      {!isMobile && sidebarCollapsed && (
-        <SidebarRail
-          label="Board"
-          expandLabel={tl("Espandi elenco board")}
-          onExpand={() => toggleSidebar(false)}
-          onCreate={() => { toggleSidebar(false); setShowCreateForm(true) }}
-          createLabel={tl("Nuova board")}
-          items={boards.map((item) => ({
-            id: item.id,
-            title: item.title,
-            icon: <KanbanSquare className="h-4 w-4" />,
-            selected: board?.id === item.id,
-            onClick: () => setSelectedId(item.id),
-          }))}
-        />
-      )}
-      {(isMobile ? !board : !sidebarCollapsed) && <WorkspaceExplorerSidebar>
-        <WorkspaceExplorerHeader
-          section="/teacher/boards"
-          eyebrow={isStudent ? tl("Spazio studente") : tl("Pannello docente")}
-          title="Board"
-          description={isMobile ? '' : (isStudent ? tl("Board personali e condivise in un unico explorer.") : tl("Crea e condividi board nella sessione attiva."))}
-          action={(
-            <div className="flex shrink-0 items-center gap-1.5">
-            {!isMobile && <SidebarCollapseButton onClick={() => toggleSidebar(true)} label={tl("Comprimi elenco board")} />}
-            <Button
-              type="button"
-              onClick={() => setShowCreateForm((value) => !value)}
-              density="compact"
-              tone="accent"
-              surface="solid"
-              className="h-9 w-9 shrink-0 rounded-full p-0"
-              title={tl("Nuova board")}
-              aria-label={tl("Nuova board")}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-            </div>
-          )}
-          searchValue={boardListSearch}
-          onSearchChange={setBoardListSearch}
-          searchPlaceholder={tl("Cerca board...")}
-          clearSearchLabel={tl("Cancella ricerca board")}
-        />
-        {showCreateForm && <div className="space-y-2 border-b border-slate-200/80 px-5 py-4">
-          <div className="grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1" role="tablist" aria-label={tl("Tipo di board")}>
-            {([['ai', tl("Con AI")], ['blank', tl("Vuota")]] as const).map(([mode, label]) => (
-              <button
-                key={mode}
-                type="button"
-                role="tab"
-                aria-selected={createMode === mode}
-                onClick={() => setCreateMode(mode)}
-                className={`inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-semibold ${createMode === mode ? 'bg-white text-slate-900 shadow-[var(--ds-shadow-1)]' : 'text-slate-500'}`}
-              >
-                {mode === 'ai' && <Sparkles className="h-3.5 w-3.5" />}{label}
-              </button>
-            ))}
-          </div>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={createMode === 'ai' ? tl("Titolo (facoltativo)") : tl("Titolo board")} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" />
-          {createMode === 'ai' ? (
-            <>
-              <label className="block text-[11px] font-semibold text-slate-500">
-                Framework
-                <select value={aiFramework} onChange={(e) => setAiFramework(e.target.value as 'kanban' | 'scrum')} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal text-slate-900">
-                  {FRAMEWORKS.map((framework) => <option key={framework.id} value={framework.id}>{framework.label}</option>)}
-                </select>
-                <span className="mt-1 block font-normal text-slate-400">{FRAMEWORKS.find((framework) => framework.id === aiFramework)?.hint}</span>
-              </label>
-              <textarea
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                rows={4}
-                placeholder={tl("Descrivi il progetto: obiettivo, destinatari, vincoli, scadenze…")}
-                className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-              />
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:border-slate-400">
-                <FileUp className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{aiFile ? aiFile.name : tl("Carica un file di progetto (PDF, DOCX, PPTX, TXT, MD)")}</span>
-                {aiFile && (
-                  <button type="button" onClick={(e) => { e.preventDefault(); setAiFile(null) }} className="rounded p-0.5 text-slate-400 hover:text-slate-700" aria-label={tl("Rimuovi file")}>
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                <input type="file" accept={BACKLOG_FILE_ACCEPT} className="sr-only" onChange={(e) => { setAiFile(e.target.files?.[0] || null); e.target.value = '' }} />
-              </label>
-              <button
-                type="button"
-                disabled={(!aiPrompt.trim() && !aiFile) || generateBoard.isPending || Boolean(backlogJob) || (isStudent && !sessionId)}
-                onClick={() => generateBoard.mutate()}
-                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-semibold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {generateBoard.isPending || backlogJob ? <><Loader2 className="h-4 w-4 animate-spin" /> {tl("Genero il backlog…")}</> : <><Sparkles className="h-4 w-4" /> {tl("Genera backlog")}</>}
-              </button>
-              {backlogJob && (
-                <div className="space-y-1">
-                  <div className="h-1 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-[image:var(--selection-active-bg)] transition-[width] duration-700" style={{ width: `${Math.round((backlogJob.progress_display ?? 0.1) * 100)}%` }} />
-                  </div>
-                  <p className="text-center text-[11px] text-slate-400">
-                    {backlogJob.progress_label || tl("Analisi del progetto…")} {tl("Puoi cambiare pagina: la generazione continua in background.")}
-                  </p>
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="flex gap-2">
-                <select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-2 text-sm">
-                  {templates.map((template) => <option key={template.id} value={template.id}>{template.label}</option>)}
-                </select>
-                <button disabled={(isStudent && !sessionId) || createBoard.isPending} onClick={() => createBoard.mutate()} className="inline-flex h-9 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-semibold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
-                  <Plus className="h-4 w-4" /> {tl("Crea")}
-                </button>
-              </div>
-              {sessionId && (
-                <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-                  <input type="checkbox" checked={shareOnCreate} onChange={(e) => setShareOnCreate(e.target.checked)} />
-                  {tl("condividi con la classe")}
-                </label>
-              )}
-            </>
-          )}
-          {!isStudent && (
-            <p className="text-[11px] leading-4 text-slate-400">
-              {sessionId ? tl("La board sarà collegata alla sessione attiva.") : tl("Nessuna sessione attiva: potrai condividerla con altri docenti e collegarla a una sessione in seguito.")}
-            </p>
-          )}
-        </div>}
-        <WorkspaceExplorerList>
-          {isLoading ? <p className="p-3 text-sm text-slate-400">{tl("Caricamento...")}</p> : filteredBoards.length === 0 ? (
-            <p className="px-2 py-8 text-center text-xs leading-5 text-slate-400">
-              {boardListSearch ? tl("Nessuna board corrisponde a “{0}”.", boardListSearch) : tl("Nessuna board disponibile.")}
-            </p>
-          ) : <div className="space-y-2">{filteredBoards.map((item) => (
-            <WorkspaceExplorerItem
-              key={item.id}
-              icon={<KanbanSquare className="h-4 w-4" />}
-              title={item.title}
-              subtitle={isMobile ? undefined : [
-                item.created_by_display_name ? tl("Creata da {0}", item.created_by_display_name) : null,
-                !isStudent && item.session_title ? item.session_title : null,
-              ].filter(Boolean).join(' · ') || undefined}
-              selected={board?.id === item.id}
-              onClick={() => setSelectedId(item.id)}
-              badges={(
-                <WorkspaceExplorerBadge>
-                  <span className="inline-flex items-center gap-1">
-                    {item.shared_with_me ? <Users className="h-3 w-3" /> : item.visibility === 'session_shared' ? <Share2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-                    {item.shared_with_me ? tl("Condivisa con te") : item.visibility === 'session_shared' ? tl("Condivisa") : tl("Privata")}
-                  </span>
-                </WorkspaceExplorerBadge>
-              )}
-              trailing={item.can_manage ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm(tl("Eliminare la board \"{0}\"?", item.title))) deleteBoard.mutate(item.id)
-                  }}
-                  className="flex w-10 items-center justify-center border-l border-white/70 text-slate-400 hover:bg-red-50/80 hover:text-red-600"
-                  aria-label={tl("Elimina {0}", item.title)}
+      {!board && (
+        <div className="h-full min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[1400px] px-5 py-7 md:px-8">
+            <header className="mb-6 flex flex-wrap items-end gap-4">
+              <div className="min-w-0 flex-1">
+                <SectionHeading
+                  section="/teacher/boards"
+                  className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]"
+                  subtitle={isStudent ? tl("Board personali e condivise in un unico posto.") : tl("Crea e condividi board: backlog, sprint e task per i tuoi progetti.")}
+                  subtitleClassName="mt-3 max-w-2xl text-sm text-[var(--text-secondary)]"
                 >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              ) : undefined}
-            />
-          ))}</div>}
-        </WorkspaceExplorerList>
-      </WorkspaceExplorerSidebar>}
-      {(!isMobile || board) && <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+                  Board
+                </SectionHeading>
+              </div>
+              <Button type="button" tone="accent" surface="solid" density="roomy" onClick={() => setShowCreateForm(true)}>
+                {backlogJob ? <Loader2 className="animate-spin" /> : <Plus />} {tl("Nuova board")}
+              </Button>
+            </header>
+            {boards.length > 0 && (
+              <div className="mb-5 flex flex-wrap items-center gap-3">
+                <SearchPill value={boardListSearch} placeholder={tl("Cerca board...")} aria-label={tl("Cerca board")} onValueChange={setBoardListSearch} className="w-full sm:w-80" />
+              </div>
+            )}
+            {isLoading ? (
+              <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[var(--app-accent)]" /></div>
+            ) : boards.length === 0 ? (
+              <button type="button" onClick={() => setShowCreateForm(true)} className="ui-card flex w-full flex-col items-center gap-3 px-6 py-20 text-center">
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ds-surface-muted)] text-[var(--app-accent)]"><KanbanSquare className="h-6 w-6" /></span>
+                <span className="text-lg font-semibold text-[var(--text-primary)]">{tl("Crea la tua prima board")}</span>
+                <span className="max-w-md text-sm text-[var(--text-secondary)]">{tl("Descrivi un progetto e l'AI genera il backlog, oppure parti da una board vuota.")}</span>
+              </button>
+            ) : filteredBoards.length === 0 ? (
+              <p className="py-16 text-center text-sm text-[var(--text-secondary)]">{tl("Nessuna board corrisponde a “{0}”.", boardListSearch)}</p>
+            ) : (
+              <div className="ds-well grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                {filteredBoards.map((item) => {
+                  let hash = 0
+                  for (const ch of item.title) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
+                  const hue = hash % 360
+                  const count = (item.cards || []).length
+                  return (
+                    <article key={item.id} className="ui-card ui-card-interactive group relative overflow-hidden">
+                      <button type="button" onClick={() => setSelectedId(item.id)} className="block w-full text-left">
+                        <div className="relative flex aspect-video items-stretch gap-1.5 overflow-hidden p-3" style={{ background: `linear-gradient(135deg, hsl(${hue} 50% 30%), hsl(${(hue + 48) % 360} 55% 42%))` }}>
+                          {item.columns.slice(0, 4).map((column) => {
+                            const inColumn = (item.cards || []).filter((card) => card.column_id === column.id).length
+                            return (
+                              <div key={column.id} className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg bg-black/25 p-1.5">
+                                <span className="mb-0.5 h-1 w-1/2 rounded-full bg-white/50" />
+                                {Array.from({ length: Math.min(inColumn, 4) }).map((_, index) => <span key={index} className="h-4 rounded bg-white/25" />)}
+                              </div>
+                            )
+                          })}
+                          <span className="absolute bottom-2 right-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-semibold text-white">
+                            {item.shared_with_me ? <Users className="h-3 w-3" /> : item.visibility === 'session_shared' ? <Share2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                            {item.shared_with_me ? tl("Condivisa con te") : item.visibility === 'session_shared' ? tl("Condivisa") : tl("Privata")}
+                          </span>
+                        </div>
+                        <div className="px-4 pb-4 pt-3">
+                          <h2 className="truncate text-sm font-semibold text-[var(--text-primary)]">{item.title}</h2>
+                          <p className="mt-1 truncate text-[11px] text-[var(--text-secondary)]">
+                            {[item.created_by_display_name, !isStudent && item.session_title ? item.session_title : null, count ? tl("{0} task", count) : null].filter(Boolean).join(' · ') || `${item.columns.length} ${tl("colonne")}`}
+                          </p>
+                        </div>
+                      </button>
+                      {item.can_manage && (
+                        <button
+                          type="button"
+                          onClick={() => { if (window.confirm(tl("Eliminare la board \"{0}\"?", item.title))) deleteBoard.mutate(item.id) }}
+                          className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition hover:bg-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+                          aria-label={tl("Elimina {0}", item.title)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
+        <DialogContent size="md" surface="base" className="max-h-[88vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{tl("Nuova board")}</DialogTitle></DialogHeader>
+
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1" role="tablist" aria-label={tl("Tipo di board")}>
+                      {([['ai', tl("Con AI")], ['blank', tl("Vuota")]] as const).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          role="tab"
+                          aria-selected={createMode === mode}
+                          onClick={() => setCreateMode(mode)}
+                          className={`inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-semibold ${createMode === mode ? 'bg-white text-slate-900 shadow-[var(--ds-shadow-1)]' : 'text-slate-500'}`}
+                        >
+                          {mode === 'ai' && <Sparkles className="h-3.5 w-3.5" />}{label}
+                        </button>
+                      ))}
+                    </div>
+                    <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={createMode === 'ai' ? tl("Titolo (facoltativo)") : tl("Titolo board")} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" />
+                    {createMode === 'ai' ? (
+                      <>
+                        <label className="block text-[11px] font-semibold text-slate-500">
+                          Framework
+                          <select value={aiFramework} onChange={(e) => setAiFramework(e.target.value as 'kanban' | 'scrum')} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal text-slate-900">
+                            {FRAMEWORKS.map((framework) => <option key={framework.id} value={framework.id}>{framework.label}</option>)}
+                          </select>
+                          <span className="mt-1 block font-normal text-slate-400">{FRAMEWORKS.find((framework) => framework.id === aiFramework)?.hint}</span>
+                        </label>
+                        <textarea
+                          value={aiPrompt}
+                          onChange={(e) => setAiPrompt(e.target.value)}
+                          rows={4}
+                          placeholder={tl("Descrivi il progetto: obiettivo, destinatari, vincoli, scadenze…")}
+                          className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                        />
+                        <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:border-slate-400">
+                          <FileUp className="h-4 w-4 shrink-0" />
+                          <span className="min-w-0 flex-1 truncate">{aiFile ? aiFile.name : tl("Carica un file di progetto (PDF, DOCX, PPTX, TXT, MD)")}</span>
+                          {aiFile && (
+                            <button type="button" onClick={(e) => { e.preventDefault(); setAiFile(null) }} className="rounded p-0.5 text-slate-400 hover:text-slate-700" aria-label={tl("Rimuovi file")}>
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          <input type="file" accept={BACKLOG_FILE_ACCEPT} className="sr-only" onChange={(e) => { setAiFile(e.target.files?.[0] || null); e.target.value = '' }} />
+                        </label>
+                        <button
+                          type="button"
+                          disabled={(!aiPrompt.trim() && !aiFile) || generateBoard.isPending || Boolean(backlogJob) || (isStudent && !sessionId)}
+                          onClick={() => generateBoard.mutate()}
+                          className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-semibold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {generateBoard.isPending || backlogJob ? <><Loader2 className="h-4 w-4 animate-spin" /> {tl("Genero il backlog…")}</> : <><Sparkles className="h-4 w-4" /> {tl("Genera backlog")}</>}
+                        </button>
+                        {backlogJob && (
+                          <div className="space-y-1">
+                            <div className="h-1 overflow-hidden rounded-full bg-slate-100">
+                              <div className="h-full rounded-full bg-[image:var(--selection-active-bg)] transition-[width] duration-700" style={{ width: `${Math.round((backlogJob.progress_display ?? 0.1) * 100)}%` }} />
+                            </div>
+                            <p className="text-center text-[11px] text-slate-400">
+                              {backlogJob.progress_label || tl("Analisi del progetto…")} {tl("Puoi cambiare pagina: la generazione continua in background.")}
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex gap-2">
+                          <select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-2 text-sm">
+                            {templates.map((template) => <option key={template.id} value={template.id}>{template.label}</option>)}
+                          </select>
+                          <button disabled={(isStudent && !sessionId) || createBoard.isPending} onClick={() => createBoard.mutate()} className="inline-flex h-9 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-semibold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
+                            <Plus className="h-4 w-4" /> {tl("Crea")}
+                          </button>
+                        </div>
+                        {sessionId && (
+                          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                            <input type="checkbox" checked={shareOnCreate} onChange={(e) => setShareOnCreate(e.target.checked)} />
+                            {tl("condividi con la classe")}
+                          </label>
+                        )}
+                      </>
+                    )}
+                    {!isStudent && (
+                      <p className="text-[11px] leading-4 text-slate-400">
+                        {sessionId ? tl("La board sarà collegata alla sessione attiva.") : tl("Nessuna sessione attiva: potrai condividerla con altri docenti e collegarla a una sessione in seguito.")}
+                      </p>
+                    )}
+                  </div>
+        </DialogContent>
+      </Dialog>
+      {board && <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         {!board ? (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">{tl("Crea una board per iniziare.")}</div>
         ) : (
           <>
             <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 border-b border-slate-200 bg-white px-3 py-1.5 md:flex md:flex-wrap md:justify-between md:gap-2 md:px-4 md:py-2">
               <div className="flex min-w-0 items-center gap-2">
-                {isMobile && <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label={tl("Torna alle board")}><ArrowLeft className="h-5 w-5" /></button>}
+                <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 md:h-9 md:w-9" aria-label={tl("Torna alle board")}><ArrowLeft className="h-5 w-5" /></button>
                 <SectionHeading section="/teacher/boards" as="h2" compact className="truncate text-lg font-semibold">{board.title}</SectionHeading>
               </div>
               <div className="col-span-2 flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 md:col-span-1">
@@ -936,7 +933,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     setDragOverCol(null)
                     if (cardId && board.can_edit) moveCard.mutate({ cardId, columnId: column.id })
                   }}
-                  className={`ds-panel group flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-[var(--ds-radius-panel)] transition lg:h-full lg:w-[300px] ${
+                  className={`ds-panel ds-board-col group flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-[var(--ds-radius-panel)] transition lg:h-full lg:w-[300px] ${
                     dragOverCol === column.id
                       ? 'ring-2 ring-sky-400'
                       : draggingCardId
@@ -1095,7 +1092,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           setDraggingCardId(null)
                           setDragOverCol(null)
                         }}
-                        className={`group/card ui-card ui-card-interactive w-full shrink-0 cursor-pointer p-3 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${draggingCardId === card.id ? 'opacity-50' : ''} ${selectMode && pickedIds.has(card.id) ? 'ring-2 ring-[var(--logo-violet)]' : ''}`}
+                        className={`group/card ui-card ui-card-interactive ds-board-card w-full shrink-0 cursor-pointer p-3 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${draggingCardId === card.id ? 'opacity-50' : ''} ${selectMode && pickedIds.has(card.id) ? 'ring-2 ring-[var(--logo-violet)]' : ''}`}
                       >
                         <div className="flex items-start gap-2">
                           {selectMode && (pickedIds.has(card.id) ? <CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-[var(--logo-violet)]" aria-hidden="true" /> : <Square className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />)}
