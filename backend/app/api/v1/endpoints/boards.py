@@ -154,6 +154,7 @@ class CardCreate(BaseModel):
     priority: Optional[str] = None
     story_points: Optional[int] = None
     card_type: Optional[str] = None
+    parent_card_id: Optional[str] = None
     sprint_id: Optional[str] = None
 
 
@@ -170,6 +171,7 @@ class CardUpdate(BaseModel):
     priority: Optional[str] = None
     story_points: Optional[int] = None
     card_type: Optional[str] = None
+    parent_card_id: Optional[str] = None
     sprint_id: Optional[str] = None
 
 
@@ -525,6 +527,25 @@ def _clean_priority(value: Optional[str]) -> Optional[str]:
 def _clean_card_type(value: Optional[str]) -> Optional[str]:
     value = (value or "").strip().lower()
     return value if value in CARD_TYPES else None
+
+
+_CARD_RANK = {"epic": 0, "story": 1, "task": 2}
+
+
+async def _resolve_parent(
+    db: AsyncSession, board: Board, card_type: Optional[str], parent_id: Optional[str], self_id: Optional[uuid.UUID] = None
+) -> Optional[uuid.UUID]:
+    """Validate the epic > story > task nesting: the parent is on the same board and ranks strictly above the child."""
+    if not parent_id:
+        return None
+    parent = (await db.execute(
+        select(BoardCard).where(BoardCard.id == _parse_uuid(parent_id, "Elemento padre non valido"), BoardCard.board_id == board.id)
+    )).scalar_one_or_none()
+    if not parent or (self_id and parent.id == self_id):
+        raise HTTPException(status_code=400, detail="Elemento padre non valido")
+    if (card_type or "task") == "epic" or _CARD_RANK.get(parent.card_type or "task", 2) >= _CARD_RANK.get(card_type or "task", 2):
+        raise HTTPException(status_code=400, detail="Gerarchia non valida: un'epic contiene story e task, una story contiene task")
+    return parent.id
 
 
 def _clean_points(value) -> Optional[int]:
@@ -946,8 +967,10 @@ async def create_card(
     if column_id not in {c["id"] for c in columns}:
         raise HTTPException(status_code=400, detail="Colonna non valida")
     actor_name = _actor_name(actor)
+    new_type = _clean_card_type(body.card_type)
     card = BoardCard(
         board_id=board.id,
+        parent_card_id=await _resolve_parent(db, board, new_type, body.parent_card_id),
         column_id=column_id,
         title=body.title.strip()[:220],
         description=body.description,
@@ -1009,6 +1032,17 @@ async def update_card(
         card.story_points = _clean_points(body.story_points)
     if "card_type" in fields:
         card.card_type = _clean_card_type(body.card_type)
+        # A new type can break the nesting: detach from a parent that no longer ranks above, and release children that no longer rank below.
+        rank = _CARD_RANK.get(card.card_type or "task", 2)
+        if card.parent_card_id and "parent_card_id" not in fields:
+            old_parent = (await db.execute(select(BoardCard).where(BoardCard.id == card.parent_card_id))).scalar_one_or_none()
+            if not old_parent or card.card_type == "epic" or _CARD_RANK.get(old_parent.card_type or "task", 2) >= rank:
+                card.parent_card_id = None
+        for child in (await db.execute(select(BoardCard).where(BoardCard.parent_card_id == card.id))).scalars():
+            if _CARD_RANK.get(child.card_type or "task", 2) <= rank:
+                child.parent_card_id = None
+    if "parent_card_id" in fields:
+        card.parent_card_id = await _resolve_parent(db, board, card.card_type, body.parent_card_id, card.id)
     if "sprint_id" in fields:
         card.sprint_id = _clean_sprint_id(board, body.sprint_id)
     card.last_actor_display_name = _actor_name(actor)

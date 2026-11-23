@@ -1,13 +1,13 @@
 import { SectionHeading } from '@/design/primitives/SectionHeading'
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { Fragment, useEffect, useMemo, useState, useRef, type ReactNode } from 'react'
 import { takeHandoff } from '@/lib/platformHandoff'
 import { useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { boardsApi, type BackgroundJob, type BoardCardFields, type BoardSprintInput } from '@/lib/api'
 import { findActiveJob, notifyJobsChanged, useTicker, waitForJob } from '@/lib/backgroundJobs'
-import { ArrowLeft, CalendarRange, Check, CheckSquare, Square, ListChecks, GanttChartSquare, Edit2, FileUp, GripVertical, KanbanSquare, LayoutTemplate, Loader2, Lock, Palette, Plus, Share2, Sparkles, Tags, Trash2, UserRound, Users, X } from '@/components/icons'
+import { ArrowLeft, CalendarRange, CheckSquare, Square, ListChecks, GanttChartSquare, Edit2, FileUp, GripVertical, KanbanSquare, LayoutTemplate, Loader2, Lock, Palette, Plus, Share2, Sparkles, Tags, Trash2, UserRound, Users, X } from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
-import { Button, SearchPill } from '@/design'
+import { Button, Input, Select, SearchPill } from '@/design'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/design/primitives/Dialog'
 import { useMobile } from '@/hooks/useMobile'
 import BoardShareDialog from './BoardShareDialog'
@@ -19,10 +19,10 @@ import PresenceAvatars from '@/components/PresenceAvatars'
 import { useResourcePresence } from '@/hooks/useResourcePresence'
 import { AddColumnTile, AssigneePicker, AssigneeStack, Avatar, DescriptionEditor, DescriptionView, assigneeFields, descriptionHasContent, memberKey, type Member } from './BoardCardParts'
 import { tl } from '@/i18n/tl'
+import { CARD_RANK, TYPE_META, allowedParentTypes, countDescendants, typeOf, type CardType } from './boardHierarchy'
 
 type BoardColumn = { id: string; label: string; hint: string; color: string }
 type Priority = 'alta' | 'media' | 'bassa'
-type CardType = 'epic' | 'story' | 'task'
 type BoardCard = {
   id: string
   board_id: string
@@ -92,7 +92,6 @@ const PRIORITY_STYLE: Record<Priority, { label: string; className: string }> = {
   media: { label: tl("Media"), className: 'bg-amber-50 text-amber-700' },
   bassa: { label: tl("Bassa"), className: 'bg-slate-100 text-slate-600' },
 }
-const CARD_TYPE_LABEL: Record<CardType, string> = { epic: 'Epic', story: 'Story', task: 'Task' }
 const FRAMEWORKS = [
   { id: 'kanban', label: 'Kanban', hint: tl("Task operativi in un flusso continuo") },
   { id: 'scrum', label: 'Scrum / Agile', hint: tl("Epic, user story, story point e sprint") },
@@ -108,9 +107,12 @@ type CardDraft = {
   priority: Priority | ''
   storyPoints: string
   sprintId: string
+  cardType: CardType
+  parentId: string
+  columnId: string
 }
 
-const emptyDraft = (color = TASK_COLORS[0]): CardDraft => ({ title: '', description: '', color, labels: [], assignees: [], priority: '', storyPoints: '', sprintId: '' })
+const emptyDraft = (color = TASK_COLORS[0]): CardDraft => ({ title: '', description: '', color, labels: [], assignees: [], priority: '', storyPoints: '', sprintId: '', cardType: 'task', parentId: '', columnId: '' })
 
 function draftToFields(draft: CardDraft): BoardCardFields {
   const points = Number.parseInt(draft.storyPoints, 10)
@@ -121,8 +123,10 @@ function draftToFields(draft: CardDraft): BoardCardFields {
     labels: draft.labels,
     assignees: assigneeFields(draft.assignees),
     priority: draft.priority || null,
-    story_points: Number.isFinite(points) && points > 0 ? points : null,
-    sprint_id: draft.sprintId || null,
+    story_points: draft.cardType !== 'epic' && Number.isFinite(points) && points > 0 ? points : null,
+    card_type: draft.cardType,
+    parent_card_id: draft.cardType === 'epic' ? null : draft.parentId || null,
+    sprint_id: draft.cardType === 'epic' ? null : draft.sprintId || null,
   }
 }
 
@@ -557,6 +561,122 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
     visibleCards.forEach((card) => { (map[card.column_id] || map[columns[0]?.id] || []).push(card) })
     return map
   }, [columns, visibleCards])
+
+  type TreeNode = { card: BoardCard; children: TreeNode[] }
+  // Per column: a card nests under its parent when the parent is in the same column; otherwise it stands alone (and names its parent).
+  const tree = useMemo(() => {
+    const out: Record<string, TreeNode[]> = {}
+    Object.entries(grouped).forEach(([columnId, list]) => {
+      const nodes = new Map(list.map((card) => [card.id, { card, children: [] as TreeNode[] }]))
+      const roots: TreeNode[] = []
+      list.forEach((card) => {
+        const node = nodes.get(card.id)!
+        const parent = card.parent_card_id ? nodes.get(card.parent_card_id) : undefined
+        if (parent && CARD_RANK[typeOf(parent.card)] < CARD_RANK[typeOf(card)]) parent.children.push(node)
+        else roots.push(node)
+      })
+      // Epics on top, then stories, then loose tasks.
+      out[columnId] = roots.sort((x, y) => CARD_RANK[typeOf(x.card)] - CARD_RANK[typeOf(y.card)])
+    })
+    return out
+  }, [grouped])
+  const cardsById = useMemo(() => Object.fromEntries(cards.map((card) => [card.id, card])), [cards])
+
+  const renderNode = (node: TreeNode): ReactNode => {
+    const card = node.card
+    const type = typeOf(card)
+    const meta = TYPE_META[type]
+    const parentCard = card.parent_card_id ? cardsById[card.parent_card_id] : undefined
+    const crumb = parentCard && !isNested(node, parentCard) ? parentCard : null
+    const counts = type === 'task' ? null : countDescendants(cards, card.id)
+    const summary = counts && (counts.story || counts.task)
+      ? [counts.story ? `${counts.story} ${counts.story === 1 ? 'story' : 'story'}` : '', counts.task ? `${counts.task} task` : ''].filter(Boolean).join(' · ')
+      : null
+    const article = (
+      <article
+        role="button"
+        tabIndex={0}
+        aria-label={tl("Apri {0}", card.title)}
+        aria-pressed={selectMode ? pickedIds.has(card.id) : undefined}
+        onClick={() => (selectMode ? togglePicked([card.id]) : setOpenCardId(card.id))}
+        onKeyDown={(event) => {
+          if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault()
+            if (selectMode) togglePicked([card.id])
+            else setOpenCardId(card.id)
+          }
+        }}
+        draggable={Boolean(!isMobile && board?.can_edit && !selectMode)}
+        onDragStart={(event) => {
+          if (!board?.can_edit || (event.target as HTMLElement).closest('button, input, textarea')) {
+            event.preventDefault()
+            return
+          }
+          draggedCard.current = card.id
+          setDraggingCardId(card.id)
+          event.dataTransfer.effectAllowed = 'move'
+        }}
+        onDragEnd={() => {
+          draggedCard.current = null
+          setDraggingCardId(null)
+          setDragOverCol(null)
+        }}
+        className={`group/card ui-card ui-card-interactive ds-board-card w-full shrink-0 cursor-pointer ${type === 'epic' ? 'p-4' : 'p-3'} outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${draggingCardId === card.id ? 'opacity-50' : ''} ${selectMode && pickedIds.has(card.id) ? 'ring-2 ring-[var(--logo-violet)]' : ''}`}
+      >
+        <div className="flex items-start gap-2">
+          {selectMode && (pickedIds.has(card.id) ? <CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-[var(--logo-violet)]" aria-hidden="true" /> : <Square className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />)}
+          <h4 className={`min-w-0 flex-1 leading-5 text-slate-900 ${type === 'epic' ? 'text-base font-bold leading-6' : 'text-sm font-semibold'}`}>{card.title}</h4>
+          <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#d4d4d4' }} aria-hidden="true" />
+        </div>
+        {crumb && <p className="mt-1 truncate text-[11px] font-semibold text-slate-400" title={crumb.title}>↳ {TYPE_META[typeOf(crumb)].label}: {crumb.title}</p>}
+        {summary && <p className="mt-1 text-[11px] font-semibold text-slate-500">{summary}</p>}
+        {((card.card_type && card.card_type !== 'task') || (card.labels || []).some((id) => labelById[id]) || (card.sprint_id && sprintById[card.sprint_id])) && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {card.sprint_id && sprintById[card.sprint_id] && (
+              <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-white" title={sprintById[card.sprint_id].name}>{sprintCode[card.sprint_id]}</span>
+            )}
+            {card.card_type && card.card_type !== 'task' && (
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${meta.badge}`}>{meta.label}</span>
+            )}
+            {(card.labels || []).map((id) => labelById[id] && (
+              <span key={id} className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: `${labelById[id].color}1f`, color: labelById[id].color }}>
+                {labelById[id].name}
+              </span>
+            ))}
+          </div>
+        )}
+        {(card.priority || card.story_points || (card.assignees || []).length > 0) && (
+          <div className="mt-2 flex items-start gap-1.5">
+            {card.priority && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${PRIORITY_STYLE[card.priority].className}`}>{PRIORITY_STYLE[card.priority].label}</span>}
+            {card.story_points ? <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600" title="Story point">{card.story_points} pt</span> : null}
+            <AssigneeStack people={card.assignees || []} />
+          </div>
+        )}
+        {descriptionHasContent(card.description) && (
+          // Hovering (or focusing) the task unfolds its content right in the column.
+          <div className="grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out group-hover/card:grid-rows-[1fr] group-focus-within/card:grid-rows-[1fr]">
+            <div className="min-h-0 overflow-hidden">
+              <div className="mt-2 max-h-64 overflow-y-auto border-t border-slate-200/70 pt-2 text-xs leading-5 text-slate-600">
+                <DescriptionView text={card.description || ''} compact />
+              </div>
+            </div>
+          </div>
+        )}
+      </article>
+    )
+    if (type === 'task') return <Fragment key={card.id}>{article}</Fragment>
+    return (
+      <div key={card.id} className={`w-full shrink-0 rounded-[22px] p-2 ${meta.tile}`}>
+        {article}
+        {node.children.length > 0 && (
+          <div className={`ml-3 mt-2 flex flex-col gap-2 border-l-2 pl-2.5 ${meta.rail}`}>
+            {node.children.map((child) => renderNode(child))}
+          </div>
+        )}
+      </div>
+    )
+  }
+  const isNested = (node: TreeNode, parent: BoardCard) => grouped[node.card.column_id]?.some((item) => item.id === parent.id) && CARD_RANK[typeOf(parent)] < CARD_RANK[typeOf(node.card)]
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent text-slate-900 lg:flex-row">
@@ -1033,106 +1153,18 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                         type="button"
                         onClick={() => {
                           setInlineColumnId(column.id)
-                          setInlineDraft({ ...emptyDraft(), sprintId: activeSprintFilter && activeSprintFilter !== 'none' ? activeSprintFilter : '' })
+                          setInlineDraft({ ...emptyDraft(), columnId: column.id, sprintId: activeSprintFilter && activeSprintFilter !== 'none' ? activeSprintFilter : '' })
                         }}
                         className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/85 text-slate-600 opacity-100 shadow-[var(--ds-shadow-1)] transition hover:border-slate-400 hover:text-slate-900 md:h-7 md:w-7 md:rounded-full md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                        aria-label={tl("Crea un task in {0}", column.label)}
-                        title={tl("Crea un task in {0}", column.label)}
+                        aria-label={tl("Crea in {0}", column.label)}
+                        title={tl("Crea epic, user story o task in {0}", column.label)}
                       >
                         <Plus className="h-4 w-4" />
                       </button>
                     )}
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col items-stretch gap-2 overflow-x-hidden overflow-y-auto bg-slate-50/40 p-2 lg:min-h-0">
-                    {inlineColumnId === column.id && (
-                      <div className="ui-card w-full shrink-0 p-3">
-                        <CardForm
-                          boardId={board.id}
-                          heading={tl("Nuovo task")}
-                          draft={inlineDraft}
-                          onChange={setInlineDraft}
-                          labels={labels}
-                          members={members}
-                          sprints={sprints}
-                          showPoints={isScrum}
-                          pending={createCard.isPending}
-                          submitLabel={createCard.isPending ? tl("Creazione…") : tl("Crea task")}
-                          onCancel={() => setInlineColumnId(null)}
-                          onSubmit={() => createCard.mutate({ draft: inlineDraft, columnId: column.id })}
-                        />
-                      </div>
-                    )}
-                    {(grouped[column.id] || []).map((card) => (
-                      <article
-                        key={card.id}
-                        role="button"
-                        tabIndex={0}
-                        aria-label={tl("Apri {0}", card.title)}
-                        aria-pressed={selectMode ? pickedIds.has(card.id) : undefined}
-                        onClick={() => (selectMode ? togglePicked([card.id]) : setOpenCardId(card.id))}
-                        onKeyDown={(event) => {
-                          if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
-                            event.preventDefault()
-                            if (selectMode) togglePicked([card.id])
-                            else setOpenCardId(card.id)
-                          }
-                        }}
-                        draggable={Boolean(!isMobile && board.can_edit && !selectMode)}
-                        onDragStart={(event) => {
-                          if (!board.can_edit || (event.target as HTMLElement).closest('button, input, textarea')) {
-                            event.preventDefault()
-                            return
-                          }
-                          draggedCard.current = card.id
-                          setDraggingCardId(card.id)
-                          event.dataTransfer.effectAllowed = 'move'
-                        }}
-                        onDragEnd={() => {
-                          draggedCard.current = null
-                          setDraggingCardId(null)
-                          setDragOverCol(null)
-                        }}
-                        className={`group/card ui-card ui-card-interactive ds-board-card w-full shrink-0 cursor-pointer p-3 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${draggingCardId === card.id ? 'opacity-50' : ''} ${selectMode && pickedIds.has(card.id) ? 'ring-2 ring-[var(--logo-violet)]' : ''}`}
-                      >
-                        <div className="flex items-start gap-2">
-                          {selectMode && (pickedIds.has(card.id) ? <CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-[var(--logo-violet)]" aria-hidden="true" /> : <Square className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />)}
-                          <h4 className="min-w-0 flex-1 text-sm font-semibold leading-5 text-slate-900">{card.title}</h4>
-                          <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#d4d4d4' }} aria-hidden="true" />
-                        </div>
-                        {((card.card_type && card.card_type !== 'task') || (card.labels || []).some((id) => labelById[id]) || (card.sprint_id && sprintById[card.sprint_id])) && (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {card.sprint_id && sprintById[card.sprint_id] && (
-                              <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-white" title={sprintById[card.sprint_id].name}>{sprintCode[card.sprint_id]}</span>
-                            )}
-                            {card.card_type && card.card_type !== 'task' && (
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${card.card_type === 'epic' ? 'bg-violet-100 text-violet-700' : 'bg-sky-50 text-sky-700'}`}>{CARD_TYPE_LABEL[card.card_type]}</span>
-                            )}
-                            {(card.labels || []).map((id) => labelById[id] && (
-                              <span key={id} className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: `${labelById[id].color}1f`, color: labelById[id].color }}>
-                                {labelById[id].name}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {(card.priority || card.story_points || (card.assignees || []).length > 0) && (
-                          <div className="mt-2 flex items-start gap-1.5">
-                            {card.priority && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${PRIORITY_STYLE[card.priority].className}`}>{PRIORITY_STYLE[card.priority].label}</span>}
-                            {card.story_points ? <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600" title="Story point">{card.story_points} pt</span> : null}
-                            <AssigneeStack people={card.assignees || []} />
-                          </div>
-                        )}
-                        {descriptionHasContent(card.description) && (
-                          // Hovering (or focusing) the task unfolds its content right in the column.
-                          <div className="grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out group-hover/card:grid-rows-[1fr] group-focus-within/card:grid-rows-[1fr]">
-                            <div className="min-h-0 overflow-hidden">
-                              <div className="mt-2 max-h-64 overflow-y-auto border-t border-slate-200/70 pt-2 text-xs leading-5 text-slate-600">
-                                <DescriptionView text={card.description || ''} compact />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </article>
-                    ))}
+                    {(tree[column.id] || []).map((node) => renderNode(node))}
                     {(grouped[column.id] || []).length === 0 && (
                       <div className={`flex min-w-[180px] flex-1 items-center justify-center text-xs ${draggingCardId ? 'font-semibold text-sky-600' : 'text-slate-300'}`}>
                         <LayoutTemplate className="mr-1 h-3 w-3" />
@@ -1163,6 +1195,22 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           <Button tone="neutral" surface="ghost" onClick={exitSelectMode}>{tl("Fine")}</Button>
         </div>
       )}
+      {inlineColumnId && board && (
+        <NewCardDialog
+          boardId={board.id}
+          draft={inlineDraft}
+          onChange={setInlineDraft}
+          columns={columns}
+          cards={cards}
+          labels={labels}
+          members={members}
+          sprints={sprints}
+          showPoints={isScrum}
+          pending={createCard.isPending}
+          onCancel={() => setInlineColumnId(null)}
+          onSubmit={() => createCard.mutate({ draft: inlineDraft, columnId: inlineDraft.columnId || inlineColumnId })}
+        />
+      )}
       {openCard && board && (
         <BoardCardDetail
           boardId={board.id}
@@ -1184,6 +1232,12 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           }}
           deletePending={deleteCard.isPending}
           onOpenCard={(id) => setOpenCardId(id)}
+          onAddChild={(parent) => {
+            const childType: CardType = typeOf(parent) === 'epic' ? 'story' : 'task'
+            setInlineDraft({ ...emptyDraft(TYPE_META[childType].color), cardType: childType, parentId: parent.id, columnId: parent.column_id, sprintId: parent.sprint_id || '' })
+            setOpenCardId(null)
+            setInlineColumnId(parent.column_id)
+          }}
           onClose={() => setOpenCardId(null)}
         />
       )}
@@ -1295,108 +1349,152 @@ function ColorPicker({ value, onChange, compact = false }: { value: string; onCh
   )
 }
 
-function CardForm({ boardId, heading, draft, onChange, labels, members, sprints, showPoints, pending, submitLabel, onCancel, onSubmit }: {
+function NewCardDialog({ boardId, draft, onChange, columns, cards, labels, members, sprints, showPoints, pending, onCancel, onSubmit }: {
   boardId: string
-  heading?: string
   draft: CardDraft
   onChange: (draft: CardDraft) => void
+  columns: BoardColumn[]
+  cards: BoardCard[]
   labels: BoardLabel[]
   members: Member[]
   sprints: BoardSprint[]
   showPoints: boolean
   pending: boolean
-  submitLabel: string
   onCancel: () => void
   onSubmit: () => void
 }) {
   const set = (patch: Partial<CardDraft>) => onChange({ ...draft, ...patch })
-  const fieldLabel = 'block text-[10px] font-semibold text-slate-500'
-  const inputClass = 'mt-1 w-full rounded-md border border-slate-200 px-2 text-sm font-normal normal-case tracking-normal text-slate-900 outline-none focus:ring-2 focus:ring-slate-300'
+  const fieldLabel = 'block text-[11px] font-semibold text-[var(--text-secondary)]'
+  const type = draft.cardType
+  const parentTypes = allowedParentTypes(type)
+  const parents = cards.filter((card) => parentTypes.includes(typeOf(card)))
+  const epics = parents.filter((card) => typeOf(card) === 'epic')
+  const stories = parents.filter((card) => typeOf(card) === 'story')
+  const changeType = (next: CardType) => {
+    const parent = cards.find((card) => card.id === draft.parentId)
+    const parentOk = parent && allowedParentTypes(next).includes(typeOf(parent))
+    // The default colour follows the type until the owner picks another one.
+    const followsType = Object.values(TYPE_META).some((meta) => meta.color === draft.color) || draft.color === TASK_COLORS[0]
+    set({ cardType: next, parentId: parentOk ? draft.parentId : '', color: followsType ? (next === 'task' ? TASK_COLORS[0] : TYPE_META[next].color) : draft.color, sprintId: next === 'epic' ? '' : draft.sprintId })
+  }
   return (
-    <form
-      className="space-y-2"
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (draft.title.trim()) onSubmit()
-      }}
-    >
-      {heading && (
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold text-slate-700">{heading}</p>
-          <button type="button" onClick={onCancel} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Annulla")}>
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-      <label className={fieldLabel}>
-        {tl("Titolo")}
-        <input autoFocus required value={draft.title} onChange={(e) => set({ title: e.target.value })} onKeyDown={(e) => { if (e.key === 'Escape') onCancel() }} placeholder={tl("Cosa bisogna fare?")} className={`${inputClass} h-8`} />
-      </label>
-      <div className={fieldLabel}>
-        {tl("Descrizione")} <span className="font-normal normal-case">(facoltativa)</span>
-        <DescriptionEditor boardId={boardId} value={draft.description} onChange={(description) => set({ description })} placeholder={tl("Aggiungi indicazioni")} rows={3} className={`${inputClass} resize-none py-1.5`} />
-      </div>
-      {labels.length > 0 && (
-        <div>
-          <p className={fieldLabel}>{tl("Etichette")}</p>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {labels.map((label) => {
-              const active = draft.labels.includes(label.id)
-              return (
+    <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
+      <DialogContent size="xl" className="max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{tl("Nuovo elemento")}</DialogTitle>
+          <p className="text-sm text-[var(--text-secondary)]">{TYPE_META[type].hint}</p>
+        </DialogHeader>
+        <form
+          className="grid gap-6 md:grid-cols-[minmax(0,1fr)_300px]"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (draft.title.trim()) onSubmit()
+          }}
+        >
+          <div className="flex min-w-0 flex-col gap-4">
+            <div className="grid grid-cols-3 gap-1 rounded-2xl bg-[var(--ds-well)] p-1" role="radiogroup" aria-label={tl("Tipo")}>
+              {(['epic', 'story', 'task'] as CardType[]).map((option) => (
                 <button
-                  key={label.id}
+                  key={option}
                   type="button"
-                  aria-pressed={active}
-                  onClick={() => set({ labels: active ? draft.labels.filter((id) => id !== label.id) : [...draft.labels, label.id] })}
-                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${active ? 'text-white' : 'bg-slate-100 text-slate-500'}`}
-                  style={active ? { backgroundColor: label.color } : undefined}
+                  role="radio"
+                  aria-checked={type === option}
+                  onClick={() => changeType(option)}
+                  className={`flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors ${type === option ? 'ds-selected' : 'text-[var(--text-secondary)] hover:bg-[var(--ds-control-hover)]'}`}
                 >
-                  {label.name}
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: option === 'task' ? TASK_COLORS[5] : TYPE_META[option].color }} aria-hidden="true" />
+                  {TYPE_META[option].label}
                 </button>
-              )
-            })}
+              ))}
+            </div>
+            <label className={fieldLabel}>
+              {tl("Titolo")}
+              <Input autoFocus required value={draft.title} onChange={(e) => set({ title: e.target.value })} placeholder={type === 'epic' ? tl("Qual è l’obiettivo?") : type === 'story' ? tl("Come utente voglio…") : tl("Cosa bisogna fare?")} className="mt-1.5" />
+            </label>
+            <div className={fieldLabel}>
+              {tl("Descrizione")} <span className="font-normal">({tl("facoltativa")})</span>
+              <DescriptionEditor boardId={boardId} value={draft.description} onChange={(description) => set({ description })} placeholder={tl("Aggiungi indicazioni, incolla un’immagine…")} rows={9}
+                className="ds-field mt-1.5 block w-full resize-y rounded-[var(--ds-field-radius)] px-4 py-3 text-sm leading-6" />
+            </div>
           </div>
-        </div>
-      )}
-      <div className="flex gap-2">
-        <label className={`${fieldLabel} flex-1`}>
-          {tl("Priorità")}
-          <select value={draft.priority} onChange={(e) => set({ priority: e.target.value as Priority | '' })} className={`${inputClass} h-8 bg-white`}>
-            <option value="">—</option>
-            <option value="alta">{tl("Alta")}</option>
-            <option value="media">{tl("Media")}</option>
-            <option value="bassa">{tl("Bassa")}</option>
-          </select>
-        </label>
-        {sprints.length > 0 && (
-          <label className={`${fieldLabel} flex-1`}>
-            Sprint
-            <select value={draft.sprintId} onChange={(e) => set({ sprintId: e.target.value })} className={`${inputClass} h-8 bg-white`}>
-              <option value="">{tl("Nessuno")}</option>
-              {sprints.map((sprint, index) => <option key={sprint.id} value={sprint.id}>S{index + 1} · {sprint.name}</option>)}
-            </select>
-          </label>
-        )}
-        {showPoints && (
-          <label className={`${fieldLabel} w-20`}>
-            {tl("Punti")}
-            <input type="number" min={1} max={100} value={draft.storyPoints} onChange={(e) => set({ storyPoints: e.target.value })} className={`${inputClass} h-8`} />
-          </label>
-        )}
-      </div>
-      <div>
-        <p className={fieldLabel}>{tl("Responsabili")}{draft.assignees.length ? ` · ${draft.assignees.length}` : ''}</p>
-        <div className="mt-1"><AssigneePicker members={members} value={draft.assignees} onChange={(assignees) => set({ assignees })} /></div>
-      </div>
-      <div className="flex items-center justify-between gap-2 pt-1">
-        <ColorPicker value={draft.color} onChange={(color) => set({ color })} />
-        <div className="flex gap-2">
-          <button type="button" onClick={onCancel} className="h-8 rounded-md px-2 text-xs font-semibold text-slate-500 hover:bg-slate-100">{tl("Annulla")}</button>
-          <button disabled={!draft.title.trim() || pending} className="inline-flex h-8 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-semibold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
-            <Check className="h-3.5 w-3.5" /> {submitLabel}
-          </button>
-        </div>
-      </div>
-    </form>
+          <div className="flex min-w-0 flex-col gap-4">
+            {type !== 'epic' && (
+              <label className={fieldLabel}>
+                {type === 'story' ? tl("Epic di appartenenza") : tl("Appartiene a")}
+                <Select value={draft.parentId} onChange={(e) => set({ parentId: e.target.value })} className="mt-1.5">
+                  <option value="">{tl("Nessuno (livello principale)")}</option>
+                  {epics.length > 0 && <optgroup label="Epic">{epics.map((card) => <option key={card.id} value={card.id}>{card.title}</option>)}</optgroup>}
+                  {stories.length > 0 && <optgroup label="User story">{stories.map((card) => {
+                    const epic = card.parent_card_id ? cards.find((item) => item.id === card.parent_card_id) : null
+                    return <option key={card.id} value={card.id}>{epic ? `${epic.title} › ` : ''}{card.title}</option>
+                  })}</optgroup>}
+                </Select>
+              </label>
+            )}
+            <label className={fieldLabel}>
+              {tl("Colonna")}
+              <Select value={draft.columnId} onChange={(e) => set({ columnId: e.target.value })} className="mt-1.5">
+                {columns.map((column) => <option key={column.id} value={column.id}>{column.label}</option>)}
+              </Select>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className={fieldLabel}>
+                {tl("Priorità")}
+                <Select value={draft.priority} onChange={(e) => set({ priority: e.target.value as Priority | '' })} className="mt-1.5">
+                  <option value="">—</option>
+                  <option value="alta">{tl("Alta")}</option>
+                  <option value="media">{tl("Media")}</option>
+                  <option value="bassa">{tl("Bassa")}</option>
+                </Select>
+              </label>
+              {type !== 'epic' && (showPoints || type === 'story') && (
+                <label className={fieldLabel}>
+                  {tl("Punti")}
+                  <Input type="number" min={1} max={100} value={draft.storyPoints} onChange={(e) => set({ storyPoints: e.target.value })} className="mt-1.5" />
+                </label>
+              )}
+            </div>
+            {type !== 'epic' && sprints.length > 0 && (
+              <label className={fieldLabel}>
+                Sprint
+                <Select value={draft.sprintId} onChange={(e) => set({ sprintId: e.target.value })} className="mt-1.5">
+                  <option value="">{tl("Nessuno")}</option>
+                  {sprints.map((sprint, index) => <option key={sprint.id} value={sprint.id}>S{index + 1} · {sprint.name}</option>)}
+                </Select>
+              </label>
+            )}
+            {labels.length > 0 && (
+              <div>
+                <p className={fieldLabel}>{tl("Etichette")}</p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {labels.map((label) => {
+                    const active = draft.labels.includes(label.id)
+                    return (
+                      <button key={label.id} type="button" aria-pressed={active}
+                        onClick={() => set({ labels: active ? draft.labels.filter((id) => id !== label.id) : [...draft.labels, label.id] })}
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${active ? 'text-white' : 'bg-slate-100 text-slate-500'}`}
+                        style={active ? { backgroundColor: label.color } : undefined}>
+                        {label.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            <div>
+              <p className={fieldLabel}>{tl("Responsabili")}{draft.assignees.length ? ` · ${draft.assignees.length}` : ''}</p>
+              <div className="mt-1.5"><AssigneePicker members={members} value={draft.assignees} onChange={(assignees) => set({ assignees })} /></div>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-[var(--text-secondary)]">{tl("Colore")} <ColorPicker value={draft.color} onChange={(color) => set({ color })} /></div>
+          </div>
+          <div className="flex justify-end gap-2 md:col-span-2">
+            <Button type="button" tone="neutral" surface="ghost" onClick={onCancel}>{tl("Annulla")}</Button>
+            <Button type="submit" tone="accent" surface="solid" disabled={!draft.title.trim() || pending}>
+              {pending ? tl("Creazione…") : tl("Crea {0}", TYPE_META[type].label.toLowerCase())}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

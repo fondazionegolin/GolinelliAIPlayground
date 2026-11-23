@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-23T07:11:25.925054+00:00",
-  "version_label": "2026.11.23-4c60e888",
+  "generated_at": "2026-11-23T08:24:31.234476+00:00",
+  "version_label": "2026.11.23-5f17c239",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 34 commit dall'ultima release pubblicata.",
-  "git_ref": "4c60e888106320dbf9bf215226b9d5adeed9270c",
+  "summary": "Bozza generata automaticamente da 35 commit dall'ultima release pubblicata.",
+  "git_ref": "5f17c23993694ba683328dc0729a7e60eaa98317",
   "items": [
     {
       "category": "new",
@@ -174,6 +174,11 @@
       "category": "new",
       "title": "Boards: landing library with previews, full-width board, recessed task cards",
       "description": "Boards: landing library with previews, full-width board, recessed task cards"
+    },
+    {
+      "category": "new",
+      "title": "Boards: column counts in board list, landing and FAQ updates",
+      "description": "Boards: column counts in board list, landing and FAQ updates"
     }
   ]
 }

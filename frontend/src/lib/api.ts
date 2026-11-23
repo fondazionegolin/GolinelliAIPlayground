@@ -1990,6 +1990,7 @@ export type BoardCardFields = {
   priority?: 'alta' | 'media' | 'bassa' | null
   story_points?: number | null
   card_type?: 'epic' | 'story' | 'task' | null
+  parent_card_id?: string | null
   sprint_id?: string | null
 }
 

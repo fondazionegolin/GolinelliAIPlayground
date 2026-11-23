@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { CalendarRange, Trash2, X } from '@/components/icons'
+import { CalendarRange, Plus, Trash2, X } from '@/components/icons'
 import type { BoardCardFields } from '@/lib/api'
 import { formatSprintDates } from './BoardTimeline'
 import type { BoardLabel } from './BoardLabelsDialog'
@@ -7,6 +7,7 @@ import type { BoardSprint } from './BoardSprintsDialog'
 import { Select } from '@/design'
 import { Avatar, AssigneePicker, DescriptionEditor, LabelDropdown, assigneeFields, joinDescription, splitDescription, type DescriptionImage, type Member } from './BoardCardParts'
 import { tl } from '@/i18n/tl'
+import { TYPE_META, allowedParentTypes, typeOf, type CardType } from './boardHierarchy'
 
 type Column = { id: string; label: string; hint: string; color: string }
 type Priority = 'alta' | 'media' | 'bassa'
@@ -27,13 +28,12 @@ export type DetailCard = {
   sprint_id?: string | null
 }
 
-const CARD_TYPE_LABEL = { epic: 'Epic', story: 'Story', task: 'Task' } as const
 const PRIORITY_LABEL: Record<Priority, string> = { alta: tl("Alta"), media: tl("Media"), bassa: tl("Bassa") }
 const sectionTitle = 'text-[10px] font-semibold text-slate-400'
 const fieldClass = 'mt-1.5 h-10 text-sm'
 
 /** Task detail where every field is edited in place and saved as soon as it changes: no separate edit mode. */
-export default function BoardCardDetail({ boardId, card, labels, members, sprints, cards, canEdit, showPoints, colorControl, onPatch, onDelete, deletePending, onOpenCard, onClose }: {
+export default function BoardCardDetail({ boardId, card, labels, members, sprints, cards, canEdit, showPoints, colorControl, onPatch, onDelete, deletePending, onOpenCard, onAddChild, onClose }: {
   boardId: string
   card: DetailCard
   columns?: Column[]
@@ -49,6 +49,7 @@ export default function BoardCardDetail({ boardId, card, labels, members, sprint
   onDelete: () => void
   deletePending: boolean
   onOpenCard: (id: string) => void
+  onAddChild?: (parent: DetailCard) => void
   onClose: () => void
 }) {
   const [title, setTitle] = useState(card.title)
@@ -80,6 +81,8 @@ export default function BoardCardDetail({ boardId, card, labels, members, sprint
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, preview])
 
+  const type = typeOf(card)
+  const parentOptions = cards.filter((item) => item.id !== card.id && allowedParentTypes(type).includes(typeOf(item)))
   const parent = card.parent_card_id ? cards.find((item) => item.id === card.parent_card_id) : null
   const children = cards.filter((item) => item.parent_card_id === card.id)
   const sprint = card.sprint_id ? sprints.find((item) => item.id === card.sprint_id) : undefined
@@ -118,7 +121,7 @@ export default function BoardCardDetail({ boardId, card, labels, members, sprint
           <span className="mt-4 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#d4d4d4' }} aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold">
-              {card.card_type && <span className={`rounded-full px-2 py-0.5 ${card.card_type === 'epic' ? 'bg-violet-100 text-violet-700' : card.card_type === 'story' ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-600'}`}>{CARD_TYPE_LABEL[card.card_type]}</span>}
+              <span className={`rounded-full px-2 py-0.5 ${TYPE_META[type].badge}`}>{TYPE_META[type].label}</span>
               {sprint && <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/[0.06] px-2 py-0.5 text-slate-600"><CalendarRange className="h-3 w-3" />{sprintCode} · {sprint.name}{formatSprintDates(sprint) ? ` · ${formatSprintDates(sprint)}` : ''}</span>}
             </div>
             {canEdit ? (
@@ -135,7 +138,7 @@ export default function BoardCardDetail({ boardId, card, labels, members, sprint
                 className="mt-1 w-full rounded-lg border-0 bg-transparent px-1 py-0.5 -mx-1 text-xl font-semibold leading-7 text-slate-900 outline-none hover:bg-slate-900/[0.04] focus:bg-slate-900/[0.05] focus:ring-2 focus:ring-slate-300"
               />
             ) : <h3 id="board-card-title" className="mt-1 text-xl font-semibold leading-7 text-slate-900">{card.title}</h3>}
-            {parent && <button type="button" onClick={() => onOpenCard(parent.id)} className="mt-1 max-w-full truncate text-left text-xs font-semibold text-slate-500 hover:text-slate-800 hover:underline">↳ Epic: {parent.title}</button>}
+            {parent && <button type="button" onClick={() => onOpenCard(parent.id)} className="mt-1 max-w-full truncate text-left text-xs font-semibold text-slate-500 hover:text-slate-800 hover:underline">↳ {TYPE_META[typeOf(parent)].label}: {parent.title}</button>}
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
         </div>
@@ -198,6 +201,28 @@ export default function BoardCardDetail({ boardId, card, labels, members, sprint
               </section>
             )}
 
+            <section>
+              <h4 className={sectionTitle}>{tl("Tipo")}</h4>
+              <div className="mt-1.5 grid grid-cols-3 gap-1 rounded-xl bg-[var(--ds-well)] p-1" role="radiogroup" aria-label={tl("Tipo")}>
+                {(['epic', 'story', 'task'] as CardType[]).map((option) => (
+                  <button key={option} type="button" role="radio" aria-checked={type === option} disabled={!canEdit}
+                    onClick={() => { if (option !== type) onPatch({ card_type: option, ...(option === 'epic' ? { sprint_id: null, story_points: null } : {}) }) }}
+                    className={`h-9 rounded-lg text-xs font-semibold transition-colors disabled:cursor-default ${type === option ? 'ds-selected' : 'text-[var(--text-secondary)] hover:bg-[var(--ds-control-hover)]'}`}>
+                    {option === 'story' ? 'Story' : TYPE_META[option].label}
+                  </button>
+                ))}
+              </div>
+              {type !== 'epic' && (
+                <label className="mt-3 block">
+                  <span className={sectionTitle}>{tl("Appartiene a")}</span>
+                  <Select density="compact" disabled={!canEdit} value={card.parent_card_id || ''} onChange={(event) => onPatch({ parent_card_id: event.target.value || null })} className={fieldClass}>
+                    <option value="">{tl("Nessuno (livello principale)")}</option>
+                    {parentOptions.map((item) => <option key={item.id} value={item.id}>{TYPE_META[typeOf(item)].label} · {item.title}</option>)}
+                  </Select>
+                </label>
+              )}
+            </section>
+
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
                 <span className={sectionTitle}>{tl("Priorità")}</span>
@@ -225,18 +250,41 @@ export default function BoardCardDetail({ boardId, card, labels, members, sprint
               )}
             </div>
 
-            {children.length > 0 && (
+            {(children.length > 0 || (canEdit && type !== 'task' && onAddChild)) && (
               <section>
-                <h4 className={sectionTitle}>User story · {children.length}</h4>
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className={sectionTitle}>{type === 'epic' ? tl("Contenuto") : 'Task'} · {children.length}</h4>
+                  {canEdit && type !== 'task' && onAddChild && (
+                    <button type="button" onClick={() => onAddChild(card)} className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--ds-control-hover)]">
+                      <Plus className="h-3.5 w-3.5" /> {type === 'epic' ? tl("Aggiungi story") : tl("Aggiungi task")}
+                    </button>
+                  )}
+                </div>
                 <ul className="mt-1.5 space-y-1">
-                  {children.map((child) => (
-                    <li key={child.id}>
-                      <button type="button" onClick={() => onOpenCard(child.id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-900/[0.05]">
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: child.color || '#d4d4d4' }} />
-                        <span className="min-w-0 flex-1 truncate font-semibold">{child.title}</span>
-                      </button>
-                    </li>
-                  ))}
+                  {children.map((child) => {
+                    const grandchildren = cards.filter((item) => item.parent_card_id === child.id)
+                    return (
+                      <li key={child.id}>
+                        <button type="button" onClick={() => onOpenCard(child.id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-900/[0.05]">
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: child.color || '#d4d4d4' }} />
+                          <span className="min-w-0 flex-1 truncate font-semibold">{child.title}</span>
+                          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TYPE_META[typeOf(child)].badge}`}>{TYPE_META[typeOf(child)].label}</span>
+                        </button>
+                        {grandchildren.length > 0 && (
+                          <ul className="ml-4 border-l-2 border-slate-200 pl-2">
+                            {grandchildren.map((item) => (
+                              <li key={item.id}>
+                                <button type="button" onClick={() => onOpenCard(item.id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs text-slate-600 hover:bg-slate-900/[0.05]">
+                                  <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: item.color || '#d4d4d4' }} />
+                                  <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               </section>
             )}

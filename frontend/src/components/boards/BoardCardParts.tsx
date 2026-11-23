@@ -152,45 +152,92 @@ export function DescriptionEditor({ boardId, value, onChange, onBlur, onImage, r
 
 /** People who can be responsible for a task: board members plus anyone named by hand (no platform account needed). */
 export function AssigneePicker({ members, value, onChange }: { members: Member[]; value: Member[]; onChange: (next: Member[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const [pending, setPending] = useState<Member[]>(value)
+  const [query, setQuery] = useState('')
   const [name, setName] = useState('')
-  const selected = (person: Member) => value.some((item) => item.kind === person.kind && item.id === person.id)
-  const options = [...members, ...value.filter((item) => !members.some((member) => member.kind === item.kind && member.id === item.id))]
-  const toggle = (person: Member) => onChange(selected(person) ? value.filter((item) => !(item.kind === person.kind && item.id === person.id)) : [...value, person])
+  const same = (x: Pick<Member, 'kind' | 'id'>, y: Pick<Member, 'kind' | 'id'>) => x.kind === y.kind && x.id === y.id
+  const selected = (person: Member) => pending.some((item) => same(item, person))
+  const options = [...members, ...pending.filter((item) => !members.some((member) => same(member, item)))]
+  const needle = query.trim().toLocaleLowerCase('it')
+  const shown = needle ? options.filter((person) => person.name.toLocaleLowerCase('it').includes(needle)) : options
+  const toggle = (person: Member) => setPending(selected(person) ? pending.filter((item) => !same(item, person)) : [...pending, person])
   const addExternal = () => {
     const clean = name.replace(/\s+/g, ' ').trim()
     if (!clean) return
     const existing = options.find((person) => person.kind === 'external' && person.name.toLowerCase() === clean.toLowerCase())
-    if (existing) { if (!selected(existing)) onChange([...value, existing]) } else onChange([...value, { kind: 'external', id: `new:${clean}`, name: clean }])
+    if (existing) { if (!selected(existing)) setPending([...pending, existing]) } else setPending([...pending, { kind: 'external', id: `new:${clean}`, name: clean }])
     setName('')
   }
+  const openPanel = () => { setPending(value); setQuery(''); setName(''); setOpen(true) }
+  const confirm = () => { onChange(pending); setOpen(false) }
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-1.5">
-        {options.map((person) => {
-          const active = selected(person)
-          return (
-            <button key={memberKey(person)} type="button" aria-pressed={active} aria-label={person.name} onClick={() => toggle(person)}
-              className={`rounded-full transition ${active ? '' : 'opacity-45 hover:opacity-100'}`}>
-              <Avatar person={person} size="md" ringClass={active ? 'ring-slate-900 dark:ring-white' : 'ring-transparent'} />
+      <div className="flex flex-wrap items-center gap-1.5">
+        {value.map((person) => (
+          <span key={memberKey(person)} className="inline-flex items-center gap-1.5 rounded-full bg-[var(--ds-well)] py-0.5 pl-0.5 pr-2.5 text-xs font-semibold text-[var(--text-primary)]">
+            <Avatar person={person} size="sm" ringClass="ring-transparent" />
+            <span className="max-w-[130px] truncate">{person.name}</span>
+            <button type="button" onClick={() => onChange(value.filter((item) => !same(item, person)))} aria-label={tl("Rimuovi {0}", person.name)} className="-mr-1 rounded-full p-0.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+              <X className="h-3 w-3" />
             </button>
-          )
-        })}
-        {options.length === 0 && <p className="text-xs text-slate-400">{tl("Nessuno con cui condividere: aggiungi un nome qui sotto.")}</p>}
+          </span>
+        ))}
+        {!open && (
+          <button type="button" onClick={openPanel} aria-expanded={open} className="ds-control inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-semibold text-[var(--text-primary)]">
+            <Plus className="h-3.5 w-3.5" /> {value.length ? tl("Modifica") : tl("Assegna")}
+          </button>
+        )}
       </div>
-      <div className="flex items-center gap-1.5">
-        <input
-          value={name}
-          maxLength={60}
-          onChange={(event) => setName(event.target.value)}
-          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addExternal() } }}
-          placeholder={tl("Persona esterna: scrivi un nome")}
-          aria-label={tl("Nome di una persona esterna")}
-          className="ds-field h-9 min-w-0 flex-1 rounded-[var(--ds-field-radius)] px-3 text-xs"
-        />
-        <button type="button" onClick={addExternal} disabled={!name.trim()} aria-label={tl("Aggiungi")} className="ds-control inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-700 disabled:opacity-40">
-          <Plus className="h-4 w-4" />
-        </button>
-      </div>
+      {open && (
+        <div className="space-y-2 rounded-[var(--ds-radius-card)] bg-[var(--ds-well)] p-2" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false) } }}>
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={tl("Cerca una persona")}
+            aria-label={tl("Cerca una persona")}
+            className="ds-field h-9 w-full rounded-[var(--ds-field-radius)] px-3 text-xs"
+          />
+          <ul className="max-h-52 space-y-0.5 overflow-y-auto">
+            {shown.map((person) => {
+              const active = selected(person)
+              return (
+                <li key={memberKey(person)}>
+                  <button type="button" aria-pressed={active} onClick={() => toggle(person)}
+                    className={`flex min-h-9 w-full items-center gap-2 rounded-[var(--control-radius)] px-3 text-left text-sm ${active ? 'ds-selected' : 'hover:bg-[var(--ds-control-hover)]'}`}>
+                    <Avatar person={person} size="sm" ringClass="ring-transparent" />
+                    <span className="min-w-0 flex-1 truncate">{person.name}</span>
+                    <span className="shrink-0 text-[10px] text-[var(--text-secondary)]">{KIND_LABEL[person.kind]}</span>
+                    {active && <Check className="h-4 w-4 shrink-0" />}
+                  </button>
+                </li>
+              )
+            })}
+            {shown.length === 0 && <li className="px-3 py-2 text-xs text-[var(--text-secondary)]">{tl("Nessun risultato")}</li>}
+          </ul>
+          <div className="flex items-center gap-1.5">
+            <input
+              value={name}
+              maxLength={60}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addExternal() } }}
+              placeholder={tl("Persona esterna: scrivi un nome")}
+              aria-label={tl("Nome di una persona esterna")}
+              className="ds-field h-9 min-w-0 flex-1 rounded-[var(--ds-field-radius)] px-3 text-xs"
+            />
+            <button type="button" onClick={addExternal} disabled={!name.trim()} aria-label={tl("Aggiungi")} className="ds-control inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:opacity-40">
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setOpen(false)} className="h-9 rounded-full px-3 text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--ds-control-hover)]">{tl("Annulla")}</button>
+            <button type="button" onClick={confirm} className="inline-flex h-9 items-center gap-1 rounded-full bg-[image:var(--selection-active-bg)] px-4 text-xs font-semibold text-[var(--selection-active-text)]">
+              <Check className="h-3.5 w-3.5" /> {tl("Conferma")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
