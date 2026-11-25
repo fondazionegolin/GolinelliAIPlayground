@@ -6,12 +6,12 @@ export interface LabModel { model_id: string; name: string; tts: boolean; conver
 export interface LabItem {
   id: string; title: string; artist_name?: string | null; kind: 'audio' | 'transcript' | 'preview' | 'voice' | 'dubbing'; service: string
   voice_id?: string; status: string; mime_type?: string; created_at: string; content_url?: string; cover_url?: string | null
-  details: { drive_item_id?: string; credits?: number; duration_seconds?: number; pricing?: LabQuote; text?: string; description?: string; characters?: number; requires_verification?: boolean; saved_voice_id?: string
+  details: { drive_item_id?: string; credits?: number; duration_seconds?: number; pricing?: LabQuote; text?: string; lyrics?: string; description?: string; characters?: number; requires_verification?: boolean; saved_voice_id?: string
     transcript?: { text?: string; words?: { text: string; start: number; end: number; speaker_id?: string }[] } }
 }
 export interface LabQuote { credits: number; quantity: number; unit: 'characters' | 'seconds'; pricing_basis: string; source: string }
-export interface LabPlaylist { id: string; title: string; folder_id: string; tracks: { id: string; source_item_id: string; title: string; artist_name?: string | null; mime_type: string; cover_url?: string | null }[] }
-export interface AudioFile { id: string; title: string; artist_name?: string | null; mime_type: string; owned: boolean; shared: boolean; cover_url?: string | null }
+export interface LabPlaylist { id: string; title: string; folder_id: string; tracks: { id: string; item_id?: string; lyrics?: string; source_item_id: string; title: string; artist_name?: string | null; mime_type: string; cover_url?: string | null }[] }
+export interface AudioFile { id: string; item_id?: string; lyrics?: string; title: string; artist_name?: string | null; mime_type: string; owned: boolean; shared: boolean; cover_url?: string | null }
 export interface ClassPlayback { session_id: string; teacher_id: string; playlist: LabPlaylist; index: number; position: number; paused: boolean; updated_at: number; server_time: number; revision: string }
 export interface MusicModel { provider: string; model: string; label: string; fixed_seconds: number | null; min_seconds?: number; max_seconds: number; price_note: string }
 export interface LabConfig { configured: boolean; cover_credits: number; default_model: string; max_upload_mb: number; output_formats: string[]; music_model?: MusicModel }
@@ -28,6 +28,9 @@ export const voiceLabApi = {
   createPlaylist: (title: string, track_ids: string[]) => api.post<LabPlaylist>('/voice-lab/playlists', { title, track_ids }),
   updatePlaylist: (id: string, title: string, track_ids: string[]) => api.put<LabPlaylist>(`/voice-lab/playlists/${id}`, { title, track_ids }),
   deletePlaylist: (id: string) => api.delete(`/voice-lab/playlists/${id}`),
+  draftLyrics: (data: { brief: string; language: string; mood: string; structure: string; seconds: number; current: string; instruction: string }) => api.post<{ lyrics: string }>('/voice-lab/lyrics/draft', data, { timeout: 90000 }),
+  saveLyrics: (ref: string, lyrics: string) => api.put<{ lyrics: string }>(`/voice-lab/tracks/${ref}/lyrics`, { lyrics }),
+  transcribeLyrics: (ref: string) => api.post<{ lyrics: string; credits: number }>(`/voice-lab/tracks/${ref}/lyrics/transcribe`, undefined, { timeout: 300000 }),
   config: () => api.get<LabConfig>('/voice-lab/config'),
   voices: () => api.get<LabVoice[]>('/voice-lab/voices'),
   models: () => api.get<LabModel[]>('/voice-lab/models'),

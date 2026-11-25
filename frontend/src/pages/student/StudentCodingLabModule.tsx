@@ -33,8 +33,11 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  GitBranch,
+  MoreHorizontal,
   Send,
   Share2,
+  Users,
   Sparkles,
   Smartphone,
   Wand2,
@@ -51,6 +54,11 @@ import DesignSystemStudio from '@/components/coding/DesignSystemStudio'
 import CodingSandpackPreview, { type SandpackRuntimeError } from '@/components/coding/CodingSandpackPreview'
 import { useScopedModels } from '@/components/models/ScopedModelSelect'
 import VibeLabLibrary from '@/components/coding/VibeLabLibrary'
+import { CodingCollaboratorsDialog, CodingInviteDialog } from '@/components/coding/CodingCollaboratorsDialog'
+import { ProposeChangesDialog, PullRequestsPanel } from '@/components/coding/CodingPullRequests'
+import { CodingToolbarMenu } from '@/components/coding/CodingToolbarMenu'
+import { CodingTeamAvatars, type TeamMember } from '@/components/coding/CodingTeamAvatars'
+import { PLATFORM_REALTIME_EVENT } from '@/lib/realtimeEvents'
 import StyleDirectionPicker, { type StyleOption } from '@/components/coding/StyleDirectionPicker'
 import MlModelPicker, { ML_MODELS_PATH, buildMlModelsMarkdown } from '@/components/coding/MlModelPicker'
 import { buildMlStub, mlModelIdsFrom, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
@@ -88,6 +96,10 @@ type CodingProject = {
   owner_display_name?: string | null
   owner_kind?: string | null
   is_owned_by_current_user?: boolean
+  my_role?: string | null
+  collaborator_count?: number
+  main_project_id?: string | null
+  open_pr_count?: number
   current_version_id?: string | null
   thumbnail?: string | null
   created_at: string
@@ -271,6 +283,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [publishing, setPublishing] = useState(false)
   const [downloadingZip, setDownloadingZip] = useState(false)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [collaboratorsOpen, setCollaboratorsOpen] = useState(false)
+  const [proposeOpen, setProposeOpen] = useState(false)
+  const [proposalsOpen, setProposalsOpen] = useState(false)
+  const [team, setTeam] = useState<TeamMember[]>([])
+  const [inviteProject, setInviteProject] = useState<CodingProject | null>(null)
+  const [inviteBusy, setInviteBusy] = useState(false)
   const [pendingCommits, setPendingCommits] = useState<CodingCommit[]>([])
   const [previewingCommitId, setPreviewingCommitId] = useState<string | null>(null)
   const [previewingVersionId, setPreviewingVersionId] = useState<string | null>(null)
@@ -640,6 +658,36 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     if (toLibrary) setCreatePanelOpen(false)
   }
 
+  const teamProjectId = selectedProject?.main_project_id || selectedProject?.id || null
+  const loadTeam = useCallback(async (projectId: string | null) => {
+    if (!projectId) { setTeam([]); return }
+    try {
+      const response = await codingApi.getTeam(projectId)
+      const data = response.data as { owner: { id: string; name: string; role: 'teacher' | 'student' }; members: { id: string; name: string; status: string; role: 'student' }[] }
+      setTeam([
+        { id: data.owner.id, name: data.owner.name, role: data.owner.role, owner: true },
+        ...data.members.map((member) => ({ id: member.id, name: member.name, role: member.role, pending: member.status !== 'active' })),
+      ])
+    } catch {
+      setTeam([])
+    }
+  }, [])
+  useEffect(() => { void loadTeam(selectedProject ? teamProjectId : null) }, [teamProjectId, selectedProject?.id, selectedProject?.collaborator_count, loadTeam])
+
+  // Live: invitations answered, proposals sent/decided -> refresh counters, avatars and the list quietly.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: string; payload?: Record<string, any> }>).detail
+      if (!detail?.type || !['coding_pr_opened', 'coding_pr_updated', 'coding_collaborator_update'].includes(detail.type)) return
+      codingApi.listProjects(sessionId).then((response) => setProjects(response.data as CodingProject[])).catch(() => { /* noop */ })
+      void loadTeam(teamProjectId)
+      const who = detail.payload?.from || detail.payload?.student
+      if (detail.type === 'coding_pr_opened') setShareUrl(tl("{0} ha inviato una proposta per «{1}»", who || '', detail.payload?.project_title || ''))
+    }
+    window.addEventListener(PLATFORM_REALTIME_EVENT, handler)
+    return () => window.removeEventListener(PLATFORM_REALTIME_EVENT, handler)
+  }, [sessionId, teamProjectId, loadTeam])
+
   const loadProjects = async () => {
     setError(null)
     setLoading(true)
@@ -721,7 +769,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const openProjectFromList = async (project: CodingProject) => {
     setCreatePanelOpen(false)
     setShareUrl(null)
-    if (!project.is_owned_by_current_user && project.visibility === 'class_shared' && !isTeacher) {
+    if (project.my_role === 'invited') {
+      setInviteProject(project)
+      return
+    }
+    if (!project.is_owned_by_current_user && !project.my_role && project.visibility === 'class_shared' && !isTeacher) {
       setLoading(true)
       setError(null)
       try {
@@ -771,6 +823,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   useEffect(() => {
     setProjects([])
     startNewProject()
+    // Open on the project library; a platform handoff (below) reopens the new-project panel itself.
+    setCreatePanelOpen(false)
     applyHandoff()
     loadProjects()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2079,6 +2133,69 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           creating={creating}
         />
       )}
+      {selectedProject && selectedProject.is_owned_by_current_user && (
+        <CodingCollaboratorsDialog
+          open={collaboratorsOpen}
+          projectId={selectedProject.id}
+          onClose={() => setCollaboratorsOpen(false)}
+          onSaved={() => { void loadProjects() }}
+        />
+      )}
+      {selectedProject && (selectedProject.is_owned_by_current_user || selectedProject.my_role === 'collaborator') && (
+        <>
+          {selectedProject.my_role === 'collaborator' && selectedProject.main_project_id && (
+            <ProposeChangesDialog
+              open={proposeOpen}
+              mainProjectId={selectedProject.main_project_id}
+              onClose={() => setProposeOpen(false)}
+              onCreated={() => { setShareUrl(tl("Proposta inviata. Chi ha creato il progetto la vedrà e potrà provarla.")); setProposalsOpen(true) }}
+            />
+          )}
+          <PullRequestsPanel
+            open={proposalsOpen}
+            mainProjectId={selectedProject.main_project_id || selectedProject.id}
+            isOwner={Boolean(selectedProject.is_owned_by_current_user)}
+            onClose={() => setProposalsOpen(false)}
+            onPreview={(prFiles, prId) => {
+              setFiles(prFiles as GeneratedFile[])
+              setSelectedPath(prFiles[0]?.path || 'index.html')
+              setPreviewingCommitId(prId)
+              setPreviewingVersionId(null)
+              setActiveWorkbench('preview')
+              setProposalsOpen(false)
+            }}
+            onMerged={() => {
+              setShareUrl(tl("Proposta unita nel progetto principale. Se qualcosa non va puoi tornare indietro dalle Versioni."))
+              if (selectedProjectId) void loadProjectDetail(selectedProjectId)
+              void loadProjects()
+            }}
+            onRollback={handleRollbackVersion}
+          />
+        </>
+      )}
+      <CodingInviteDialog
+        open={Boolean(inviteProject)}
+        title={inviteProject?.title || ''}
+        owner={inviteProject?.owner_display_name || tl("Un compagno")}
+        busy={inviteBusy}
+        onClose={() => setInviteProject(null)}
+        onAnswer={async (decision) => {
+          if (!inviteProject) return
+          setInviteBusy(true)
+          try {
+            const response = await codingApi.answerInvitation(inviteProject.id, decision)
+            const answered = response.data as CodingProject
+            setInviteProject(null)
+            await loadProjects()
+            if (decision === 'accept') void openProjectFromList(answered)
+          } catch (err: any) {
+            setError(err?.response?.data?.detail || tl("Impossibile rispondere all'invito."))
+            setInviteProject(null)
+          } finally {
+            setInviteBusy(false)
+          }
+        }}
+      />
       {selectedProject && (
         <RefineDialog
           open={refineOpen}
@@ -2091,7 +2208,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       {versionsOpen && selectedProject && (
         <div className="fixed inset-0 z-[70] flex items-start justify-end bg-black/30 p-3 sm:p-4" onClick={() => setVersionsOpen(false)}>
           <div
-            className="mt-12 flex h-[min(78vh,640px)] w-[400px] max-w-full flex-col overflow-hidden rounded-2xl bg-[var(--surface-card)] shadow-2xl"
+            className="mt-12 flex h-[min(78vh,640px)] w-[400px] max-w-full flex-col overflow-hidden rounded-2xl bg-[var(--ds-popover-solid)] shadow-2xl"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-label={tl("Versioni del progetto")}
@@ -2135,26 +2252,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       )}
 
       {!inLibrary && <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {!isMobile && (
-          <div className="flex shrink-0 items-center gap-2 px-3 pt-2">
-            <Button type="button" variant="ghost" density="compact" onClick={() => void goToLibrary()} disabled={creating || generating || draftSaving} title={generating ? tl("Attendi la fine della generazione") : tl("Torna ai progetti")}>
-              <ArrowLeft className="h-4 w-4" /> {tl("Progetti")}
-            </Button>
-            {selectedProject && <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">{selectedProject.title}</span>}
-            {!selectedProject && <span className="flex-1" />}
-            {selectedProject && files.length > 0 && isReactProject(files) && (
-              <Button type="button" variant="ghost" density="compact" onClick={() => setRefineOpen(true)} disabled={generating || creating || draftSaving}
-                title={tl("Rifinisci: completa le funzioni mancanti, prova l'app in un browser vero e corregge i difetti")}>
-                <Wand2 className="h-4 w-4" /> {tl("Rifinisci")}
-              </Button>
-            )}
-            {selectedProject && (
-              <Button type="button" variant="ghost" density="compact" onClick={() => setVersionsOpen(true)} title={tl("Versioni, commit e aggiornamenti")}>
-                <History className="h-4 w-4" /> {tl("Versioni")}{sortedVersions.length ? ` · ${sortedVersions.length}` : ''}{pendingCommits.length ? ` · ${pendingCommits.length} commit` : ''}
-              </Button>
-            )}
-          </div>
-        )}
         {isMobile && (
           <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2">
             <div className="flex items-center gap-2">
@@ -2246,6 +2343,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             />}
             {promptPanelOpen ? (
             <>
+            {createPanelOpen && (
+              <div className="px-5 pt-4 sm:px-8">
+                <Button type="button" variant="ghost" density="compact" onClick={() => void goToLibrary()} disabled={creating || generating} title={tl("Torna ai progetti")}>
+                  <ArrowLeft className="h-4 w-4" /> {tl("Progetti")}
+                </Button>
+              </div>
+            )}
             <div className={createPanelOpen ? 'space-y-3 p-5 sm:p-8' : 'flex-1 space-y-3 overflow-y-auto p-3'}>
               {createPanelOpen && (
               <div>
@@ -2580,7 +2684,24 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           </section>
 
           {!createPanelOpen && <section className={`${isMobile && mobilePane !== 'workbench' ? 'hidden' : 'flex'} min-h-0 flex-col lg:flex ${activeWorkbench === 'code' ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
-            <div className={`flex min-h-12 items-center justify-between gap-2 overflow-x-auto border-b px-2 md:gap-3 md:px-4 ${activeWorkbench === 'code' ? 'border-white/10 bg-slate-900' : 'border-slate-100 bg-white'}`}>
+            <div className={`flex min-h-12 items-center gap-2 overflow-x-auto border-b px-2 md:gap-3 md:px-4 ${activeWorkbench === 'code' ? 'border-white/10 bg-slate-900' : 'border-slate-100 bg-white'}`}>
+              {!isMobile && (
+                <>
+                  <CodingToolbarIconButton
+                    icon={<ArrowLeft className="h-4 w-4" />}
+                    label={tl("Progetti")}
+                    onClick={() => void goToLibrary()}
+                    disabled={creating || generating || draftSaving}
+                    title={generating ? tl("Attendi la fine della generazione") : tl("Torna ai progetti")}
+                    dark={activeWorkbench === 'code'}
+                  />
+                  {selectedProject && (
+                    <span className={`max-w-[14rem] shrink truncate text-sm font-semibold ${activeWorkbench === 'code' ? 'text-slate-100' : 'text-[var(--text-primary)]'}`} title={selectedProject.title}>
+                      {selectedProject.title}
+                    </span>
+                  )}
+                </>
+              )}
               <div className={`inline-flex shrink-0 rounded-[var(--selection-radius)] border p-1 ${activeWorkbench === 'code' ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-slate-100'}`}>
                 <CodingToolbarIconButton
                   icon={<FileCode2 className="h-4 w-4" />}
@@ -2597,8 +2718,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   dark={activeWorkbench === 'code'}
                 />
               </div>
+              <div className="ml-auto flex min-w-0 items-center gap-2">
               {activeWorkbench === 'code' && selectedProjectId && (
-                <div className="ml-auto text-[11px] font-semibold text-slate-400">
+                <div className="text-[11px] font-semibold text-slate-400">
                   {draftSaving
                     ? tl("Salvataggio...")
                     : draftDirty
@@ -2626,7 +2748,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       title={tl("Anteprima mobile")}
                     />
                   </div>
-                  {isFork && (
+                  {isFork && selectedProject?.my_role !== 'collaborator' && (
                     <CodingToolbarIconButton
                       icon={publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
                       label="Commit"
@@ -2636,13 +2758,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       title="Commit to creator"
                     />
                   )}
-                  <CodingToolbarIconButton
-                    icon={publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-                    label={tl("Condividi")}
-                    onClick={handleShareProject}
-                    disabled={!selectedProjectId || publishing}
-                    title={tl("Condividi in classe")}
-                  />
                   {isReactPreview && (
                     <CodingToolbarIconButton
                       icon={visualReview?.status === 'reviewing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
@@ -2652,19 +2767,23 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       title={tl("Revisione visiva con screenshot")}
                     />
                   )}
-                  <CodingToolbarIconButton
-                    icon={publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
-                    label={tl("Pubblica")}
-                    onClick={handlePublishProject}
-                    disabled={!selectedProjectId || publishing}
-                    title={tl("Pubblica con un link e un codice da incorporare")}
-                  />
-                  <CodingToolbarIconButton
-                    icon={downloadingZip ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                    label="ZIP"
-                    onClick={handleDownloadZip}
-                    disabled={!selectedProjectId || downloadingZip || publishing}
-                    title={tl("Scarica sorgenti e Docker compose")}
+                  <CodingToolbarMenu
+                    label={tl("Condividi")}
+                    items={[
+                      { key: 'class', icon: <Users className="h-4 w-4" />, label: tl("Condividi in classe"), hint: tl("I compagni possono aprirlo e copiarlo"), disabled: !selectedProjectId || publishing, onSelect: () => void handleShareProject() },
+                      { key: 'publish', icon: <Globe className="h-4 w-4" />, label: tl("Pubblica con un link"), hint: tl("Link pubblico e codice da incorporare"), disabled: !selectedProjectId || publishing, onSelect: () => void handlePublishProject() },
+                      { key: 'zip', icon: <Download className="h-4 w-4" />, label: tl("Scarica ZIP"), hint: tl("Sorgenti e Docker compose"), disabled: !selectedProjectId || downloadingZip || publishing, onSelect: () => void handleDownloadZip() },
+                    ]}
+                    trigger={({ open, toggle }) => (
+                      <CodingToolbarIconButton
+                        icon={publishing || downloadingZip ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                        label={tl("Condividi")}
+                        active={open}
+                        onClick={toggle}
+                        disabled={!selectedProjectId}
+                        title={tl("Condividi, pubblica o scarica")}
+                      />
+                    )}
                   />
                   <CodingToolbarIconButton
                     icon={<Maximize2 className="h-4 w-4" />}
@@ -2674,6 +2793,78 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   />
                 </div>
               )}
+              {selectedProject && (
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <CodingTeamAvatars
+                    members={team}
+                    dark={activeWorkbench === 'code'}
+                    onClick={selectedProject.is_owned_by_current_user ? () => setCollaboratorsOpen(true) : undefined}
+                  />
+                  {selectedProject.is_owned_by_current_user && (
+                    <CodingToolbarIconButton
+                      icon={<Users className="h-4 w-4" />}
+                      label={tl("Collabora")}
+                      onClick={() => setCollaboratorsOpen(true)}
+                      disabled={!selectedProjectId}
+                      title={tl("Invita compagni a lavorare con te")}
+                      dark={activeWorkbench === 'code'}
+                    />
+                  )}
+                  {selectedProject.is_owned_by_current_user && (selectedProject.collaborator_count ?? 0) > 0 && (
+                    <CodingToolbarIconButton
+                      icon={<GitBranch className="h-4 w-4" />}
+                      label={(selectedProject.open_pr_count ?? 0) > 0 ? tl("Proposte · {0}", selectedProject.open_pr_count) : tl("Proposte")}
+                      onClick={() => setProposalsOpen(true)}
+                      title={tl("Rivedi le modifiche proposte dai collaboratori")}
+                      dark={activeWorkbench === 'code'}
+                    />
+                  )}
+                  {selectedProject.my_role === 'collaborator' && selectedProject.main_project_id && (
+                    <>
+                      <CodingToolbarIconButton
+                        icon={<GitBranch className="h-4 w-4" />}
+                        label={tl("Proponi")}
+                        onClick={() => setProposeOpen(true)}
+                        disabled={!selectedProjectId || draftDirty || draftSaving}
+                        tone="success"
+                        title={tl("Proponi le modifiche a chi ha creato il progetto")}
+                      />
+                      <CodingToolbarIconButton
+                        icon={<RotateCcw className="h-4 w-4" />}
+                        label={tl("Proposte")}
+                        onClick={() => setProposalsOpen(true)}
+                        title={tl("Le mie proposte")}
+                        dark={activeWorkbench === 'code'}
+                      />
+                    </>
+                  )}
+                  <CodingToolbarIconButton
+                    icon={<History className="h-4 w-4" />}
+                    label={`${tl("Versioni")}${sortedVersions.length ? ` · ${sortedVersions.length}` : ''}${pendingCommits.length ? ` · ${pendingCommits.length} commit` : ''}`}
+                    onClick={() => setVersionsOpen(true)}
+                    title={tl("Versioni, commit e aggiornamenti")}
+                    dark={activeWorkbench === 'code'}
+                  />
+                  {files.length > 0 && isReactProject(files) && (
+                    <CodingToolbarMenu
+                      label={tl("Altro")}
+                      items={[
+                        { key: 'refine', icon: <Wand2 className="h-4 w-4" />, label: tl("Rifinisci"), hint: tl("Completa le funzioni mancanti e corregge i difetti"), disabled: generating || creating || draftSaving, onSelect: () => setRefineOpen(true) },
+                      ]}
+                      trigger={({ open, toggle }) => (
+                        <CodingToolbarIconButton
+                          icon={<MoreHorizontal className="h-4 w-4" />}
+                          label={tl("Altro")}
+                          active={open}
+                          onClick={toggle}
+                          dark={activeWorkbench === 'code'}
+                        />
+                      )}
+                    />
+                  )}
+                </div>
+              )}
+              </div>
             </div>
             {activeWorkbench === 'preview' && publication && (
               <PublicationBanner url={publication.url} onClose={() => setPublication(null)} />
@@ -2685,7 +2876,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             )}
             {activeWorkbench === 'preview' && previewingCommitId && (
               <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900">
-                {tl("Stai testando una proposta di commit. Il codice originale non cambia finche non premi Merge.")}
+                <span>{tl("Stai provando una proposta: il progetto principale non è cambiato finché non premi «Unisci al principale».")}</span>
+                <button type="button" onClick={() => { if (selectedProjectId) void loadProjectDetail(selectedProjectId) }} className="ml-3 font-semibold underline">{tl("Esci dalla prova")}</button>
               </div>
             )}
             {activeWorkbench === 'preview' && previewingVersionId && !previewingCommitId && (

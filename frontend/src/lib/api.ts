@@ -251,6 +251,23 @@ export const codingApi = {
     api.get('/coding/briefs', { params: sessionId ? { session_id: sessionId } : undefined }),
   listProjects: (sessionId?: string) =>
     api.get('/coding/projects', { params: sessionId ? { session_id: sessionId } : undefined }),
+  getTeam: (projectId: string) => api.get(`/coding/projects/${projectId}/team`),
+  listCollaborators: (projectId: string) => api.get(`/coding/projects/${projectId}/collaborators`),
+  replaceCollaborators: (projectId: string, studentIds: string[]) =>
+    api.put(`/coding/projects/${projectId}/collaborators`, { student_ids: studentIds }),
+  answerInvitation: (projectId: string, decision: 'accept' | 'decline' | 'leave') =>
+    api.post(`/coding/projects/${projectId}/invite/${decision}`),
+  listPullRequests: (projectId: string) => api.get(`/coding/projects/${projectId}/pull-requests`),
+  getPullRequest: (projectId: string, prId: string) => api.get(`/coding/projects/${projectId}/pull-requests/${prId}`),
+  createPullRequest: (projectId: string, data: { title: string; description?: string }) =>
+    api.post(`/coding/projects/${projectId}/pull-requests`, data),
+  testPullRequest: (projectId: string, prId: string) => api.post(`/coding/projects/${projectId}/pull-requests/${prId}/test`),
+  resolvePullRequest: (projectId: string, prId: string, data: { path: string; choice: 'ours' | 'theirs' | 'custom'; content?: string }) =>
+    api.post(`/coding/projects/${projectId}/pull-requests/${prId}/resolve`, data),
+  mergePullRequest: (projectId: string, prId: string) => api.post(`/coding/projects/${projectId}/pull-requests/${prId}/merge`),
+  rejectPullRequest: (projectId: string, prId: string, note = '') =>
+    api.post(`/coding/projects/${projectId}/pull-requests/${prId}/reject`, { note }),
+  closePullRequest: (projectId: string, prId: string) => api.post(`/coding/projects/${projectId}/pull-requests/${prId}/close`),
   createProject: (data: {
     title: string
     session_id?: string

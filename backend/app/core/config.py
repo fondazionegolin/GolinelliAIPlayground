@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # workers) only serve the stateless routes nginx sends them, and reach socket
     # clients through the Redis message queue.
     API_ROLE: str = "gateway"
+    # Shared secret of the admin stress-test runner (app/loadtest). Empty = load-test headers ignored
+    # (production): only with it set can a request ask for the simulated LLM (services/load_simulation.py).
+    LOAD_TEST_SECRET: str = ""
     SOCKETIO_DEBUG_LOGS: bool = False
 
     # Public platform-health indicator. Set PLATFORM_HEALTH_OVERRIDE to

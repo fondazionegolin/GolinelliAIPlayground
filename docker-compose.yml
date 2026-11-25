@@ -110,6 +110,35 @@ services:
       - eduai-network
     restart: unless-stopped
 
+  # Admin «Stress test» runner (Admin → Sistema → Stress test). Optional, off by default:
+  #   docker compose --profile loadtest up -d --build loadtest
+  # It drives virtual students through nginx and reads container stats/logs from the Docker socket,
+  # so keep it for development/staging. Simulated LLM calls need LOAD_TEST_SECRET in .env (api + loadtest).
+  loadtest:
+    profiles: ["loadtest"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["uvicorn", "app.loadtest.server:app", "--host", "0.0.0.0", "--port", "8300", "--log-level", "warning"]
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://eduai:${DB_PASSWORD}@postgres:5432/eduai
+      - REDIS_URL=redis://redis:6379/0
+      - DB_POOL_SIZE=3
+      - DB_MAX_OVERFLOW=2
+      - LOADTEST_TARGET=http://nginx
+      - LOADTEST_REPORT_DIR=/app/loadtest_reports
+    volumes:
+      - ./data/loadtest_reports:/app/loadtest_reports
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - eduai-network
+    restart: unless-stopped
+
   # MakeCode/PXT compiler for classroom boards
   pxt-compiler:
     build:

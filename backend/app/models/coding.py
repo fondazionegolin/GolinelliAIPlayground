@@ -236,3 +236,55 @@ class CodingProjectData(Base):
     __table_args__ = (
         UniqueConstraint("project_id", "key", name="uq_coding_project_data_project_key"),
     )
+
+
+class CodingCollaborator(Base):
+    """A classmate invited to work on a student's Vibe Lab project.
+
+    status: invited -> active (accepted) | declined | removed.
+    """
+
+    __tablename__ = "coding_collaborators"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("coding_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(String(16), nullable=False, default="invited", server_default="invited")
+    invited_by_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="SET NULL"), nullable=True)
+    # The collaborator's own working copy (a CodingProject owned by them, kept linked to the main one).
+    branch_project_id = Column(UUID(as_uuid=True), ForeignKey("coding_projects.id", ondelete="SET NULL"), nullable=True)
+    # Snapshot of the main project the working copy was last aligned with (merge common ancestor).
+    base_files_json = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "student_id", name="uq_coding_collaborators_project_student"),
+    )
+
+
+class CodingPullRequest(Base):
+    """A collaborator's proposal to bring their working copy into the main project.
+
+    status: open -> testing (merge result generated, main untouched) -> merged | rejected | closed.
+    """
+
+    __tablename__ = "coding_pull_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("coding_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    branch_project_id = Column(UUID(as_uuid=True), ForeignKey("coding_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="SET NULL"), nullable=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=False, default="", server_default="")
+    status = Column(String(16), nullable=False, default="open", server_default="open")
+    base_files_json = Column(JSONB, nullable=False, default=list, server_default="[]")
+    head_files_json = Column(JSONB, nullable=False, default=list, server_default="[]")
+    test_files_json = Column(JSONB, nullable=True)
+    conflicts_json = Column(JSONB, nullable=False, default=list, server_default="[]")
+    main_hash_at_test = Column(String(64), nullable=True)
+    merged_version_id = Column(UUID(as_uuid=True), nullable=True)
+    decision_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    merged_at = Column(DateTime(timezone=True), nullable=True)

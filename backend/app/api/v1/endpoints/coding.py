@@ -1,3 +1,4 @@
+import hashlib
 import re
 import httpx
 from app.services.js_imports import module_imports
@@ -25,11 +26,15 @@ from app.api.v1.endpoints.chat import get_or_create_public_room
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import ChatMessage
-from app.models.coding import CodingBrief, CodingDesignSystem, CodingMessage, CodingProject, CodingProjectData, CodingPublication, CodingVersion
+from app.models.coding import CodingBrief, CodingCollaborator, CodingPullRequest, CodingDesignSystem, CodingMessage, CodingProject, CodingProjectData, CodingPublication, CodingVersion
 from app.models.enums import SenderType
 from app.models.session import Class, Session, SessionStudent
 from app.models.user import User
 from app.schemas.coding import (
+    CodingCollaboratorsUpdate,
+    CodingPullRequestCreate,
+    CodingPullRequestDecision,
+    CodingPullRequestResolve,
     CodingMessageCreate,
     CodingMessageResponse,
     CodingBriefCreate,
@@ -63,6 +68,7 @@ from app.services.environmental_impact import (
 )
 from app.services.llm_service import LLMResponse, llm_service
 from app.services.coding_patch import apply_search_replace
+from app.services.coding_merge import changed_files, merge_file_sets
 
 logger = logging.getLogger(__name__)
 
@@ -3318,6 +3324,42 @@ async def _get_accessible_project(
     return project
 
 
+async def _collaborator_row(db: AsyncSession, project_id: UUID, student_id: UUID) -> CodingCollaborator | None:
+    return (await db.execute(
+        select(CodingCollaborator).where(
+            CodingCollaborator.project_id == project_id,
+            CodingCollaborator.student_id == student_id,
+        )
+    )).scalar_one_or_none()
+
+
+async def _get_readable_project(
+    db: AsyncSession,
+    actor: StudentOrTeacher,
+    project_id: UUID,
+) -> CodingProject:
+    """Owner access, plus read-only access for students who accepted an invitation.
+
+    Write endpoints keep using _get_accessible_project, so collaborators can never modify the main
+    branch of someone else's project.
+    """
+    try:
+        return await _get_accessible_project(db, actor, project_id)
+    except HTTPException:
+        if not actor.is_student:
+            raise
+        project = (await db.execute(select(CodingProject).where(CodingProject.id == project_id))).scalar_one_or_none()
+        row = await _collaborator_row(db, project_id, actor.student.id) if project else None
+        if (
+            project is None
+            or row is None
+            or row.status != "active"
+            or project.session_id != actor.student.session_id
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project not accessible")
+        return project
+
+
 async def _get_session_project(
     db: AsyncSession,
     actor: StudentOrTeacher,
@@ -3386,11 +3428,55 @@ async def _project_response_payload(
         else:
             owner_display_name = "Docente"
 
+    my_role: str | None = "owner" if is_owned else None
+    main_project_id: UUID | None = None
+    if actor.is_student:
+        # Working copy of an accepted collaboration: shown as the creator's project, editable by me.
+        link = (await db.execute(
+            select(CodingCollaborator).where(
+                CodingCollaborator.branch_project_id == project.id,
+                CodingCollaborator.student_id == actor.student.id,
+                CodingCollaborator.status == "active",
+            )
+        )).scalar_one_or_none()
+        if link:
+            main = (await db.execute(select(CodingProject).where(CodingProject.id == link.project_id))).scalar_one_or_none()
+            my_role = "collaborator"
+            main_project_id = link.project_id
+            is_owned = False
+            if main and main.owner_student_id:
+                creator = (await db.execute(select(SessionStudent).where(SessionStudent.id == main.owner_student_id))).scalar_one_or_none()
+                owner_display_name = creator.nickname if creator else owner_display_name
+            elif main and main.owner_user_id:
+                creator_user = await db.get(User, main.owner_user_id)
+                if creator_user:
+                    owner_display_name = " ".join(part for part in [creator_user.first_name, creator_user.last_name] if part).strip() or creator_user.email
+        elif not is_owned:
+            row = await _collaborator_row(db, project.id, actor.student.id)
+            if row and row.status in ("invited", "active"):
+                my_role = "collaborator" if row.status == "active" else "invited"
+    collaborator_count = (await db.execute(
+        select(func.count()).select_from(CodingCollaborator).where(
+            CodingCollaborator.project_id == project.id,
+            CodingCollaborator.status.in_(("invited", "active")),
+        )
+    )).scalar_one()
+    open_pr_count = (await db.execute(
+        select(func.count()).select_from(CodingPullRequest).where(
+            CodingPullRequest.project_id == project.id,
+            CodingPullRequest.status.in_(("open", "testing")),
+        )
+    )).scalar_one() if is_owned else 0
+
     payload = CodingProjectResponse.model_validate(project).model_dump()
     payload.update({
         "owner_display_name": owner_display_name,
         "owner_kind": owner_kind,
         "is_owned_by_current_user": is_owned,
+        "my_role": my_role,
+        "collaborator_count": int(collaborator_count or 0),
+        "main_project_id": main_project_id,
+        "open_pr_count": int(open_pr_count or 0),
     })
     return payload
 
@@ -3473,9 +3559,16 @@ async def list_projects(
 ):
     query = select(CodingProject)
     if actor.is_student:
+        shared_with_me = select(CodingCollaborator.project_id).where(
+            CodingCollaborator.student_id == actor.student.id,
+            CodingCollaborator.status == "invited",
+        )
         query = query.where(
-            CodingProject.owner_student_id == actor.student.id,
             CodingProject.session_id == actor.student.session_id,
+            or_(
+                CodingProject.owner_student_id == actor.student.id,
+                CodingProject.id.in_(shared_with_me),
+            ),
         )
     else:
         if actor.teacher.tenant_id:
@@ -3492,6 +3585,634 @@ async def list_projects(
 
     result = await db.execute(query.order_by(CodingProject.updated_at.desc()))
     return [await _project_response_payload(db, actor, project) for project in result.scalars().all()]
+
+
+# --- Collaborators (named classmates invited to a project) ------------------------------------
+def _collab_uuid(value: str) -> UUID:
+    try:
+        return UUID(str(value))
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Identificativo non valido")
+
+
+async def _emit_to_student(student_id: UUID, event: str, payload: dict) -> None:
+    from app.realtime.gateway import sio
+    try:
+        await sio.emit(event, payload, room=f"student:{student_id}")
+    except Exception:  # realtime is best effort: invitations are also visible on the landing page
+        logging.getLogger(__name__).warning("coding collaboration emit failed", exc_info=True)
+
+
+def _files_hash(files: list[dict] | None) -> str:
+    canonical = json.dumps(
+        sorted(
+            [{"path": f.get("path"), "content": f.get("content") or ""} for f in (files or [])],
+            key=lambda f: str(f["path"]),
+        ),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return hashlib.sha1(canonical.encode("utf-8")).hexdigest()
+
+
+def _current_files(version: CodingVersion | None) -> list[dict]:
+    return list(((version.source_manifest_json or {}).get("files") if version else None) or [])
+
+
+async def _main_files(db: AsyncSession, project: CodingProject) -> list[dict]:
+    version = (await db.execute(select(CodingVersion).where(CodingVersion.id == project.current_version_id))).scalar_one_or_none() if project.current_version_id else None
+    return _current_files(version)
+
+
+async def _branch_link(db: AsyncSession, project: CodingProject) -> CodingCollaborator | None:
+    return (await db.execute(
+        select(CodingCollaborator).where(
+            CodingCollaborator.branch_project_id == project.id,
+            CodingCollaborator.status == "active",
+        )
+    )).scalar_one_or_none()
+
+
+async def _create_working_copy(db: AsyncSession, main: CodingProject, student: SessionStudent) -> CodingProject:
+    """The collaborator's own editable copy of the main project, linked to it for PRs and updates."""
+    main_version = await _get_current_version(db, main)
+    files = _current_files(main_version)
+    slug = await _next_slug(db, main.session_id, f"{main.slug}-{student.nickname}")
+    branch = CodingProject(
+        tenant_id=main.tenant_id,
+        session_id=main.session_id,
+        brief_id=main.brief_id,
+        owner_student_id=student.id,
+        title=main.title,
+        slug=slug,
+        template_key=main.template_key,
+        status="fork",
+        visibility="private",
+        thumbnail=main.thumbnail,
+    )
+    db.add(branch)
+    await db.flush()
+    collaboration = {
+        "kind": "branch",
+        "source_project_id": str(main.id),
+        "source_version_id": str(main_version.id),
+        "creator_student_id": str(main.owner_student_id) if main.owner_student_id else None,
+        "forked_by_student_id": str(student.id),
+    }
+    version = CodingVersion(
+        project_id=branch.id,
+        parent_version_id=main_version.id,
+        version_number=1,
+        source_manifest_json={
+            "files": files,
+            "summary": f"Copia di lavoro del progetto {main.title}",
+            "collaboration": collaboration,
+        },
+        artifact_manifest_json={},
+        build_status="ready",
+        review_status="pending",
+        created_by_actor_type="student",
+    )
+    db.add(version)
+    await db.flush()
+    branch.current_version_id = version.id
+    db.add(CodingMessage(
+        project_id=branch.id,
+        actor_type="agent",
+        agent_name="Collaboration",
+        role="assistant",
+        content="Questa è la tua copia di lavoro: modifica quanto vuoi, il progetto principale non cambia. Quando sei pronto premi «Proponi le modifiche».",
+        metadata_json={"kind": "agent_feedback", "collaboration": collaboration},
+    ))
+    return branch
+
+
+def _is_project_owner(project: CodingProject, actor: StudentOrTeacher) -> bool:
+    if actor.is_student:
+        return project.owner_student_id == actor.student.id
+    return project.owner_user_id is not None and project.owner_user_id == actor.teacher.id
+
+
+def _require_student_owner(project: CodingProject, actor: StudentOrTeacher) -> None:
+    if not _is_project_owner(project, actor):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo chi ha creato il progetto può gestire i collaboratori")
+
+
+def _actor_display_name(actor: StudentOrTeacher) -> str:
+    if actor.is_student:
+        return actor.student.nickname
+    teacher = actor.teacher
+    return " ".join(part for part in [teacher.first_name, teacher.last_name] if part).strip() or teacher.email
+
+
+async def _emit_to_owner(project: CodingProject, event: str, payload: dict) -> None:
+    """Notify the creator, whether a student or a teacher."""
+    if project.owner_student_id:
+        await _emit_to_student(project.owner_student_id, event, payload)
+    elif project.owner_user_id:
+        from app.realtime.gateway import sio
+        try:
+            await sio.emit(event, payload, room=f"user:{project.owner_user_id}")
+        except Exception:
+            logging.getLogger(__name__).warning("coding collaboration emit failed", exc_info=True)
+
+
+@router.get("/projects/{project_id}/collaborators")
+async def list_collaborators(
+    project_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Current collaborators plus the classmates the owner can invite."""
+    project = await _get_accessible_project(db, actor, project_id)
+    _require_student_owner(project, actor)
+    rows = (await db.execute(
+        select(CodingCollaborator).where(
+            CodingCollaborator.project_id == project.id,
+            CodingCollaborator.status.in_(("invited", "active")),
+        )
+    )).scalars().all()
+    classmates = (await db.execute(
+        select(SessionStudent)
+        .where(
+            SessionStudent.session_id == project.session_id,
+            SessionStudent.id != (actor.student.id if actor.is_student else None),
+        )
+        .order_by(SessionStudent.nickname)
+    )).scalars().all()
+    return {
+        "collaborators": [{"id": str(r.student_id), "status": r.status} for r in rows],
+        "candidates": [{"id": str(s.id), "name": s.nickname} for s in classmates],
+    }
+
+
+@router.get("/projects/{project_id}/team")
+async def get_project_team(
+    project_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Creator plus invited/active collaborators, for the avatars in the toolbar.
+
+    Works from the main project or from a collaborator's working copy of it.
+    """
+    project = await _get_readable_project(db, actor, project_id)
+    link = (await db.execute(
+        select(CodingCollaborator).where(CodingCollaborator.branch_project_id == project.id)
+    )).scalars().first()
+    main = (await db.get(CodingProject, link.project_id)) if link else project
+    if main is None:
+        main = project
+    if main.owner_student_id:
+        owner_id, owner_name, owner_role = str(main.owner_student_id), await _student_name(db, main.owner_student_id), "student"
+    elif main.owner_user_id:
+        owner_user = await db.get(User, main.owner_user_id)
+        owner_id = str(main.owner_user_id)
+        owner_name = (" ".join(part for part in [owner_user.first_name, owner_user.last_name] if part).strip() or owner_user.email) if owner_user else "Docente"
+        owner_role = "teacher"
+    else:
+        owner_id, owner_name, owner_role = str(main.id), "Creatore", "student"
+    rows = (await db.execute(
+        select(CodingCollaborator, SessionStudent.nickname)
+        .join(SessionStudent, SessionStudent.id == CodingCollaborator.student_id)
+        .where(CodingCollaborator.project_id == main.id, CodingCollaborator.status.in_(("invited", "active")))
+        .order_by(CodingCollaborator.created_at)
+    )).all()
+    return {
+        "main_project_id": str(main.id),
+        "owner": {"id": owner_id, "name": owner_name, "role": owner_role},
+        "members": [{"id": str(row.student_id), "name": nickname, "status": row.status, "role": "student"} for row, nickname in rows],
+    }
+
+
+@router.put("/projects/{project_id}/collaborators")
+async def replace_collaborators(
+    project_id: UUID,
+    body: CodingCollaboratorsUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Set the invited classmates. New people get an invitation, removed people lose access."""
+    project = await _get_accessible_project(db, actor, project_id)
+    _require_student_owner(project, actor)
+
+    targets = {_collab_uuid(v) for v in body.student_ids}
+    targets.discard(project.owner_student_id)
+    if targets:
+        valid = set((await db.execute(
+            select(SessionStudent.id).where(
+                SessionStudent.id.in_(targets),
+                SessionStudent.session_id == project.session_id,
+            )
+        )).scalars().all())
+        if valid != targets:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Studente non appartenente alla sessione")
+
+    existing = {
+        r.student_id: r
+        for r in (await db.execute(select(CodingCollaborator).where(CodingCollaborator.project_id == project.id))).scalars().all()
+    }
+    newly_invited: list[UUID] = []
+    for student_id, row in existing.items():
+        if student_id not in targets:
+            if row.status in ("invited", "active"):
+                row.status = "removed"
+                for open_pr in (await db.execute(
+                    select(CodingPullRequest).where(
+                        CodingPullRequest.project_id == project.id,
+                        CodingPullRequest.author_student_id == student_id,
+                        CodingPullRequest.status.in_(("open", "testing")),
+                    )
+                )).scalars().all():
+                    open_pr.status = "closed"
+                    open_pr.decision_note = "Collaboratore rimosso dal progetto"
+        elif row.status in ("removed", "declined"):
+            row.status = "invited"
+            row.invited_by_student_id = actor.student.id if actor.is_student else None
+            newly_invited.append(student_id)
+    for student_id in targets - set(existing):
+        db.add(CodingCollaborator(
+            project_id=project.id,
+            student_id=student_id,
+            status="invited",
+            invited_by_student_id=actor.student.id if actor.is_student else None,
+        ))
+        newly_invited.append(student_id)
+    await db.commit()
+
+    inviter = _actor_display_name(actor)
+    for student_id in newly_invited:
+        await _emit_to_student(student_id, "coding_project_invite", {
+            "project_id": str(project.id),
+            "title": project.title,
+            "from": inviter,
+        })
+    return await list_collaborators(project_id, db, actor)
+
+
+@router.post("/projects/{project_id}/invite/{decision}")
+async def answer_invitation(
+    project_id: UUID,
+    decision: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """The invited student accepts or declines; an active collaborator may also leave."""
+    if decision not in ("accept", "decline", "leave"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if not actor.is_student:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo gli studenti possono rispondere agli inviti")
+    project = (await db.execute(select(CodingProject).where(CodingProject.id == project_id))).scalar_one_or_none()
+    row = await _collaborator_row(db, project_id, actor.student.id) if project else None
+    if not project or not row or project.session_id != actor.student.session_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invito non trovato")
+    result_project = project
+    if decision == "accept" and row.status == "invited":
+        branch = (await db.get(CodingProject, row.branch_project_id)) if row.branch_project_id else None
+        if branch is None:
+            branch = await _create_working_copy(db, project, actor.student)
+            row.branch_project_id = branch.id
+            row.base_files_json = await _main_files(db, project)
+        row.status = "active"
+        result_project = branch
+    elif decision == "decline" and row.status == "invited":
+        row.status = "declined"
+    elif decision == "leave" and row.status == "active":
+        row.status = "removed"
+    else:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Operazione non valida per lo stato attuale dell'invito")
+    await db.commit()
+    await db.refresh(result_project)  # server-side timestamps of a freshly created working copy
+    if decision != "decline":
+        await _emit_to_owner(project, "coding_collaborator_update", {
+            "project_id": str(project.id),
+            "title": project.title,
+            "student": actor.student.nickname,
+            "status": row.status,
+        })
+    return await _project_response_payload(db, actor, result_project)
+
+
+# --- Pull requests: contributor working copy -> main project ------------------------------------
+async def _student_name(db: AsyncSession, student_id: UUID | None) -> str:
+    if not student_id:
+        return "Studente"
+    student = await db.get(SessionStudent, student_id)
+    return student.nickname if student else "Studente"
+
+
+async def _pr_payload(db: AsyncSession, pr: CodingPullRequest, main: CodingProject, detail: bool = False) -> dict:
+    changes = changed_files(pr.base_files_json or [], pr.head_files_json or [])
+    main_changed = False
+    if pr.status == "testing" and pr.main_hash_at_test:
+        main_changed = _files_hash(await _main_files(db, main)) != pr.main_hash_at_test
+    previous_version_id = None
+    if pr.status == "merged" and pr.merged_version_id:
+        merged = await db.get(CodingVersion, pr.merged_version_id)
+        previous_version_id = str(merged.parent_version_id) if merged and merged.parent_version_id else None
+    payload = {
+        "id": str(pr.id),
+        "project_id": str(pr.project_id),
+        "branch_project_id": str(pr.branch_project_id),
+        "author_student_id": str(pr.author_student_id) if pr.author_student_id else None,
+        "author_name": await _student_name(db, pr.author_student_id),
+        "title": pr.title,
+        "description": pr.description or "",
+        "status": pr.status,
+        "has_test": pr.test_files_json is not None,
+        "main_changed": main_changed,
+        "conflict_paths": [c["path"] for c in (pr.conflicts_json or [])],
+        "changed": [{"path": c["path"], "status": c["status"]} for c in changes],
+        "decision_note": pr.decision_note,
+        "merged_version_id": str(pr.merged_version_id) if pr.merged_version_id else None,
+        "previous_version_id": previous_version_id,
+        "created_at": pr.created_at.isoformat() if pr.created_at else None,
+        "updated_at": pr.updated_at.isoformat() if pr.updated_at else None,
+        "merged_at": pr.merged_at.isoformat() if pr.merged_at else None,
+    }
+    if detail:
+        payload["changes"] = changes
+        payload["conflicts"] = pr.conflicts_json or []
+        payload["test_files"] = pr.test_files_json
+    return payload
+
+
+async def _load_pr(
+    db: AsyncSession, actor: StudentOrTeacher, project_id: UUID, pr_id: UUID,
+) -> tuple[CodingPullRequest, CodingProject, str]:
+    main = await _get_readable_project(db, actor, project_id)
+    pr = (await db.execute(
+        select(CodingPullRequest).where(CodingPullRequest.id == pr_id, CodingPullRequest.project_id == main.id)
+    )).scalar_one_or_none()
+    if not pr:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposta non trovata")
+    if _is_project_owner(main, actor):
+        role = "owner"
+    elif actor.is_student and pr.author_student_id == actor.student.id:
+        role = "author"
+    elif actor.is_teacher:
+        role = "viewer"
+    else:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Proposta non accessibile")
+    return pr, main, role
+
+
+def _require_owner(role: str) -> None:
+    if role != "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo chi ha creato il progetto può decidere sulle proposte")
+
+
+async def _compute_test(db: AsyncSession, pr: CodingPullRequest, main: CodingProject) -> None:
+    """Merge the proposal into the current main in memory only: the main project is not touched."""
+    main_files = await _main_files(db, main)
+    merged, conflicts = merge_file_sets(pr.base_files_json or [], main_files, pr.head_files_json or [])
+    pr.test_files_json = merged
+    pr.conflicts_json = conflicts
+    pr.main_hash_at_test = _files_hash(main_files)
+    pr.status = "testing"
+
+
+@router.post("/projects/{project_id}/pull-requests")
+async def create_pull_request(
+    project_id: UUID,
+    body: CodingPullRequestCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """The contributor proposes their working copy. A second proposal updates the open one."""
+    if not actor.is_student:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo gli studenti collaboratori possono proporre modifiche")
+    main = await _get_readable_project(db, actor, project_id)
+    link = await _collaborator_row(db, main.id, actor.student.id)
+    if not link or link.status != "active" or not link.branch_project_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Non sei collaboratore di questo progetto")
+    branch = await db.get(CodingProject, link.branch_project_id)
+    head_files = await _main_files(db, branch) if branch else []
+    base_files = link.base_files_json or []
+    if not changed_files(base_files, head_files):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Non ci sono modifiche da proporre")
+
+    pr = (await db.execute(
+        select(CodingPullRequest).where(
+            CodingPullRequest.branch_project_id == branch.id,
+            CodingPullRequest.status.in_(("open", "testing")),
+        )
+    )).scalar_one_or_none()
+    created = pr is None
+    if pr is None:
+        pr = CodingPullRequest(project_id=main.id, branch_project_id=branch.id, author_student_id=actor.student.id)
+        db.add(pr)
+    pr.title = body.title.strip()
+    pr.description = body.description.strip()
+    pr.base_files_json = base_files
+    pr.head_files_json = head_files
+    pr.status = "open"
+    pr.test_files_json = None
+    pr.conflicts_json = []
+    pr.main_hash_at_test = None
+    await db.commit()
+    await db.refresh(pr)
+    if main.owner_student_id or main.owner_user_id:
+        await _emit_to_owner(main, "coding_pr_opened", {
+            "project_id": str(main.id), "pr_id": str(pr.id), "title": pr.title,
+            "from": actor.student.nickname, "project_title": main.title, "updated": not created,
+        })
+    return await _pr_payload(db, pr, main, detail=True)
+
+
+@router.get("/projects/{project_id}/pull-requests")
+async def list_pull_requests(
+    project_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    main = await _get_readable_project(db, actor, project_id)
+    query = select(CodingPullRequest).where(CodingPullRequest.project_id == main.id)
+    if actor.is_student and not _is_project_owner(main, actor):
+        query = query.where(CodingPullRequest.author_student_id == actor.student.id)
+    rows = (await db.execute(query.order_by(CodingPullRequest.created_at.desc()))).scalars().all()
+    return [await _pr_payload(db, pr, main) for pr in rows]
+
+
+@router.get("/projects/{project_id}/pull-requests/{pr_id}")
+async def get_pull_request(
+    project_id: UUID,
+    pr_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    pr, main, _role = await _load_pr(db, actor, project_id, pr_id)
+    return await _pr_payload(db, pr, main, detail=True)
+
+
+@router.post("/projects/{project_id}/pull-requests/{pr_id}/test")
+async def test_pull_request(
+    project_id: UUID,
+    pr_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Testing: build the merge result for preview. The main project is not changed."""
+    pr, main, role = await _load_pr(db, actor, project_id, pr_id)
+    _require_owner(role)
+    if pr.status not in ("open", "testing"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La proposta è già chiusa")
+    await _compute_test(db, pr, main)
+    await db.commit()
+    await db.refresh(pr)
+    if pr.author_student_id:
+        await _emit_to_student(pr.author_student_id, "coding_pr_updated", {
+            "project_id": str(main.id), "pr_id": str(pr.id), "title": pr.title, "status": "testing",
+            "project_title": main.title,
+        })
+    return await _pr_payload(db, pr, main, detail=True)
+
+
+@router.post("/projects/{project_id}/pull-requests/{pr_id}/resolve")
+async def resolve_pull_request_conflict(
+    project_id: UUID,
+    pr_id: UUID,
+    body: CodingPullRequestResolve,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    pr, main, role = await _load_pr(db, actor, project_id, pr_id)
+    _require_owner(role)
+    if pr.status != "testing" or pr.test_files_json is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Prima prova la proposta")
+    conflict = next((c for c in (pr.conflicts_json or []) if c["path"] == body.path), None)
+    if not conflict:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nessun conflitto su questo file")
+    if body.choice == "custom":
+        if body.content is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Manca il testo scelto")
+        chosen: str | None = body.content
+    else:
+        chosen = conflict.get(body.choice)
+    files = [f for f in pr.test_files_json if f.get("path") != body.path]
+    if chosen is not None:
+        language = next((f.get("language") for f in pr.head_files_json if f.get("path") == body.path), None)
+        files.append({"path": body.path, "language": language, "content": chosen})
+    pr.test_files_json = files
+    pr.conflicts_json = [c for c in pr.conflicts_json if c["path"] != body.path]
+    await db.commit()
+    await db.refresh(pr)
+    return await _pr_payload(db, pr, main, detail=True)
+
+
+@router.post("/projects/{project_id}/pull-requests/{pr_id}/merge")
+async def merge_pull_request(
+    project_id: UUID,
+    pr_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Merge: the tested result becomes the new current version of the main project."""
+    pr, main, role = await _load_pr(db, actor, project_id, pr_id)
+    _require_owner(role)
+    if pr.status == "merged":
+        return await _pr_payload(db, pr, main, detail=True)
+    if pr.status != "testing" or pr.test_files_json is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Prima prova la proposta, poi potrai unirla")
+    if pr.conflicts_json:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Risolvi prima i conflitti indicati")
+    main_files = await _main_files(db, main)
+    if _files_hash(main_files) != pr.main_hash_at_test:
+        await _compute_test(db, pr, main)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Il progetto principale è cambiato dopo la prova: ho rifatto la prova, controlla di nuovo il risultato e poi unisci.",
+        )
+
+    number = ((await db.execute(
+        select(func.max(CodingVersion.version_number)).where(CodingVersion.project_id == main.id)
+    )).scalar_one_or_none() or 0) + 1
+    author = await _student_name(db, pr.author_student_id)
+    version = CodingVersion(
+        project_id=main.id,
+        parent_version_id=main.current_version_id,
+        version_number=number,
+        source_manifest_json={
+            "files": pr.test_files_json,
+            "summary": f"Unita la proposta «{pr.title}» di {author}",
+            "merged_pr_id": str(pr.id),
+        },
+        artifact_manifest_json={},
+        build_status="ready",
+        review_status="pending",
+        created_by_actor_type="student",
+    )
+    db.add(version)
+    await db.flush()
+    main.current_version_id = version.id
+    main.status = "generated" if main.status in ("draft", "generated") else main.status
+    pr.status = "merged"
+    pr.merged_version_id = version.id
+    pr.merged_at = func.now()
+    db.add(CodingMessage(
+        project_id=main.id,
+        actor_type="agent",
+        agent_name="Collaboration",
+        role="assistant",
+        content=f"La proposta «{pr.title}» di {author} è stata unita nella versione {number}.",
+        metadata_json={"kind": "agent_feedback", "version_id": str(version.id), "pr_id": str(pr.id)},
+    ))
+    await db.commit()
+    await db.refresh(pr)
+    if pr.author_student_id:
+        await _emit_to_student(pr.author_student_id, "coding_pr_updated", {
+            "project_id": str(main.id), "pr_id": str(pr.id), "title": pr.title, "status": "merged",
+            "project_title": main.title,
+        })
+    return await _pr_payload(db, pr, main, detail=True)
+
+
+@router.post("/projects/{project_id}/pull-requests/{pr_id}/reject")
+async def reject_pull_request(
+    project_id: UUID,
+    pr_id: UUID,
+    body: CodingPullRequestDecision,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    pr, main, role = await _load_pr(db, actor, project_id, pr_id)
+    _require_owner(role)
+    if pr.status not in ("open", "testing"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La proposta è già chiusa")
+    pr.status = "rejected"
+    pr.decision_note = body.note.strip() or None
+    pr.test_files_json = None
+    pr.conflicts_json = []
+    await db.commit()
+    await db.refresh(pr)
+    if pr.author_student_id:
+        await _emit_to_student(pr.author_student_id, "coding_pr_updated", {
+            "project_id": str(main.id), "pr_id": str(pr.id), "title": pr.title, "status": "rejected",
+            "project_title": main.title,
+        })
+    return await _pr_payload(db, pr, main, detail=True)
+
+
+@router.post("/projects/{project_id}/pull-requests/{pr_id}/close")
+async def close_pull_request(
+    project_id: UUID,
+    pr_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """The contributor withdraws their own proposal."""
+    pr, main, role = await _load_pr(db, actor, project_id, pr_id)
+    if role != "author":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo chi ha proposto può ritirare la proposta")
+    if pr.status not in ("open", "testing"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La proposta è già chiusa")
+    pr.status = "closed"
+    pr.test_files_json = None
+    pr.conflicts_json = []
+    await db.commit()
+    await db.refresh(pr)
+    return await _pr_payload(db, pr, main, detail=True)
 
 
 # --- Design System library (reusable, independent from any single project) --------------------
@@ -4546,7 +5267,7 @@ async def get_project(
     db: Annotated[AsyncSession, Depends(get_db)],
     actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
 ):
-    project = await _get_accessible_project(db, actor, project_id)
+    project = await _get_readable_project(db, actor, project_id)
 
     messages_result = await db.execute(
         select(CodingMessage)
@@ -6614,6 +7335,9 @@ async def get_project_upstream_status(
     source_files = (source_version.source_manifest_json or {}).get("files") or []
     known_source_version_id = collaboration.get("source_version_id")
     update_available = str(source_version.id) != str(known_source_version_id)
+    link = await _branch_link(db, project)
+    if link is not None and link.base_files_json is not None:
+        update_available = _files_hash(source_files) != _files_hash(link.base_files_json)
     return {
         "is_fork": True,
         "update_available": update_available,
@@ -6647,6 +7371,19 @@ async def pull_project_upstream(
 
     source_version = await _get_current_version(db, source_project)
     source_files = (source_version.source_manifest_json or {}).get("files") or []
+    link = await _branch_link(db, project)
+    if link is not None and link.base_files_json is not None:
+        # Keep the contributor's own edits and bring in what changed on main.
+        current = await _get_current_version(db, project)
+        merged_files, conflicts = merge_file_sets(link.base_files_json, _current_files(current), source_files)
+        if conflicts:
+            names = ", ".join(c["path"] for c in conflicts[:6])
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Il progetto principale e la tua copia hanno modificato le stesse righe ({names}). Proponi prima le tue modifiche: chi ha creato il progetto le unisce e risolve i conflitti.",
+            )
+        source_files = merged_files
+        link.base_files_json = await _main_files(db, source_project)
     result = await db.execute(
         select(func.max(CodingVersion.version_number)).where(CodingVersion.project_id == project.id)
     )

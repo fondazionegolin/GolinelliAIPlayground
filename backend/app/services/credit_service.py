@@ -9,6 +9,7 @@ from uuid import UUID
 
 from app.models.credits import CreditLimit, CreditTransaction, CreditAlert
 from app.models.tenant import Tenant
+from app.services import load_simulation
 from app.models.enums import CreditTransactionType, LimitLevel, TenantType
 from app.core.pricing import calculate_cost
 
@@ -405,6 +406,10 @@ class CreditService:
     ) -> CreditTransaction:
         usage_details = dict(usage_details or {})
         usage_details.setdefault("service", self.classify_service(provider, model, usage_details))
+        if load_simulation.active() is not None:
+            # Simulated stress-test call: the row is still written (real DB load) but costs nothing.
+            cost = 0.0
+            usage_details["load_test_simulated"] = True
 
         tx = CreditTransaction(
             tenant_id=tenant_id,

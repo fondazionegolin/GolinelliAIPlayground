@@ -5,6 +5,7 @@ import CodeMirror, { type ReactCodeMirrorRef } from '@uiw/react-codemirror'
 import { Play, Trash2, Plus, GripVertical, Loader2, Sparkles, Check, X, Scissors, Copy, ArrowUpDown } from '@/components/icons'
 import NotebookCellOutput from './NotebookCellOutput'
 import { editorKeymap, getEditorExtensions, getNotebookThemeSurface, proposalDecorationExtension } from './editorConfig'
+import { agentDiffExtension, diffStats, lineDiff } from './inlineDiff'
 import type { Cell, NotebookCodeProposal, NotebookFontFamily, NotebookProjectType, NotebookTheme } from './types'
 import { tl } from '@/i18n/tl'
 
@@ -25,6 +26,10 @@ interface Props {
   onRun: () => void
   onApplyProposal?: (proposalId: string) => void
   onRejectProposal?: (proposalId: string) => void
+  /** p5.js: source before the agent's last edit; the change is shown in the editor as an inline diff (green added, red removed). */
+  agentDiffBefore?: string | null
+  onDismissAgentDiff?: () => void
+  onRevertAgentDiff?: () => void
   /** Proposals are reviewed in the tutor sidebar on desktop; keep the inline panel for narrow screens only. */
   proposalsInChatOnDesktop?: boolean
   onDelete?: () => void
@@ -56,6 +61,9 @@ export default function NotebookCell({
   onRun,
   onApplyProposal,
   onRejectProposal,
+  agentDiffBefore,
+  onDismissAgentDiff,
+  onRevertAgentDiff,
   proposalsInChatOnDesktop = false,
   onDelete,
   onInsertBelow,
@@ -64,6 +72,7 @@ export default function NotebookCell({
 }: Props) {
   const editorRef = useRef<ReactCodeMirrorRef>(null)
   const proposalCompartment = useRef(new Compartment())
+  const diffCompartment = useRef(new Compartment())
   // Only track has/has-not selection as a boolean — no re-render on every mousemove
   const [hasSelection, setHasSelection] = useState(false)
 
@@ -89,9 +98,13 @@ export default function NotebookCell({
   )
 
   const lineCount = cell.source.split('\n').length
+  const agentDiffStats = useMemo(
+    () => (agentDiffBefore != null && agentDiffBefore !== cell.source ? diffStats(lineDiff(agentDiffBefore, cell.source)) : null),
+    [agentDiffBefore, cell.source],
+  )
   const editorHeight = isCompact
     ? '100%'
-    : `${Math.max(120, Math.min(lineCount * 22 + 36, 460))}px`
+    : `${Math.max(120, Math.min((lineCount + (agentDiffStats?.removed ?? 0)) * 22 + 36, 460))}px`
 
   const applyWholeDocTransform = (transform: (source: string, from: number, to: number) => { source: string; anchor: number; head: number }) => {
     const view = editorRef.current?.view
@@ -169,6 +182,7 @@ export default function NotebookCell({
       proposalCompartment.current.of(
         proposalDecorationExtension(cell.source, proposals),
       ),
+      diffCompartment.current.of(agentDiffExtension(agentDiffBefore, cell.source)),
       updateListenerExt.current,
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -185,6 +199,12 @@ export default function NotebookCell({
       ),
     })
   }, [cell.source, proposals])
+
+  useEffect(() => {
+    const view = editorRef.current?.view
+    if (!view) return
+    view.dispatch({ effects: diffCompartment.current.reconfigure(agentDiffExtension(agentDiffBefore, cell.source)) })
+  }, [cell.source, agentDiffBefore])
   const surface = getNotebookThemeSurface(theme)
   const isLight = theme === 'light'
 
@@ -297,6 +317,19 @@ export default function NotebookCell({
             )}
           </div>
         </div>
+        )}
+
+        {agentDiffStats && (
+          <div role="status" className={`flex flex-shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5 text-[11px] ${surface.toolbar}`}>
+            <span className="font-semibold">{tl("Modifiche dell'agente")}</span>
+            <span className="font-semibold text-emerald-500">+{agentDiffStats.added}</span>
+            <span className="font-semibold text-red-500">−{agentDiffStats.removed}</span>
+            <span className="opacity-70">{tl("verde: righe nuove · rosso barrato: righe tolte")}</span>
+            <span className="ml-auto flex items-center gap-1">
+              {onRevertAgentDiff && <button type="button" onClick={(e) => { e.stopPropagation(); onRevertAgentDiff() }} className="rounded px-2 py-0.5 font-semibold opacity-80 hover:bg-red-500/15 hover:opacity-100">{tl("Annulla modifiche")}</button>}
+              {onDismissAgentDiff && <button type="button" onClick={(e) => { e.stopPropagation(); onDismissAgentDiff() }} className="rounded px-2 py-0.5 font-semibold opacity-80 hover:bg-emerald-500/15 hover:opacity-100">{tl("Ok, nascondi")}</button>}
+            </span>
+          </div>
         )}
 
         <CodeMirror

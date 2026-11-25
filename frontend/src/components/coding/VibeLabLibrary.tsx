@@ -12,6 +12,8 @@ export type LibraryProject = {
   visibility: string
   owner_display_name?: string | null
   owner_kind?: string | null
+  my_role?: string | null
+  collaborator_count?: number
   thumbnail?: string | null
   updated_at: string
 }
@@ -42,16 +44,33 @@ function ProjectCard({ project, onOpen }: { project: LibraryProject; onOpen: (pr
               <span className="text-4xl font-semibold tracking-tight text-white/90">{cover.initials}</span>
             </div>
           )}
-          {project.visibility === 'class_shared' && (
-            <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-semibold text-white">
-              <Users className="h-3 w-3" />{tl("Condiviso")}
-            </span>
-          )}
+          <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+            {project.my_role === 'invited' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--app-accent)] px-2.5 py-1 text-[10px] font-semibold text-white">
+                {tl("Invito")}
+              </span>
+            )}
+            {project.my_role === 'collaborator' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-semibold text-white">
+                <Users className="h-3 w-3" />{tl("Collaboratore")}
+              </span>
+            )}
+            {project.my_role === 'owner' && (project.collaborator_count ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-semibold text-white">
+                <Users className="h-3 w-3" />{tl("{0} collaboratori", project.collaborator_count)}
+              </span>
+            )}
+            {project.visibility === 'class_shared' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-semibold text-white">
+                <Users className="h-3 w-3" />{tl("Condiviso")}
+              </span>
+            )}
+          </div>
         </div>
         <div className="px-4 pb-4 pt-3">
           <h2 className="truncate text-sm font-semibold text-[var(--text-primary)]">{project.title}</h2>
           <p className="mt-1 truncate text-[11px] text-[var(--text-secondary)]">
-            {owner} · {new Date(project.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+            {project.my_role === 'collaborator' || project.my_role === 'invited' ? tl("di {0}", owner) : owner} · {new Date(project.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
           </p>
         </div>
       </button>

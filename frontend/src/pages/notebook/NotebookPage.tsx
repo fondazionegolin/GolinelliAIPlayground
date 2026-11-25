@@ -900,6 +900,31 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
     setAssistantSummary(tl("Ho preparato una proposta didattica applicata al codice. Se vuoi, chiedimi nel tutor perché questa modifica è utile."))
   }, [assistantProposals, createSnapshot, editorSettings.libraries, replaceLineRange, scheduleSave, updateEditorSettings])
 
+  /** p5.js: the agent's edit is applied straight away; the editor shows it as an inline diff (cell id → source before the edit). */
+  const [agentDiffs, setAgentDiffs] = useState<Record<string, string>>({})
+  const dismissAgentDiff = useCallback((cellId: string) => setAgentDiffs((prev) => { const { [cellId]: _gone, ...rest } = prev; return rest }), [])
+  const revertAgentDiff = useCallback((cellId: string) => {
+    const before = agentDiffs[cellId]
+    if (before == null) return
+    setCells((prev) => { const next = prev.map((cell) => (cell.id === cellId ? { ...cell, source: before } : cell)); scheduleSave(next); return next })
+    dismissAgentDiff(cellId)
+  }, [agentDiffs, dismissAgentDiff, scheduleSave])
+  const applyAgentProposalsInline = useCallback((cellId: string, proposals: NotebookCodeProposal[]) => {
+    const cell = cells.find((item) => item.id === cellId)
+    if (!cell || proposals.length === 0) return false
+    createSnapshot(tl("Prima della proposta AI"), 'ai')
+    // Ranges refer to the ORIGINAL source: apply from the bottom up so earlier ranges stay valid.
+    const source = [...proposals].sort((a, b) => b.line_start - a.line_start)
+      .reduce((text, proposal) => replaceLineRange(text, proposal.line_start, proposal.line_end, proposal.replacement), cell.source)
+    setCells((prev) => { const next = prev.map((item) => (item.id === cellId ? { ...item, source } : item)); scheduleSave(next); return next })
+    setAgentDiffs((prev) => ({ ...prev, [cellId]: prev[cellId] ?? cell.source }))
+    setAssistantProposals((prev) => ({ ...prev, [cellId]: [] }))
+    const current = editorSettings.libraries ?? []
+    const missing = Array.from(new Set(proposals.flatMap((proposal) => proposal.required_libraries ?? []))).filter((id) => !current.includes(id))
+    if (missing.length > 0) updateEditorSettings({ libraries: [...current, ...missing] })
+    return true
+  }, [cells, createSnapshot, editorSettings.libraries, replaceLineRange, scheduleSave, updateEditorSettings])
+
   const rejectProposal = useCallback((cellId: string, proposalId: string) => {
     setAssistantProposals((prev) => ({
       ...prev,
@@ -1442,6 +1467,9 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                       onRun={() => undefined}
                       onApplyProposal={(proposalId) => applyProposal(activeCell.id, proposalId)}
                       onRejectProposal={(proposalId) => rejectProposal(activeCell.id, proposalId)}
+                      agentDiffBefore={agentDiffs[activeCell.id]}
+                      onDismissAgentDiff={() => dismissAgentDiff(activeCell.id)}
+                      onRevertAgentDiff={() => revertAgentDiff(activeCell.id)}
                     />
                   )}
                 </div>
@@ -1689,6 +1717,9 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                       onRun={() => runCell(activeCell.id)}
                       onApplyProposal={(proposalId) => applyProposal(activeCell.id, proposalId)}
                       onRejectProposal={(proposalId) => rejectProposal(activeCell.id, proposalId)}
+                      agentDiffBefore={agentDiffs[activeCell.id]}
+                      onDismissAgentDiff={() => dismissAgentDiff(activeCell.id)}
+                      onRevertAgentDiff={() => revertAgentDiff(activeCell.id)}
                     />
                   )}
                 </div>
@@ -1872,6 +1903,9 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                     onRun={() => runCell(cell.id)}
                     onApplyProposal={(proposalId) => applyProposal(cell.id, proposalId)}
                     onRejectProposal={(proposalId) => rejectProposal(cell.id, proposalId)}
+                    agentDiffBefore={agentDiffs[cell.id]}
+                    onDismissAgentDiff={() => dismissAgentDiff(cell.id)}
+                    onRevertAgentDiff={() => revertAgentDiff(cell.id)}
                     onDelete={() => deleteCell(cell.id)}
                     onInsertBelow={() => insertCellBelow(cell.id)}
                     onMoveUp={() => moveCell(cell.id, 'up')}
@@ -1954,6 +1988,9 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                 initialMessages={notebookData?.tutor_messages || []}
                 onProposals={(summary, proposals) => {
                   setAssistantSummary(summary)
+                  // p5.js: no approval step. A verified edit goes straight into the code and is shown as a diff there;
+                  // one the hidden run could not fix stays as a proposal for the learner to judge.
+                  if (projectType === 'p5js' && proposals.length > 0 && proposals.every((proposal) => proposal.verification?.status !== 'failed') && applyAgentProposalsInline(activeCell.id, proposals)) return
                   setAssistantProposals((prev) => ({ ...prev, [activeCell.id]: proposals }))
                 }}
                 onApplyProposal={(proposalId) => applyProposal(activeCell.id, proposalId)}

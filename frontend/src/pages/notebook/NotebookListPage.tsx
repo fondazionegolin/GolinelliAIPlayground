@@ -101,9 +101,10 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
 }
 
 // Coding Lab offers three kinds of project (Circuit Playground, Strudel and Game 2D are no longer created from here).
-const PROJECT_ORDER: NotebookProjectType[] = ['p5js', 'python', 'microbit']
+// Python notebooks are hidden for now (owner request 2026-11-24: not tested yet). Existing ones stay stored, just not listed or creatable.
+const PROJECT_ORDER: NotebookProjectType[] = ['p5js', 'microbit']
 
-const READY_TEMPLATES: NotebookTemplate[] = [
+const ALL_TEMPLATES: NotebookTemplate[] = [
   {
     key: 'python-data-detective',
     projectType: 'python',
@@ -132,6 +133,8 @@ const READY_TEMPLATES: NotebookTemplate[] = [
     chips: ['animazione', 'mouse', 'visual'],
   },
 ]
+
+const READY_TEMPLATES = ALL_TEMPLATES.filter(t => PROJECT_ORDER.includes(t.projectType))
 
 function ProjectIcon({ type, className }: { type: NotebookProjectType; className: string }) {
   if (type === 'python') return <FileCode2 className={className} />
@@ -222,7 +225,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [newTitle, setNewTitle] = useState('')
-  const [newProjectType, setNewProjectType] = useState<NotebookProjectType>('python')
+  const [newProjectType, setNewProjectType] = useState<NotebookProjectType>('p5js')
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [shareNotebook, setShareNotebook] = useState<NotebookMeta | null>(null)
   const [selectedSessionId, setSelectedSessionId] = useState('')
@@ -279,7 +282,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
     const handoff = takeHandoff([...NOTEBOOK_TARGETS])
     if (!handoff) return
     handoffTakenRef.current = true
-    const projectType: NotebookProjectType = handoff.target === 'python_notebook' ? 'python' : handoff.target === 'microbit_project' ? 'microbit' : 'p5js'
+    const projectType: NotebookProjectType = handoff.target === 'microbit_project' ? 'microbit' : 'p5js'
     createMutation.mutate({ title: handoff.title || handoff.brief.slice(0, 60), projectType, firstBrief: handoff.brief })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -324,7 +327,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
       projectType: newProjectType,
     })
     setNewTitle('')
-    setNewProjectType('python')
+    setNewProjectType('p5js')
     setShowCreate(false)
   }
 
@@ -350,7 +353,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   const totalCount = notebooks
     ? notebooks.filter(n => PROJECT_ORDER.includes(n.project_type)).length
     : 0
-  const visibleCount = filtered.python.length + filtered.microbit.length + filtered.p5js.length
+  const visibleCount = filtered.microbit.length + filtered.p5js.length
 
   if (isLoading) {
     return (

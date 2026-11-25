@@ -131,6 +131,12 @@ class CodingProjectResponse(BaseModel):
     owner_display_name: Optional[str] = None
     owner_kind: Optional[str] = None
     is_owned_by_current_user: bool = False
+    # 'owner' | 'collaborator' | 'invited' | None (teachers / class-shared viewers)
+    my_role: Optional[str] = None
+    collaborator_count: int = 0
+    # Set on a collaborator's working copy: the project it belongs to
+    main_project_id: Optional[UUID] = None
+    open_pr_count: int = 0
     title: str
     slug: str
     template_key: str
@@ -252,3 +258,24 @@ class CodingProjectDataListResponse(BaseModel):
     items: list[CodingProjectDataResponse]
     total_size_bytes: int
     max_size_bytes: int
+
+
+class CodingCollaboratorsUpdate(BaseModel):
+    """Full replacement of the invited students (ids of SessionStudent)."""
+    student_ids: list[str] = Field(default_factory=list, max_length=50)
+
+
+class CodingPullRequestCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=4000)
+
+
+class CodingPullRequestResolve(BaseModel):
+    """Per conflicting file: take main (`ours`), the contributor (`theirs`) or provide `custom` text."""
+    path: str
+    choice: str = Field(pattern="^(ours|theirs|custom)$")
+    content: Optional[str] = None
+
+
+class CodingPullRequestDecision(BaseModel):
+    note: str = Field(default="", max_length=2000)

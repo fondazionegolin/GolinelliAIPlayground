@@ -72,7 +72,7 @@ async def track_metadata(db, drive_ids: list[str]) -> dict[str, dict]:
     for item, owner in rows:
         details = item.details or {}
         key = details.get("cover_key")
-        value = {"title": item.title, "artist_name": details.get("artist_name") or artist_name(owner),
+        value = {"item_id": str(item.id), "lyrics": details.get("lyrics") or "", "title": item.title, "artist_name": details.get("artist_name") or artist_name(owner),
             "cover_url": f"/voice-lab/audio-files/{details['drive_item_id']}/cover?v={key[-12:-4]}" if key and details.get("drive_item_id") else None}
         metadata[str(item.id)] = value
         if details.get("drive_item_id"):

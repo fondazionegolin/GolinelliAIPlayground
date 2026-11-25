@@ -1,7 +1,7 @@
 import { lazy, Suspense, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Music, Play, SkipForward, Volume2, VolumeX, X, Upload, Plus, ArrowUp, ArrowDown, Trash2, Share2, Loader2 } from '@/components/icons'
+import { Music, Play, SkipForward, Volume2, VolumeX, X, Upload, Plus, ArrowUp, ArrowDown, Trash2, Share2, Loader2, FileText } from '@/components/icons'
 import { MediaPauseIcon } from '@/components/icons/CustomIcons'
 import { Button, IconButton, Input, Select } from '@/design'
 import { SearchableSelect } from '@/components/ui/searchable-select'
@@ -11,6 +11,7 @@ import { voiceLabApi, type ClassPlayback, type LabPlaylist } from '@/lib/voiceLa
 import { driveApi } from '@/lib/api'
 import { AudioShareDialog } from './AudioShareDialog'
 import { AudioCover } from './AudioCover'
+import { TrackLyrics } from './TrackLyrics'
 import { saveBlob } from '@/components/drive/driveTypes'
 import { DRIVE_ITEM_MIME, type DraggedDriveItem } from '@/lib/dragFiles'
 import { safeMediaUrl } from '@/lib/media'
@@ -322,11 +323,12 @@ function NavbarAudioPanel() {
   const mayChoose = !inClass || !studentSession
   const [showLibrary, setShowLibrary] = useState(false)
   const [creatingMusic, setCreatingMusic] = useState(false)
+  const [showLyrics, setShowLyrics] = useState(false)
   const queue = player.active?.tracks || []
   const listIsQueue = !showLibrary && (queue.length > 1 || !!player.active?.id)
   const rows: AudioTrack[] = listIsQueue ? queue : (library.data || [])
   return <div className="space-y-2">
-    <div className="grid gap-3 sm:grid-cols-[16rem_minmax(0,1fr)]">
+    <div className="ds-well grid gap-3 rounded-2xl p-3 sm:grid-cols-[16rem_minmax(0,1fr)]">
       <div className="relative mx-auto aspect-square w-full max-w-[16rem] overflow-hidden rounded-2xl bg-[#14151a] text-white sm:mx-0" data-audio-card>
         <AudioCover url={track?.cover_url} className="!absolute inset-0 !h-full !w-full" iconClassName="h-1/4 w-1/4" />
         {track ? <div className="absolute inset-x-0 bottom-0 space-y-1.5 bg-gradient-to-t from-black/85 via-black/60 to-transparent p-3 pt-10">
@@ -347,7 +349,7 @@ function NavbarAudioPanel() {
           </div>
         </div> : <p className="absolute inset-x-0 bottom-0 p-3 text-center text-xs text-white/70">{tl('Scegli un brano o crea musica per iniziare.')}</p>}
       </div>
-      <div className="flex min-w-0 flex-col gap-2">
+      {showLyrics && track ? <TrackLyrics track={track} canTranscribe={!studentSession && !!(track.item_id || track.id)} onClose={() => setShowLyrics(false)} /> : <div className="flex min-w-0 flex-col gap-2">
         {/* menuClassName: the list opens inline; an absolute menu was clipped by the panel's overflow-y-auto. */}
         <SearchableSelect menuClassName="!static !mt-2 w-full" label={tl('Playlist')} value={showLibrary ? '__library' : player.active?.id || '__library'} options={[{ value: '__library', label: tl('Tutti i brani') }, ...(lists.data || []).map(v => ({ value: v.id, label: v.title }))]} onChange={id => {
           if (id === '__library') { setShowLibrary(true); return }
@@ -365,15 +367,16 @@ function NavbarAudioPanel() {
               }}><AudioCover url={entry.cover_url} className="h-8 w-8 rounded-lg" iconClassName="h-4 w-4" /><span className="min-w-0"><span className="block truncate">{entry.title}</span>{entry.artist_name && <span className="block truncate text-xs font-normal text-[var(--text-secondary)]">{entry.artist_name}</span>}</span></button></li> })}
           {!rows.length && !library.isLoading && <li className="p-2 text-xs text-[var(--text-secondary)]">{tl('Nessun brano disponibile.')}</li>}
         </ol>
-      </div>
+      </div>}
     </div>
     {player.error && <div role="alert" className="text-xs text-[var(--text-secondary)]">{player.error}<Button tone="neutral" surface="ghost" onClick={player.retry}>{tl('Riprova audio')}</Button></div>}
     {(library.isError || lists.isError) && <Button tone="neutral" surface="ghost" onClick={() => { void library.refetch(); void lists.refetch() }}>{tl('Ricarica brani e playlist')}</Button>}
     <div className="flex flex-wrap items-center gap-2">
+      {track && <Button tone="neutral" surface="ghost" density="compact" aria-pressed={showLyrics} onClick={() => setShowLyrics(v => !v)}><FileText className="h-4 w-4" />{tl('Testo')}</Button>}
       {!studentSession && <Button tone="neutral" surface="ghost" density="compact" aria-expanded={creatingMusic} onClick={() => setCreatingMusic(v => !v)}><Music className="h-4 w-4" />{tl('Crea musica')}</Button>}
       {player.playback && !player.following && <Button tone="neutral" surface="ghost" density="compact" onClick={player.follow}>{tl('Ascolta la playlist di classe')}</Button>}
     </div>
-    {creatingMusic && !studentSession && <Suspense fallback={<p role="status" className="text-xs">{tl('Caricamento…')}</p>}><NavbarMusicComposer onGenerated={item => { void player.addIds([item.id], true) }} onPlay={item => player.playTracks([{ id: item.id, title: item.title, artist_name: item.artist_name, mime_type: item.mime_type, cover_url: item.cover_url }], async (track, signal) => (await voiceLabApi.content(track.id, signal)).data)} /></Suspense>}
+    {creatingMusic && !studentSession && <Suspense fallback={<p role="status" className="text-xs">{tl('Caricamento…')}</p>}><NavbarMusicComposer onGenerated={item => { void player.addIds([item.id], true) }} onPlay={item => player.playTracks([{ id: item.id, item_id: item.id, lyrics: item.details.lyrics, title: item.title, artist_name: item.artist_name, mime_type: item.mime_type, cover_url: item.cover_url }], async (track, signal) => (await voiceLabApi.content(track.id, signal)).data)} /></Suspense>}
     {player.busy && <p role="status" className="text-xs">{tl('Caricamento audio…')}</p>}
   </div>
 }

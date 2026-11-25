@@ -10,6 +10,8 @@ import type { NotebookCodeProposal, NotebookTutorMessage } from './types'
 import { describeVerification, verifyP5Sketch } from './p5Verify'
 import type { MlRuntimeModel } from '@/lib/mlRuntimeStub'
 import { tl } from '@/i18n/tl'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface Props {
   notebookId: string
@@ -83,6 +85,19 @@ function PipelineProgress({ done, active, elapsed }: { done: string[]; active: A
   )
 }
 
+/** Agent text arrives as Markdown (headings, bold, lists, inline code): render it instead of showing the symbols. */
+function Md({ children, className = '' }: { children: string; className?: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      className={`break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0.5 [&_h1]:mb-1 [&_h1]:mt-2 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:text-[13px] [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:font-semibold [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-slate-500/15 [&_code]:px-1 [&_code]:font-mono [&_code]:text-[0.92em] [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-950 [&_pre]:p-2 [&_pre]:text-slate-100 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_a]:underline ${className}`}
+      components={{ a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" /> }}
+    >
+      {children}
+    </ReactMarkdown>
+  )
+}
+
 function getRangeText(source: string, lineStart: number, lineEnd: number) {
   return source.split('\n').slice(Math.max(0, lineStart - 1), lineEnd).join('\n')
 }
@@ -105,9 +120,7 @@ function AgentMessageBubble({ message }: { message: NotebookTutorMessage }) {
     return (
       <div className={`rounded-xl px-3 py-2.5 ${tone.border}`}>
         <div className={`mb-1 text-[10px] font-semibold ${tone.label}`}>{label}</div>
-        <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
-          {message.content}
-        </p>
+        <Md className="max-h-40 overflow-y-auto text-xs leading-relaxed text-slate-700">{message.content}</Md>
         {kind === 'file_write_summary' && (message.metadata?.files?.length ?? 0) > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {message.metadata!.files!.map((file) => (
@@ -134,7 +147,7 @@ function AgentMessageBubble({ message }: { message: NotebookTutorMessage }) {
         <div className={`mb-0.5 text-[10px] font-semibold ${isUser ? 'text-slate-300': 'text-slate-500'}`}>
           {label}
         </div>
-        <p className="whitespace-pre-wrap leading-6">{message.content}</p>
+        {isUser ? <p className="whitespace-pre-wrap leading-6">{message.content}</p> : <Md className="leading-6">{message.content}</Md>}
       </div>
     </div>
   )
@@ -467,13 +480,21 @@ export default function NotebookMicrobitAgentChat({
     setMessages((prev) => [...prev, { role: 'assistant', agent_name: agent, content, metadata: { kind } } as NotebookTutorMessage])
   }
 
+  // p5.js edits are applied straight into the code by the page (inline diff in the editor): say so here, in the learner's words.
+  const emitProposals = (summary: string, proposals: NotebookCodeProposal[]) => {
+    onProposals(summary, proposals)
+    if (device !== 'p5js' || proposals.length === 0 || proposals.some((proposal) => proposal.verification?.status === 'failed')) return
+    const first = proposals[0]
+    pushAgentNote(tl("Modifica applicata"), `**${first.message}**\n\n${first.explanation || ''}\n\n${tl("La vedi direttamente nel codice: in verde le righe nuove, in rosso barrato quelle tolte. Con «Annulla modifiche» torni indietro.")}`.replace(/\n{3,}/g, '\n\n'))
+  }
+
   /**
    * p5.js: before the diff reaches the user, run it (synthetic webcam, then a full-screen-like resize). When it
    * throws, the errors go back to the agent, which fixes its own proposal; up to MAX_REPAIR_ROUNDS rounds.
    * Without the original request (a replayed background job) it only verifies.
    */
   const deliverVerified = async (summary: string, proposals: NotebookCodeProposal[], requestText?: string) => {
-    if (device !== 'p5js' || !verify || proposals.length === 0) { onProposals(summary, proposals); return }
+    if (device !== 'p5js' || !verify || proposals.length === 0) { emitProposals(summary, proposals); return }
     const verifyLabel = tl("Verifica")
     let proposal = proposals[0]
     let finalSummary = summary
@@ -514,7 +535,7 @@ export default function NotebookMicrobitAgentChat({
       proposal = { ...next, required_libraries: Array.from(new Set([...(proposal.required_libraries ?? []), ...(next.required_libraries ?? [])])) }
       finalSummary = repaired.summary || finalSummary
     }
-    onProposals(finalSummary, [proposal])
+    emitProposals(finalSummary, [proposal])
   }
 
   // Bubbles and proposals from the assistant stream (a new request or the replay of a background job).
@@ -610,7 +631,7 @@ export default function NotebookMicrobitAgentChat({
         })
         const summary = response.data.summary || tl("Ho preparato una proposta di modifica.")
         const proposals = (response.data.proposals || []) as NotebookCodeProposal[]
-        onProposals(summary, proposals)
+        emitProposals(summary, proposals)
         const history = Array.isArray(response.data.history) ? response.data.history as NotebookTutorMessage[] : null
         setMessages(history ?? [...nextMessages, { role: 'assistant', content: summary }])
       }

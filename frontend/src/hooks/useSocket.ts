@@ -559,6 +559,22 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       publishRealtimeEvent('board_shared', data)
     })
 
+    socket.on('coding_project_invite', (data: Record<string, any>) => {
+      publishRealtimeEvent('coding_project_invite', data)
+    })
+
+    socket.on('coding_pr_opened', (data: Record<string, any>) => {
+      publishRealtimeEvent('coding_pr_opened', data)
+    })
+
+    socket.on('coding_pr_updated', (data: Record<string, any>) => {
+      publishRealtimeEvent('coding_pr_updated', data)
+    })
+
+    socket.on('coding_collaborator_update', (data: Record<string, any>) => {
+      publishRealtimeEvent('coding_collaborator_update', data)
+    })
+
     socket.on('calendar_reminder', (data: Record<string, any>) => {
       publishRealtimeEvent('calendar_reminder', data)
     })

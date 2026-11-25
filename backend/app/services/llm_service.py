@@ -13,6 +13,7 @@ from anthropic import AsyncAnthropic
 from PIL import Image, ImageOps
 
 from app.core.config import settings
+from app.services import load_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +199,11 @@ class LLMService:
         anthropic_options: Optional[dict] = None,
     ) -> LLMResponse:
         """``anthropic_options`` (e.g. ``thinking``, ``output_config``) is forwarded to Anthropic only."""
+        sim = load_simulation.active()
+        if sim is not None:  # admin stress test: no provider call, realistic timing
+            text = await load_simulation.complete(messages, system_prompt, sim)
+            return LLMResponse(content=text, provider=provider or settings.DEFAULT_LLM_PROVIDER, model=model or "",
+                               prompt_tokens=sum(len(str(m.get("content", ""))) for m in messages) // 4, completion_tokens=len(text) // 4)
         system_prompt = with_language_rule(system_prompt)
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or default_model_for(provider)
@@ -539,6 +545,11 @@ class LLMService:
         DeepSeek reasoning models (ignored by other providers). `reasoning_sink`, when given, receives the model's hidden
         thinking text (DeepSeek reasoning models) so callers can show progress during long,
         otherwise silent thinking phases."""
+        sim = load_simulation.active()
+        if sim is not None:  # admin stress test: no provider call, realistic timing
+            async for chunk in load_simulation.stream(messages, system_prompt, sim):
+                yield chunk
+            return
         system_prompt = with_language_rule(system_prompt)
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or default_model_for(provider)

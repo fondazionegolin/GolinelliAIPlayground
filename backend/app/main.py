@@ -59,6 +59,7 @@ async def lifespan(app: FastAPI):
 
 
 from app.services.ui_language import normalize_response_length, response_length_var
+from app.services.load_simulation import LoadTestMiddleware
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -87,6 +88,7 @@ class ResponseLengthMiddleware:
 
 
 app.add_middleware(ResponseLengthMiddleware)
+app.add_middleware(LoadTestMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.all_cors_origins,

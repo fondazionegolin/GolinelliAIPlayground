@@ -1,7 +1,7 @@
 import { endSession } from '@/lib/session'
 import { useState } from 'react'
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare, Users, Bot, Activity, CreditCard } from '@/components/icons'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare, Users, Bot, Activity, CreditCard, Gauge } from '@/components/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -20,6 +20,7 @@ import SchoolsPage from './SchoolsPage'
 import LicensesPage from './LicensesPage'
 import StudentsPage from './StudentsPage'
 import CreditsHubPage from './CreditsHubPage'
+import AdminStressTestPage from './AdminStressTestPage'
 import { useUiThemeScope, useUiThemeStore } from '@/stores/uiTheme'
 import { Moon, Sun } from '@/components/icons'
 import { useSocket } from '@/hooks/useSocket'
@@ -60,6 +61,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
       { path: '/admin/email', label: tl("Email"), icon: Mail, exact: false },
       { path: '/admin/feedback-board', label: 'Board Feedback', icon: KanbanSquare, exact: false },
       { path: '/admin/backend', label: 'Backend', icon: Database, exact: false },
+      { path: '/admin/stress-test', label: tl("Stress test"), icon: Gauge, exact: false },
     ],
   },
 ]
@@ -222,6 +224,7 @@ export default function AdminDashboard() {
                 <Route path="models" element={<AdminModelsPage />} />
                 <Route path="chatbots" element={<AdminChatbotsPage />} />
                 <Route path="backend" element={<AdminBackendPage />} />
+                <Route path="stress-test" element={<AdminStressTestPage />} />
                 {/* Legacy redirects */}
                 <Route path="teacher-requests" element={<Navigate to="/admin/teachers" replace />} />
                 <Route path="users" element={<Navigate to="/admin/teachers" replace />} />

@@ -1,7 +1,7 @@
 import api from '@/lib/api'
 import { safeMediaUrl } from '@/lib/media'
 
-export interface AudioTrack { id: string; title: string; artist_name?: string | null; mime_type?: string; cover_url?: string | null }
+export interface AudioTrack { id: string; title: string; artist_name?: string | null; mime_type?: string; cover_url?: string | null; lyrics?: string; item_id?: string; owned?: boolean }
 export type AudioLoader = (track: AudioTrack, signal: AbortSignal) => Promise<Blob | string>
 
 /** Fetch private media with app authentication; external media never receives those headers. */

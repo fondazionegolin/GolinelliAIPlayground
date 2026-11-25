@@ -75,16 +75,23 @@ def quote(model: str, usd: Optional[float] = None) -> dict:
             "model": model}
 
 
-def _prompt(text: str, seconds: int, instrumental: bool, fixed: Optional[int]) -> str:
-    parts = [text.strip()]
+def with_lyrics(text: str, lyrics: str) -> str:
+    """The description followed by the lyrics block (section tags like [Ritornello] are kept: the models read them)."""
+    return f"{text.strip()}\n\nLyrics:\n{lyrics.strip()}" if lyrics.strip() else text.strip()
+
+
+def _prompt(text: str, seconds: int, instrumental: bool, fixed: Optional[int], lyrics: str = "") -> str:
+    parts = [with_lyrics(text, lyrics)]
     if not fixed:
         parts.append(f"Duration: about {seconds} seconds.")
     if instrumental:
         parts.append("Instrumental only, no vocals.")
+    elif lyrics.strip():
+        parts.append("Sing exactly these lyrics, in order, with vocals.")
     return "\n\n".join(parts)
 
 
-async def generate_lyria(model: str, text: str, seconds: int, instrumental: bool) -> tuple[bytes, str, Optional[float]]:
+async def generate_lyria(model: str, text: str, seconds: int, instrumental: bool, lyrics: str = "") -> tuple[bytes, str, Optional[float]]:
     """(audio bytes, mime type, real cost in USD) from Lyria via OpenRouter."""
     if not settings.OPENROUTER_API_KEY:
         raise HTTPException(503, "Chiave OpenRouter non configurata: scegli un altro modello musicale in Admin → Modelli")
@@ -92,7 +99,7 @@ async def generate_lyria(model: str, text: str, seconds: int, instrumental: bool
     chunks: list[str] = []
     cost: Optional[float] = None
     payload = {"model": model, "modalities": ["audio", "text"], "stream": True, "audio": {"format": "mp3"},
-               "messages": [{"role": "user", "content": _prompt(text, min(seconds, spec["max_seconds"]), instrumental, spec["fixed_seconds"])}]}
+               "messages": [{"role": "user", "content": _prompt(text, min(seconds, spec["max_seconds"]), instrumental, spec["fixed_seconds"], lyrics)}]}
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=20)) as client:
             async with client.stream("POST", OPENROUTER_URL, json=payload,
@@ -132,7 +139,7 @@ async def generate_lyria(model: str, text: str, seconds: int, instrumental: bool
     return data, "audio/mpeg", cost
 
 
-async def generate_runware(model: str, text: str, seconds: int, instrumental: bool) -> tuple[bytes, str, Optional[float]]:
+async def generate_runware(model: str, text: str, seconds: int, instrumental: bool, lyrics: str = "") -> tuple[bytes, str, Optional[float]]:
     """(audio bytes, mime type, real cost in USD) from an ACE-Step model on Runware."""
     import uuid
     from app.services.runware_service import RunwareError, runware_service
@@ -143,6 +150,8 @@ async def generate_runware(model: str, text: str, seconds: int, instrumental: bo
     task = {"taskType": "audioInference", "taskUUID": str(uuid.uuid4()), "model": model, "positivePrompt": prompt[:3000],
             "duration": max(spec["min_seconds"], min(int(seconds), spec["max_seconds"])), "outputType": "URL", "outputFormat": "MP3",
             "includeCost": True, "deliveryMethod": "sync", "numberResults": 1}
+    if lyrics.strip() and not instrumental:
+        task["lyrics"] = lyrics.strip()[:3000]
     try:
         payload = await runware_service._post([task], timeout=300.0)
         item = (payload.get("data") or [{}])[0]
@@ -160,7 +169,7 @@ async def generate_runware(model: str, text: str, seconds: int, instrumental: bo
     return data, "audio/mpeg", float(cost) if cost is not None else None
 
 
-async def generate(model: str, text: str, seconds: int, instrumental: bool) -> tuple[bytes, str, Optional[float]]:
+async def generate(model: str, text: str, seconds: int, instrumental: bool, lyrics: str = "") -> tuple[bytes, str, Optional[float]]:
     if model in RUNWARE:
-        return await generate_runware(model, text, seconds, instrumental)
-    return await generate_lyria(model, text, seconds, instrumental)
+        return await generate_runware(model, text, seconds, instrumental, lyrics)
+    return await generate_lyria(model, text, seconds, instrumental, lyrics)

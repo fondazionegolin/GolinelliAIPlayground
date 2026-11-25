@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-23T14:04:05.008685+00:00",
-  "version_label": "2026.11.23-427b5f8b",
+  "generated_at": "2026-11-25T10:13:52.433701+00:00",
+  "version_label": "2026.11.25-cba1689d",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 39 commit dall'ultima release pubblicata.",
-  "git_ref": "427b5f8b499aeb3e55c7dcb1622e95664c157f8b",
+  "summary": "Bozza generata automaticamente da 41 commit dall'ultima release pubblicata.",
+  "git_ref": "cba1689dfe03c7910995fd087d6984f9362b46c5",
   "items": [
     {
       "category": "new",
@@ -199,6 +199,16 @@
       "category": "new",
       "title": "Canvas: figure library (pie, bars, fractions, Venn, truth tables, Vega-Lite, JSXGraph), Socratic tutor, fill-in tables",
       "description": "Canvas: figure library (pie, bars, fractions, Venn, truth tables, Vega-Lite, JSXGraph), Socratic tutor, fill-in tables"
+    },
+    {
+      "category": "new",
+      "title": "Drive: sharing and naming updates, changelog drafts",
+      "description": "Drive: sharing and naming updates, changelog drafts"
+    },
+    {
+      "category": "new",
+      "title": "3d-lab: sketch regions closed by face edges, extrude mode, outliner, materials and studio render",
+      "description": "3d-lab: sketch regions closed by face edges, extrude mode, outliner, materials and studio render"
     }
   ]
 }

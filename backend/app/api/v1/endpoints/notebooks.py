@@ -483,6 +483,8 @@ Regole:
 - content deve essere il file INTERO: copia esattamente le parti che non cambiano, non solo le righe nuove
 - Se il file soddisfa già la richiesta, restituisci content invariato e spiegalo in reasoning/summary
 - required_libraries è opzionale (solo p5js): elenca SOLO id di librerie realmente necessarie al codice
+- Il codice è didattico e viene mostrato allo studente come diff nell'editor: davanti a ogni blocco aggiunto o modificato metti un
+  commento in italiano che spiega cosa fa e perché lo hai cambiato; non commentare le parti che non tocchi
 - Rispondi in italiano""" + (
         "\n\n" + P5JS_REFERENCE if project_type == "p5js" else ""
     )
@@ -655,12 +657,15 @@ Metodo (seguilo nel ragionamento prima di scrivere gli edit):
    supporto, librerie in required_libraries), niente di estraneo alla richiesta, niente TODO o codice a metà.
 3. Simula l'esecuzione prima di consegnare: setup(), il primo draw() quando i dati asincroni (modelli, webcam,
    risultati) non sono ancora pronti, gli eventi, e il ridimensionamento della finestra / schermo intero.
-4. Mantieni lo stile e i nomi esistenti; aggiungi brevi commenti in italiano solo dove aiutano a capire.
+4. Mantieni lo stile e i nomi esistenti. Il codice che scrivi è DIDATTICO: lo studente lo leggerà come diff direttamente nell'editor.
+   Davanti a OGNI blocco che aggiungi o modifichi metti un commento in italiano (// ...) che spiega COSA fa e PERCHÉ lo stai
+   cambiando (es. «// NUOVO: velocità del cerchio, così può rimbalzare sui bordi»); commenta le righe non ovvie. Non togliere i
+   commenti esistenti e non commentare ciò che non tocchi.
 Restituisci SOLO l'oggetto JSON, NIENTE testo prima o dopo: il PRIMO carattere è {{ e l'ULTIMO è }}.
 
 Formato JSON richiesto:
 {{
-  "reasoning": "2-4 frasi in italiano: cosa cambi e perché (il piano), niente codice",
+  "reasoning": "2-4 frasi in italiano: cosa cambi e perché (il piano), niente codice; testo semplice, al massimo **grassetto** e `codice` inline",
   "summary": "breve sintesi in italiano di cosa hai cambiato (o perché non serve cambiare nulla)",
   "edits": [
     {{"search": "frammento ESATTO del file corrente da sostituire", "replace": "nuovo frammento"}}

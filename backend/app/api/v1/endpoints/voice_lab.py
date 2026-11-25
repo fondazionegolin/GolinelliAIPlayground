@@ -3,6 +3,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
 from typing import Annotated, Literal
 from urllib.parse import quote
 from uuid import UUID, uuid4
@@ -10,7 +11,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, File as UploadField, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_teacher
@@ -52,6 +53,7 @@ class Generation(BaseModel):
     speed: float = Field(default=1, ge=0.7, le=1.2)
     seconds: int = Field(default=10, ge=1, le=600)
     instrumental: bool = True
+    lyrics: str = Field(default="", max_length=3000)
     cover: Literal["none", "ai"] = "none"
     diarize: bool = False
     remove_noise: bool = False
@@ -67,8 +69,10 @@ class Generation(BaseModel):
             raise ValueError("Il dialogo richiede battute, al massimo 2000 caratteri e 10 voci")
         if self.action == "music" and not 3 <= self.seconds <= 600:
             raise ValueError("La musica deve durare da 3 a 600 secondi")
-        if self.action == "music" and len(self.text) > 4100:
-            raise ValueError("La descrizione musicale può contenere al massimo 4100 caratteri")
+        if self.action == "music" and len(music_generation.with_lyrics(self.text, self.lyrics)) > 4100:
+            raise ValueError("Descrizione e testo insieme possono contenere al massimo 4100 caratteri")
+        if self.action == "music" and self.lyrics.strip():
+            self.instrumental = False  # a song with lyrics is sung
         if self.action == "sound_effects" and self.seconds > 30:
             raise ValueError("Gli effetti possono durare al massimo 30 secondi")
         return self
@@ -99,7 +103,7 @@ def serialize(item: VoiceLabItem, full: bool = False, *, artist: str | None = No
             "created_at": item.created_at.isoformat() if item.created_at else None,
             "content_url": f"/api/v1/voice-lab/items/{item.id}/content" if item.storage_key else None,
             "cover_url": f"/voice-lab/items/{item.id}/cover?v={details['cover_key'][-12:-4]}" if details.get("cover_key") else None,
-            "details": details if full else {k: v for k, v in details.items() if k in {"size_bytes", "characters", "status", "language", "requires_verification", "drive_item_id", "credits", "pricing", "duration_seconds", "text"}}}
+            "details": details if full else {k: v for k, v in details.items() if k in {"size_bytes", "characters", "status", "language", "requires_verification", "drive_item_id", "credits", "pricing", "duration_seconds", "text", "lyrics"}}}
 
 
 async def owned(db: AsyncSession, teacher: User, item_id: UUID, *, lock=False) -> VoiceLabItem:
@@ -336,7 +340,7 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
                     await billing.settle(db, tx.id, price)
                 return result
             params = {"output_format": body.output_format}
-            details = {"text": body.text, "language": body.language, "characters": character_count, "duration_seconds": seconds if upload or body.action in {"music", "sound_effects"} else None}
+            details = {"text": body.text, **({"lyrics": body.lyrics.strip()} if body.action == "music" and body.lyrics.strip() else {}), "language": body.language, "characters": character_count, "duration_seconds": seconds if upload or body.action in {"music", "sound_effects"} else None}
             response = None
             if body.action == "tts":
                 model = body.model_id or settings.ELEVENLABS_TTS_MODEL
@@ -356,7 +360,7 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
                 tx = await billing.reserve(db, teacher, price, music["model"], provider=music["provider"])
                 await ctx.progress(0.1, f"Richiesta inviata a {music['label']}…", force=True)
                 try:
-                    lyria_audio = await music_generation.generate(music["model"], body.text, body.seconds, body.instrumental)
+                    lyria_audio = await music_generation.generate(music["model"], body.text, body.seconds, body.instrumental, body.lyrics)
                 except asyncio.CancelledError:
                     await asyncio.shield(billing.settle(db, tx.id, status="refunded"))
                     raise
@@ -382,7 +386,7 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
                 return {"item": serialize(item, True, artist=artist_name(teacher))}
             elif body.action in {"sound_effects", "music"}:
                 data = {"text": body.text, "duration_seconds": body.seconds, "model_id": "eleven_text_to_sound_v2"} if body.action == "sound_effects" else {
-                    "prompt": body.text, "music_length_ms": body.seconds * 1000, "force_instrumental": body.instrumental, "model_id": "music_v1"}
+                    "prompt": music_generation.with_lyrics(body.text, body.lyrics), "music_length_ms": body.seconds * 1000, "force_instrumental": body.instrumental, "model_id": "music_v1"}
                 response = await paid_request("POST", "/v1/sound-generation" if body.action == "sound_effects" else "/v1/music", json=data, params=params)
             else:
                 if body.action == "dubbing":
@@ -443,6 +447,96 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
         expected_seconds=float(min(300, 20 + (body.seconds * 0.8 if body.action in {"music", "sound_effects"} else seconds * 0.3))),
         work=work)
     return {"job_id": str(job_id), "status": "running"}
+
+
+class LyricsDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    brief: str = Field(min_length=3, max_length=800)
+    language: str = Field(default="it", pattern=r"^[a-z]{2,3}$")
+    mood: str = Field(default="", max_length=300)
+    structure: Literal["classic", "short", "ballad", "rap", "nursery", "anthem"] = "classic"
+    seconds: int = Field(default=30, ge=3, le=600)
+    current: str = Field(default="", max_length=3000)
+    instruction: str = Field(default="", max_length=400)
+
+
+@router.post("/lyrics/draft")
+async def lyrics_draft(body: LyricsDraft, db: Db, teacher: Teacher):
+    """Draft or revise lyrics with the fast text model; the tokens are billed like any other AI call."""
+    from app.services import lyrics_assistant
+    if not await credit_service.check_availability(db, teacher.tenant_id, 0.01, teacher_id=teacher.id):
+        raise HTTPException(402, "Crediti insufficienti per l'assistente testi")
+    try:
+        lyrics, response = await lyrics_assistant.draft(body.brief, body.language, body.mood, body.structure, body.seconds, body.current, body.instruction)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(502, "L'assistente testi non risponde: riprova tra poco.") from exc
+    if not lyrics:
+        raise HTTPException(502, "L'assistente non ha prodotto un testo: riformula il tema.")
+    cost = credit_service.calculate_cost_for_model(response.provider, response.model, response.prompt_tokens, response.completion_tokens, 0)
+    await credit_service.track_usage(db, teacher.tenant_id, response.provider, response.model, cost,
+        {"type": "lyrics_assistant", "service": "Audio Lab", "prompt_tokens": response.prompt_tokens, "completion_tokens": response.completion_tokens,
+         "total_tokens": response.prompt_tokens + response.completion_tokens, "image_count": 0}, teacher_id=teacher.id)
+    await db.commit()
+    return {"lyrics": lyrics}
+
+
+async def owned_track(db, teacher, ref: str) -> VoiceLabItem:
+    """A saved song by Audio Lab id or by the Files id the player uses; only its owner may change its lyrics."""
+    try:
+        uid = UUID(ref)
+    except ValueError as exc:
+        raise HTTPException(404, "Brano non trovato") from exc
+    item = await db.scalar(select(VoiceLabItem).where(VoiceLabItem.owner_id == teacher.id, VoiceLabItem.tenant_id == teacher.tenant_id,
+        VoiceLabItem.kind == "audio", or_(VoiceLabItem.id == uid, VoiceLabItem.details["drive_item_id"].astext == ref)))
+    if not item:
+        raise HTTPException(404, "Brano non trovato")
+    return item
+
+
+class LyricsSave(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    lyrics: str = Field(max_length=6000)
+
+
+@router.put("/tracks/{ref}/lyrics")
+async def save_lyrics(ref: str, body: LyricsSave, db: Db, teacher: Teacher):
+    item = await owned_track(db, teacher, ref)
+    details = {k: v for k, v in (item.details or {}).items() if k != "lyrics"}
+    if body.lyrics.strip():
+        details["lyrics"] = body.lyrics.strip()
+    item.details = details
+    await db.commit()
+    return {"lyrics": details.get("lyrics", "")}
+
+
+@router.post("/tracks/{ref}/lyrics/transcribe")
+async def transcribe_lyrics(ref: str, db: Db, teacher: Teacher):
+    """Listen to a saved song and write down what is sung (ElevenLabs Scribe, billed per minute of audio)."""
+    item = await owned_track(db, teacher, ref)
+    if not item.storage_key:
+        raise HTTPException(404, "File non ancora disponibile")
+    try:
+        data = await asyncio.to_thread(drive.read_blob, item.storage_key)
+    except (FileNotFoundError, OSError) as exc:
+        raise HTTPException(404, "Il file non è più disponibile nei Files") from exc
+    seconds = await billing.duration(data)
+    price = billing.quote("transcribe", seconds=seconds)
+    tx = await billing.reserve(db, teacher, price, "scribe_v2")
+    try:
+        response = await eleven.request("POST", "/v1/speech-to-text", files={"file": (f"{item.title[:80]}.mp3", data, item.mime_type or "audio/mpeg")},
+                                        data={"model_id": "scribe_v2", "diarize": "false", "tag_audio_events": "false"})
+    except Exception:
+        await billing.settle(db, tx.id, status="refunded")
+        raise
+    await billing.settle(db, tx.id, price)
+    text = re.sub(r"\s*\([^)]{1,40}\)\s*", " ", str(response.json().get("text") or "")).strip()  # drop «(music)»-style audio tags
+    if not text:
+        raise HTTPException(422, "Nel brano non si riconoscono parole: è probabilmente strumentale.")
+    item.details = {**(item.details or {}), "lyrics": text[:6000], "lyrics_source": "transcription"}
+    await db.commit()
+    return {"lyrics": item.details["lyrics"], "credits": price["credits"]}
 
 
 @router.post("/voices/clone")

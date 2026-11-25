@@ -12,7 +12,7 @@ interface RoomLite {
 
 interface Notif {
   id: string
-  type: 'invite' | 'mention' | 'board' | 'task' | 'document' | 'correction' | 'feedback' | 'teacherbot'
+  type: 'invite' | 'mention' | 'board' | 'task' | 'document' | 'correction' | 'feedback' | 'teacherbot' | 'coding'
   from: string
   preview?: string
   room: RoomLite
@@ -53,6 +53,14 @@ export function StudentNotificationBell({
         push({ id: `invite-${payload.room.id}`, type: 'invite', from: payload.invited_by || '—', room: payload.room, ts: now, read: false })
       } else if (type === 'share_chat_mention' && payload.room?.id) {
         push({ id: `mention-${payload.room.id}-${payload.message_id || payload.timestamp || now}`, type: 'mention', from: payload.from_nickname || '—', preview: payload.preview, room: payload.room, ts: now, read: false })
+      } else if (type === 'coding_project_invite') {
+        push({ id: `coding-invite-${payload.project_id}`, type: 'coding', from: payload.from || '—', preview: payload.title, room: emptyRoom('Vibe Lab'), payload, ts: now, read: false })
+      } else if (type === 'coding_collaborator_update' && (payload.status === 'active' || payload.status === 'removed')) {
+        push({ id: `coding-collab-${payload.project_id}-${payload.student}-${payload.status}`, type: 'coding', from: payload.student || '—', preview: payload.title, room: emptyRoom('Vibe Lab'), payload, ts: now, read: false })
+      } else if (type === 'coding_pr_opened') {
+        push({ id: `coding-pr-${payload.pr_id}-${payload.updated ? now : 'new'}`, type: 'coding', from: payload.from || '—', preview: payload.title, room: emptyRoom('Vibe Lab'), payload: { ...payload, kind: 'pr_opened' }, ts: now, read: false })
+      } else if (type === 'coding_pr_updated') {
+        push({ id: `coding-pr-${payload.pr_id}-${payload.status}`, type: 'coding', from: payload.project_title || '—', preview: payload.title, room: emptyRoom('Vibe Lab'), payload: { ...payload, kind: 'pr_updated' }, ts: now, read: false })
       } else if (type === 'board_shared') {
         push({ id: `board-${payload.board_id}`, type: 'board', from: tl("Docente"), preview: payload.title || tl("Nuova board condivisa"), room: emptyRoom(payload.title || tl("Board condivisa")), payload, ts: now, read: false })
       } else if (type === 'task_published' || (type === 'platform_change' && payload.entity === 'task' && payload.action === 'published')) {
@@ -112,6 +120,12 @@ export function StudentNotificationBell({
       setNotifs((prev) => prev.map((item) => item.id === notification.id ? { ...item, read: true } : item))
       return
     }
+    if (notification.type === 'coding') {
+      onNavigate?.('coding')
+      setOpen(false)
+      setNotifs((prev) => prev.map((item) => item.id === notification.id ? { ...item, read: true } : item))
+      return
+    }
     if (notification.type === 'teacherbot') {
       onNavigate?.('chatbot')
       setOpen(false)
@@ -162,7 +176,7 @@ export function StudentNotificationBell({
                   className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${n.read ? '' : 'bg-slate-50/60'}`}
                 >
                   <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${accentColor}1a`, color: accentColor }}>
-                    {n.type === 'mention' ? <AtSign className="h-4 w-4" /> : n.type === 'board' ? <KanbanSquare className="h-4 w-4" /> : n.type === 'task' ? <ClipboardList className="h-4 w-4" /> : n.type === 'document' ? <FileText className="h-4 w-4" /> : n.type === 'correction' || n.type === 'feedback' ? <MessageSquare className="h-4 w-4" /> : n.type === 'teacherbot' ? <Bot className="h-4 w-4" /> : <Users className="h-4 w-4" />}
+                    {n.type === 'mention' ? <AtSign className="h-4 w-4" /> : n.type === 'board' ? <KanbanSquare className="h-4 w-4" /> : n.type === 'task' ? <ClipboardList className="h-4 w-4" /> : n.type === 'document' ? <FileText className="h-4 w-4" /> : n.type === 'correction' || n.type === 'feedback' ? <MessageSquare className="h-4 w-4" /> : n.type === 'teacherbot' ? <Bot className="h-4 w-4" /> : n.type === 'coding' ? <Users className="h-4 w-4" /> : <Users className="h-4 w-4" />}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-semibold text-slate-800">
@@ -174,6 +188,10 @@ export function StudentNotificationBell({
                         : n.type === 'correction' ? tl("Nuova correzione")
                         : n.type === 'feedback' ? tl("Nuovo feedback")
                         : n.type === 'teacherbot' ? tl("Nuovo Teacherbot disponibile")
+                        : n.type === 'coding' ? (
+                          n.payload?.kind === 'pr_opened' ? tl("{0} propone modifiche al tuo progetto", n.from)
+                          : n.payload?.kind === 'pr_updated' ? (n.payload.status === 'merged' ? tl("Proposta unita nel progetto") : n.payload.status === 'rejected' ? tl("Proposta rifiutata") : tl("Proposta in prova"))
+                          : n.payload?.status ? tl("{0} ha risposto al tuo invito", n.from) : tl("{0} ti ha invitato in un progetto", n.from))
                         : tl("{0} ti ha incluso in una chat", n.from)}
                     </span>
                     <span className="block truncate text-xs text-slate-500">
