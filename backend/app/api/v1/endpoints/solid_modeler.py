@@ -84,7 +84,7 @@ class AgentRequest(BaseModel):
     selection: list[str] = Field(default_factory=list)
     provider: Optional[str] = None
     model: Optional[str] = None
-    max_steps: int = Field(default=6, ge=2, le=10)
+    max_steps: int = Field(default=8, ge=2, le=16)
     # Project the run belongs to: the final scene is saved there server-side, so the result is kept
     # even if the user leaves the page before the agent finishes.
     model_id: Optional[uuid.UUID] = None

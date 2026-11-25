@@ -3,7 +3,9 @@ import { unitGeometry } from './geometry'
 import type { PrimitiveDef } from './types'
 
 const PREVIEW_PX = 144
-const HOLE_COLOR = '#a3a3a3'
+// Library thumbnails are line art in black and white: light grey solid with crisp black edges.
+const SOLID_FILL = '#f4f4f5'
+const HOLE_FILL = '#ffffff'
 
 let renderer: THREE.WebGLRenderer | null = null
 let failed = false
@@ -27,7 +29,7 @@ function getRenderer(): THREE.WebGLRenderer | null {
  * so the palette shows what the shape actually looks like instead of a generic icon. Returns null
  * when WebGL is unavailable; callers fall back to an icon. */
 export function shapePreviewUrl(def: PrimitiveDef): string | null {
-  const key = `${def.kind}|${JSON.stringify(def.params ?? {})}|${def.size.join('x')}|${def.hole ? 'h' : 's'}|${def.color}`
+  const key = `bw|${def.kind}|${JSON.stringify(def.params ?? {})}|${def.size.join('x')}|${def.hole ? 'h' : 's'}`
   const hit = cache.get(key)
   if (hit) return hit
   const gl = getRenderer()
@@ -35,11 +37,14 @@ export function shapePreviewUrl(def: PrimitiveDef): string | null {
   try {
     const scene = new THREE.Scene()
     const material = new THREE.MeshStandardMaterial({
-      color: def.hole ? HOLE_COLOR : def.color,
-      roughness: 0.55,
-      metalness: 0.05,
+      color: def.hole ? HOLE_FILL : SOLID_FILL,
+      roughness: 0.9,
+      metalness: 0,
       transparent: !!def.hole,
-      opacity: def.hole ? 0.55 : 1,
+      opacity: def.hole ? 0.7 : 1,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
       side: def.hole ? THREE.DoubleSide : THREE.FrontSide,
     })
     const mesh = new THREE.Mesh(unitGeometry(def.kind, def.params ?? {}, def.size), material)
@@ -51,12 +56,14 @@ export function shapePreviewUrl(def: PrimitiveDef): string | null {
     pivot.rotation.x = -Math.PI / 2
     pivot.add(mesh)
     scene.add(pivot)
-    if (def.hole) {
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 20), new THREE.LineBasicMaterial({ color: '#737373' }))
-      edges.scale.copy(mesh.scale)
-      pivot.add(edges)
-    }
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a9a, 1.1))
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(mesh.geometry, 25),
+      def.hole ? new THREE.LineDashedMaterial({ color: '#52525b', dashSize: 0.06, gapSize: 0.04 }) : new THREE.LineBasicMaterial({ color: '#18181b' }),
+    )
+    edges.computeLineDistances()
+    edges.scale.copy(mesh.scale)
+    pivot.add(edges)
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x9a9a9a, 1.3))
     const sun = new THREE.DirectionalLight(0xffffff, 1.6)
     sun.position.set(2, 3, 2.5)
     scene.add(sun)

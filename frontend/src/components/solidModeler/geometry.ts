@@ -8,6 +8,8 @@ import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import fontData from 'three/examples/fonts/helvetiker_bold.typeface.json'
 import { ADDITION, Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg'
+import { analyzeSketch, tessellate, type Region } from './sketch/geom2d'
+import { revolveGeometry } from './sketch/revolve'
 import type { GroupObject, PrimitiveKind, PrimitiveObject, PrimitiveParams, SceneObject, Vec3 } from './types'
 
 const DEG = Math.PI / 180
@@ -110,12 +112,98 @@ function buildUnit(kind: PrimitiveKind, p: PrimitiveParams, size: Vec3): THREE.B
       s.closePath()
       return normalize(extrude(s, 1))
     }
+    case 'sketch': return sketchGeometry(p)
+    case 'revolve': {
+      const rv = p.revolve
+      if (!rv?.profile?.length) return normalize(new THREE.BoxGeometry(1, 1, 1))
+      return normalize(revolveGeometry(rv.profile, rv.axis, rv.angle))
+    }
+    case 'extrusion': {
+      const shapes = (p.profile ?? []).filter(r => r.outer?.length >= 3).map(r => {
+        const shape = new THREE.Shape(r.outer.map(([x, y]) => new THREE.Vector2(x, y)))
+        for (const h of r.holes ?? []) if (h.length >= 3) shape.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, y))))
+        return shape
+      })
+      if (!shapes.length) return normalize(new THREE.BoxGeometry(1, 1, 1))
+      return normalize(new THREE.ExtrudeGeometry(shapes, { depth: 1, bevelEnabled: false, curveSegments: 1 }))
+    }
     case 'text': {
       const text = (p.text || 'Testo').slice(0, 24)
       const g = new TextGeometry(text, { font: getFont(), size: 1, depth: 0.3, curveSegments: 5, bevelEnabled: false })
       return normalize(g)
     }
   }
+}
+
+const SKETCH_LIFT = 0.04
+
+export function regionGeometry(r: Region): THREE.BufferGeometry {
+  const shape = new THREE.Shape(r.outer.map(([x, y]) => new THREE.Vector2(x, y)))
+  for (const h of r.holes) shape.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, y))))
+  return new THREE.ShapeGeometry(shape)
+}
+
+/**
+ * Flat, selectable surface of a sketch in its own plane (real mm, not normalised): one fill per closed
+ * region (`userData.ranges` = end triangle of each region, for picking) or thin ribbons along the strokes
+ * when nothing is closed.
+ */
+function sketchGeometry(p: PrimitiveParams): THREE.BufferGeometry {
+  const entities = p.sketch?.entities ?? []
+  const regions = analyzeSketch(entities, p.sketch?.boundary).regions
+  const parts: THREE.BufferGeometry[] = regions.map(regionGeometry)
+  const ranges: number[] = []
+  let tris = 0
+  for (const part of parts) { tris += (part.index?.count ?? 0) / 3; ranges.push(tris) }
+  if (!parts.length) {
+    let budget = 1500
+    for (const e of entities) {
+      const { pts, closed } = tessellate(e)
+      const n = closed ? pts.length : pts.length - 1
+      for (let i = 0; i < n && budget > 0; i++, budget--) {
+        const a = pts[i], b = pts[(i + 1) % pts.length]
+        const dx = b[0] - a[0], dy = b[1] - a[1]
+        const l = Math.hypot(dx, dy)
+        if (l < 1e-6) continue
+        const nx = (-dy / l) * 0.5, ny = (dx / l) * 0.5
+        parts.push(new THREE.ShapeGeometry(new THREE.Shape([
+          new THREE.Vector2(a[0] + nx, a[1] + ny), new THREE.Vector2(b[0] + nx, b[1] + ny),
+          new THREE.Vector2(b[0] - nx, b[1] - ny), new THREE.Vector2(a[0] - nx, a[1] - ny),
+        ])))
+      }
+    }
+  }
+  if (!parts.length) parts.push(new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(-1, -1), new THREE.Vector2(1, -1), new THREE.Vector2(1, 1), new THREE.Vector2(-1, 1)])))
+  const geometry = mergeGeometries(parts, false) ?? new THREE.BufferGeometry()
+  parts.forEach(part => part.dispose())
+  geometry.translate(0, 0, SKETCH_LIFT)
+  geometry.userData.ranges = ranges
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+const sketchLineCache = new WeakMap<object, THREE.BufferGeometry>()
+
+/** Stroke segments of a sketch object (plane coordinates), for the thin 3D outline. */
+export function sketchLines(obj: PrimitiveObject): THREE.BufferGeometry {
+  const key = obj.params.sketch?.entities ?? obj.params
+  let g = sketchLineCache.get(key)
+  if (!g) {
+    const pos: number[] = []
+    for (const e of obj.params.sketch?.entities ?? []) {
+      const { pts, closed } = tessellate(e)
+      const n = closed ? pts.length : pts.length - 1
+      for (let i = 0; i < n; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length]
+        pos.push(a[0], a[1], SKETCH_LIFT * 1.5, b[0], b[1], SKETCH_LIFT * 1.5)
+      }
+    }
+    g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    sketchLineCache.set(key, g)
+  }
+  return g
 }
 
 const unitCache = new Map<string, THREE.BufferGeometry>()
@@ -232,7 +320,7 @@ export function worldBox(obj: SceneObject): THREE.Box3 {
 export function exportSTL(objects: SceneObject[]): Blob {
   const scene = new THREE.Scene()
   for (const obj of objects) {
-    if (obj.hole) continue
+    if (obj.hole || obj.kind === 'sketch' || obj.hidden) continue
     const mesh = new THREE.Mesh(objectGeometry(obj))
     mesh.applyMatrix4(objectMatrix(obj))
     scene.add(mesh)
@@ -250,7 +338,7 @@ export function exportSTL(objects: SceneObject[]): Blob {
 export async function exportGLB(objects: SceneObject[]): Promise<Blob> {
   const model = new THREE.Group()
   for (const obj of objects) {
-    if (obj.hole) continue
+    if (obj.hole || obj.kind === 'sketch') continue
     const mesh = new THREE.Mesh(
       objectGeometry(obj),
       new THREE.MeshStandardMaterial({ color: obj.color, roughness: 0.55, metalness: 0.02 }),

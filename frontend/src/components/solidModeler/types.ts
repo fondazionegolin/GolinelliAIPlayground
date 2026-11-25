@@ -1,13 +1,50 @@
 import { tl } from '@/i18n/tl'
+import type { SketchEntity } from './sketch/geom2d'
 // Scene model shared with the backend agent (backend/app/services/solid_modeler_agent.py).
 // Units: mm, Z up, work plate = XY plane at z=0. Every primitive fills its `size`
 // box centred on `position`; rotation is Euler XYZ in degrees.
 
 export type PrimitiveKind =
   | 'box' | 'cylinder' | 'sphere' | 'cone' | 'pyramid' | 'hemisphere'
-  | 'polyhedron' | 'wedge' | 'torus' | 'tube' | 'star' | 'text'
+  | 'polyhedron' | 'wedge' | 'torus' | 'tube' | 'star' | 'text' | 'extrusion' | 'sketch' | 'revolve'
 
 export type Vec3 = [number, number, number]
+
+/** A closed 2D profile (mm, centred on the object's local XY): CCW outer contour + holes. */
+export interface ProfileRegion {
+  outer: [number, number][]
+  holes?: [number, number][][]
+}
+
+/** Link from a feature (extrusion, revolve) to the sketch it was made from, so it follows later edits of that sketch. */
+export interface FeatureSource {
+  sketchId: string
+  /** One interior point (sketch coordinates) per profile used: finds the same regions after the sketch changes. */
+  points: [number, number][]
+  op: 'extrude' | 'revolve'
+  /** Extrusion extent along the sketch normal (mm). */
+  lo?: number
+  hi?: number
+  /** Revolve: ids of the sketch strokes that were picked as the shape to rotate. */
+  entityIds?: string[]
+  /** Revolve axis in sketch coordinates and sweep angle (degrees). */
+  axis?: { a: [number, number]; d: [number, number] }
+  angle?: number
+}
+
+/** Source sketch of an extrusion, kept so it can be edited again. */
+export interface StoredSketch {
+  /** Sketch entities in the object's local XY frame (mm, at creation size). */
+  entities: SketchEntity[]
+  /** Sketch plane offset along the local Z axis from the object centre (mm, at creation size). */
+  z: number
+  /** Object size when the sketch was extruded (to follow later resizes). */
+  base: Vec3
+  /** `sketch` objects: id of the object whose face the sketch lies on. */
+  target?: string
+  /** `sketch` objects: edges of the face the sketch lies on (sketch coordinates), they close regions together with the strokes. */
+  boundary?: [[number, number], [number, number]][]
+}
 
 export interface PrimitiveParams {
   faces?: number
@@ -20,6 +57,13 @@ export interface PrimitiveParams {
   wall?: number
   inner?: number
   text?: string
+  /** `extrusion`: closed regions extruded along local Z. */
+  profile?: ProfileRegion[]
+  sketch?: StoredSketch
+  /** Sketch this feature was made from (parametric link). */
+  source?: FeatureSource
+  /** `revolve`: profile (sketch coordinates), axis and sweep angle in degrees. */
+  revolve?: { profile: ProfileRegion[]; axis: { a: [number, number]; d: [number, number] }; angle: number }
 }
 
 interface BaseObject {
@@ -27,6 +71,10 @@ interface BaseObject {
   name: string
   color: string
   hole: boolean
+  /** Hidden in the viewport (outliner eye); kept in the project, left out of exports. */
+  hidden?: boolean
+  /** Surface preset for the shaded view and the render (see materials.ts). */
+  material?: string
   position: Vec3
   rotation: Vec3
 }
@@ -74,6 +122,7 @@ export const PRIMITIVES: PrimitiveDef[] = [
 export const KIND_LABEL: Record<PrimitiveKind | 'group', string> = {
   polyhedron: tl("Poliedro"), box: tl("Cubo"), cylinder: tl("Cilindro"), sphere: tl("Sfera"), cone: tl("Cono"), pyramid: tl("Piramide"),
   hemisphere: tl("Cupola"), wedge: tl("Cuneo"), torus: tl("Toro"), tube: tl("Tubo"), star: tl("Stella"), text: 'Testo', group: tl("Gruppo"),
+  extrusion: tl("Estrusione"), sketch: tl("Sketch"), revolve: tl("Rivoluzione"),
 }
 
 export const COLOR_SWATCHES = [

@@ -3,6 +3,8 @@ import { eulerDegFromQuaternion, objectMatrix, worldBox } from './geometry'
 import type { GroupObject, PrimitiveDef, PrimitiveObject, SceneObject, Vec3 } from './types'
 import { KIND_LABEL } from './types'
 
+export const isSketch = (o: SceneObject) => o.kind === 'sketch'
+
 export function uid(prefix = 'o'): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`
 }
@@ -42,7 +44,7 @@ export function duplicateObjects(objects: SceneObject[], ids: string[], offset: 
 
 /** Same frame convention as the backend `build_group`: translate-only frame at the solids' bbox centre. */
 export function groupObjects(objects: SceneObject[], ids: string[]): { objects: SceneObject[]; groupId: string | null } {
-  const members = objects.filter(o => ids.includes(o.id))
+  const members = objects.filter(o => ids.includes(o.id) && !isSketch(o))
   if (members.length < 2) return { objects, groupId: null }
   const solids = members.filter(m => !m.hole)
   const box = new THREE.Box3()
@@ -61,7 +63,7 @@ export function groupObjects(objects: SceneObject[], ids: string[]): { objects: 
     children: members.map(m => ({ ...m, position: [m.position[0] - c.x, m.position[1] - c.y, m.position[2] - c.z] as Vec3 })),
   }
   const firstIndex = objects.findIndex(o => ids.includes(o.id))
-  const rest = objects.filter(o => !ids.includes(o.id))
+  const rest = objects.filter(o => !members.includes(o))
   rest.splice(Math.min(firstIndex, rest.length), 0, group)
   return { objects: rest, groupId: group.id }
 }
@@ -89,7 +91,7 @@ export function ungroupObject(objects: SceneObject[], id: string): { objects: Sc
 
 export function dropToPlate(objects: SceneObject[], ids: string[]): SceneObject[] {
   return objects.map(o => {
-    if (!ids.includes(o.id)) return o
+    if (!ids.includes(o.id) || isSketch(o)) return o
     const box = worldBox(o)
     return { ...o, position: [o.position[0], o.position[1], o.position[2] - box.min.z] as Vec3 }
   })

@@ -64,7 +64,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
   // Agentic hand-off from the support chat (teachers): the first instruction arrives already written.
   const [prompt, setPrompt] = useState(() => (student ? null : takeHandoff(['models3d']))?.brief.slice(0, 1500) ?? '')
   const [model, setModel] = useState('')
-  const [maxSteps, setMaxSteps] = useState(6)
+  const [maxSteps, setMaxSteps] = useState(10)
   const [turns, setTurns] = useState<ChatTurn[]>([])
   const [running, setRunning] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -236,7 +236,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
           onChange={e => setPrompt(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); run() } }}
           rows={3}
-          placeholder={selection.length ? tl("Cosa cambio negli oggetti selezionati?") : tl("Descrivi cosa costruire con le primitive…")}
+          placeholder={selection.length ? tl("Cosa cambio negli oggetti selezionati?") : tl("Descrivi cosa costruire: l'agente usa primitive e sketch (estrusioni, rivoluzioni, fori)…")}
           className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-200"
         />
         <div className="mt-2 flex items-center gap-2">
@@ -244,7 +244,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
             {models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
           <select value={maxSteps} onChange={e => setMaxSteps(Number(e.target.value))} title={tl("Passi massimi dell'agente")} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
-            {[3, 4, 6, 8, 10].map(n => <option key={n} value={n}>{n} passi</option>)}
+            {[4, 6, 8, 10, 12, 16].map(n => <option key={n} value={n}>{n} passi</option>)}
           </select>
           {running ? (
             <button type="button" onClick={stop} className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">

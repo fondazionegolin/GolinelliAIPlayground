@@ -133,8 +133,11 @@ export function useSolidProject({ objects, resetScene, snapshot, student = false
   }, [queryClient, snapshot])
 
   // Initial load: last opened project, else the most recent one, else a blank scene.
+  // Started once: a refetch of the list (e.g. after the first autosave) must not load the project again over new work.
+  const loadStarted = useRef(false)
   useEffect(() => {
-    if (ready || !projects.isSuccess) return
+    if (ready || loadStarted.current || !projects.isSuccess) return
+    loadStarted.current = true
     const list = projects.data
     const wanted = readStorage(CURRENT_KEY)
     const target = initialId ? { id: initialId } : list.find(p => p.id === wanted) ?? list[0]
@@ -144,7 +147,11 @@ export function useSolidProject({ objects, resetScene, snapshot, student = false
       return
     }
     solidModelerApi.get(target.id)
-      .then(res => applyLoaded(res.data.id, res.data.name, res.data.scene as SceneObject[]))
+      .then(res => {
+        // The user already started drawing while the project was loading: keep that work instead of replacing it.
+        if (objectsRef.current.length) return
+        applyLoaded(res.data.id, res.data.name, res.data.scene as SceneObject[])
+      })
       .catch(() => applyLoaded(null, DEFAULT_NAME, []))
       .finally(() => setReady(true))
   }, [projects.isSuccess, projects.data, ready, applyLoaded, initialId])

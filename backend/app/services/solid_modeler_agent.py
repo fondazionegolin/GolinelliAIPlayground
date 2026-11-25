@@ -24,10 +24,11 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from app.services.json_extract import extract_json
+from app.services import solid_sketch_ops as sk
 
 PRIMITIVE_KINDS = {
     "box", "cylinder", "sphere", "cone", "pyramid", "hemisphere",
-    "wedge", "torus", "tube", "star", "text", "polyhedron",
+    "wedge", "torus", "tube", "star", "text", "polyhedron", "extrusion", "sketch", "revolve",
 }
 PLATE_SIZE = 200.0
 MAX_OBJECTS = 160
@@ -61,6 +62,59 @@ stima le proporzioni reali, posiziona le parti in modo che si tocchino/compenetr
 - tube: cilindro cavo verticale. params.wall (0.05–0.45, frazione della parete rispetto al diametro, default 0.12).
 - star: stella estrusa verticale. params.points (default 5), params.inner (0.2–0.9, default 0.5).
 - text: testo estruso, params.text (max 24 caratteri); la size è il box del testo.
+- extrusion: profilo 2D chiuso estruso lungo Z locale (creato da uno sketch: preferisci l'azione extrude).
+  params.profile = [{"outer": [[x,y],...], "holes": [[[x,y],...]]}] in mm, centrato sull'origine; size = [ingombro X, ingombro Y, spessore].
+  Puoi crearne di nuovi per sagome che le primitive non danno (es. profilo a L, lettera, sagoma) e puoi spostarle/ridimensionarle;
+  NON modificare né rimuovere params.sketch (serve all'utente per riaprire lo sketch).
+- revolve: solido di rotazione di un profilo 2D attorno a un asse (params.revolve = profile, axis, angle), creato dall'utente. Come extrusion:
+  puoi spostarlo/ridimensionarlo ma NON toccare params.revolve né params.source (collegano il solido allo sketch).
+- sketch: disegno 2D nella scena (pellicola azzurra, non è solido): è la base di extrusion/revolve. Gli sketch dell'utente
+  non vanno cancellati; puoi crearne di tuoi (azione sketch) e modificarli (sketch_edit).
+
+## Modellazione da SKETCH (come in un CAD: usala per pezzi complessi, curvi o torniti)
+Le primitive vanno bene per forme semplici. Per pezzi veri (penne, bottiglie, vasi, manopole, pennini, sagome, staffe)
+lavora come un progettista CAD: disegna uno SKETCH 2D quotato su un piano, poi ESTRUDILO o RUOTALO attorno a un asse.
+Puoi alternare liberamente sketch e primitive: per esempio corpo tornito da sketch + clip con primitive + foro da sketch.
+
+Piani (`plane`): "top" (XY, guarda +Z), "front" (XZ, guarda -Y: u=X, v=Z), "right" (YZ, guarda +X: u=Y, v=Z),
+"back", "left", "bottom"; oppure {"face": {"object": "id", "side": "+z"}} per disegnare sulla faccia di un oggetto
+(il piano giace sulla faccia, ma u, v restano le coordinate del MONDO lungo gli assi del piano: su "+x" u=Y, v=Z;
+su "+z" u=X, v=Y; su "-y" (fronte) u=X, v=Z); "offset": mm lungo la normale. Le coordinate delle entità sono [u, v] in mm.
+Sul piano "front" quindi u = X del mondo e v = Z (altezza): ideale per i profili da ruotare attorno all'asse verticale.
+
+Entità (ogni entità ha un "id" univoco nello sketch):
+- {"id":"l1","type":"line","a":[u,v],"b":[u,v]}
+- {"id":"r1","type":"rect","a":[u,v],"b":[u,v]}   (angoli opposti)
+- {"id":"c1","type":"circle","c":[u,v],"r":5}
+- {"id":"e1","type":"ellipse","c":[u,v],"rx":6,"ry":3,"rot":0}
+- {"id":"p1","type":"polygon","c":[u,v],"r":8,"n":6,"rot":0}
+- {"id":"a1","type":"arc","c":[u,v],"r":5,"a0":0,"a1":1.5708}   (radianti, antiorario da a0 ad a1)
+- {"id":"s1","type":"spline","pts":[[u,v],...]}   (curva morbida che PASSA per i punti: profili organici)
+- {"id":"b1","type":"bezier","pts":[[u,v],[u,v],[u,v],[u,v]]}   (inizio, controllo 1, controllo 2, fine)
+- {"id":"q1","type":"polyline","pts":[[u,v],...],"closed":true}
+Un profilo è estrudibile solo se i tratti formano una figura CHIUSA (estremi coincidenti esattamente).
+
+Azioni sketch:
+- {"op":"sketch","id":"profilo_corpo","name":"Profilo corpo","plane":"front","entities":[...]}
+- {"op":"sketch_edit","id":"profilo_corpo","entities":[...],"remove":["l3"]}   (sostituisce/aggiunge entità per id; i solidi collegati si aggiornano)
+- {"op":"extrude","id":"pennino","sketch":"sk_pennino","distance":0.8,"mode":"solid"}
+    distance > 0 verso la normale del piano, < 0 dal lato opposto; "symmetric":true centra lo spessore sul piano;
+    oppure "from"/"to" (mm lungo la normale). "mode":"hole" crea un FORO da raggruppare con i solidi da scavare.
+    "points":[[u,v]] (opzionale) = un punto dentro ciascun profilo da usare, se lo sketch ne ha più d'uno.
+- {"op":"revolve","id":"corpo","sketch":"profilo_corpo","axis":"asse","entities":["s1","l1","l2"],"angle":360,"mode":"solid"}
+    axis = id di una LINEA dello sketch, oppure "x"/"y" (assi del piano). entities = tratti da ruotare (default: tutti tranne l'asse).
+    Il profilo deve stare tutto da UN lato dell'asse. Una curva APERTA i cui estremi non toccano l'asse viene chiusa da sola
+    con perpendicolari sull'asse: basta disegnare la sagoma esterna (es. metà silhouette di una penna o di un vaso).
+    "mode":"hole" + group con il solido = cavità interna tornita (es. serbatoio dell'inchiostro, interno di una bottiglia).
+Gli sketch compaiono nella SCENA come {"kind":"sketch", entities:[id:tipo]} e i solidi derivati con "from_sketch".
+
+Esempio di ragionamento (penna stilografica, asse verticale Z, appoggiata in piedi):
+1. sketch "profilo_corpo" su "front" con una spline della metà destra della silhouette (u = raggio 0–7 mm, v = 0–130 mm)
+   e una linea "asse" su u=0; revolve attorno a "asse" → corpo e cappuccio torniti.
+2. sketch "profilo_cavita" su "front" (rettangolo stretto u 0–3, v 10–110) + linea asse → revolve mode "hole" → serbatoio.
+3. sketch "sk_pennino" su un piano "front" con offset adatto: spline/bezier chiuse della sagoma del pennino + slot (rect sottile)
+   → extrude distance 0.8 symmetric; un sketch del foro di sfiato (circle) → extrude mode "hole".
+4. clip con box/rect estruso; poi group dei fori con i solidi giusti. Controlla le bbox nell'osservazione e correggi.
 
 ## Solidi, fori, gruppi
 - Ogni oggetto è solido (hole=false) o FORO (hole=true). Un foro NON scava nulla finché non viene RAGGRUPPATO con i solidi da scavare.
@@ -251,6 +305,159 @@ def _clean_params(kind: str, params: Any) -> dict:
         out["edgeFillets"] = fillets
     if kind == "text":
         out["text"] = str(params.get("text") or "Testo")[:24]
+    source = _clean_source(params.get("source"))
+    if source:
+        out["source"] = source
+    if kind == "revolve":
+        revolve = _clean_revolve(params.get("revolve"))
+        if revolve:
+            out["revolve"] = revolve
+    if kind in ("extrusion", "sketch"):
+        profile = _clean_profile(params.get("profile")) if kind == "extrusion" else []
+        if profile:
+            out["profile"] = profile
+        sketch = _clean_sketch(params.get("sketch"))
+        if sketch:
+            out["sketch"] = sketch
+    return out
+
+
+_MAX_PROFILE_POINTS = 40000
+_SKETCH_TYPES = {"line", "arc", "circle", "ellipse", "rect", "polygon", "polyline", "point", "bezier", "spline"}
+
+
+def _num(value: Any, lo: float = -5000.0, hi: float = 5000.0) -> Optional[float]:
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(f):
+        return None
+    return round(max(lo, min(hi, f)), 4)
+
+
+def _pt(value: Any) -> Optional[list[float]]:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    x, y = _num(value[0]), _num(value[1])
+    return None if x is None or y is None else [x, y]
+
+
+def _loop(value: Any, budget: list[int]) -> Optional[list[list[float]]]:
+    if not isinstance(value, list) or len(value) < 3 or len(value) > budget[0]:
+        return None
+    pts = [p for p in (_pt(v) for v in value) if p]
+    if len(pts) < 3:
+        return None
+    budget[0] -= len(pts)
+    return pts
+
+
+def _clean_profile(raw: Any) -> list[dict]:
+    """Closed regions of an extrusion: [{"outer": [[x, y], ...], "holes": [[[x, y], ...], ...]}]."""
+    if not isinstance(raw, list):
+        return []
+    budget = [_MAX_PROFILE_POINTS]
+    out = []
+    for region in raw[:64]:
+        if not isinstance(region, dict):
+            continue
+        outer = _loop(region.get("outer"), budget)
+        if not outer:
+            continue
+        holes = [h for h in (_loop(h, budget) for h in (region.get("holes") or [])[:128] if isinstance(region.get("holes"), list)) if h]
+        out.append({"outer": outer, "holes": holes})
+    return out
+
+
+def _clean_source(raw: Any) -> Optional[dict]:
+    """Link from an extrusion / revolve to the sketch it was made from (kept so it can follow sketch edits)."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("sketchId"), str) or not raw["sketchId"]:
+        return None
+    op = raw.get("op")
+    if op not in ("extrude", "revolve"):
+        return None
+    points = [p for p in (_pt(v) for v in (raw.get("points") or [])[:64]) if p] if isinstance(raw.get("points"), list) else []
+    out: dict = {"sketchId": raw["sketchId"][:64], "points": points, "op": op}
+    for key in ("lo", "hi"):
+        v = _num(raw.get(key), -5000, 5000)
+        if v is not None:
+            out[key] = v
+    axis = raw.get("axis")
+    if isinstance(axis, dict) and _pt(axis.get("a")) and _pt(axis.get("d")):
+        out["axis"] = {"a": _pt(axis["a"]), "d": _pt(axis["d"])}
+    angle = _num(raw.get("angle"), 1, 360)
+    if angle is not None:
+        out["angle"] = angle
+    if isinstance(raw.get("entityIds"), list):
+        out["entityIds"] = [i[:40] for i in raw["entityIds"][:400] if isinstance(i, str) and i]
+    return out
+
+
+def _clean_revolve(raw: Any) -> Optional[dict]:
+    """Profile (sketch coordinates), axis and sweep angle of a solid of revolution."""
+    if not isinstance(raw, dict):
+        return None
+    profile = _clean_profile(raw.get("profile"))
+    axis = raw.get("axis")
+    if not profile or not isinstance(axis, dict) or not _pt(axis.get("a")) or not _pt(axis.get("d")):
+        return None
+    angle = _num(raw.get("angle"), 1, 360)
+    return {"profile": profile, "axis": {"a": _pt(axis["a"]), "d": _pt(axis["d"])}, "angle": angle if angle is not None else 360.0}
+
+
+def _clean_entity(raw: Any, budget: list[int]) -> Optional[dict]:
+    if not isinstance(raw, dict) or raw.get("type") not in _SKETCH_TYPES:
+        return None
+    kind = raw["type"]
+    ent: dict = {"id": str(raw.get("id") or "e")[:40], "type": kind}
+    points = {"point": ("p",), "line": ("a", "b"), "rect": ("a", "b"), "arc": ("c",), "circle": ("c",), "ellipse": ("c",), "polygon": ("c",)}
+    scalars = {"arc": ("r", "a0", "a1"), "circle": ("r",), "ellipse": ("rx", "ry", "rot"), "polygon": ("r", "rot")}
+    for key in points.get(kind, ()):
+        p = _pt(raw.get(key))
+        if p is None:
+            return None
+        ent[key] = p
+    for key in scalars.get(kind, ()):
+        v = _num(raw.get(key), -1e5, 1e5)
+        if v is None:
+            return None
+        ent[key] = v
+    if kind == "polygon":
+        try:
+            ent["n"] = max(3, min(64, int(raw.get("n"))))
+        except (TypeError, ValueError):
+            return None
+    if kind in ("polyline", "spline", "bezier"):
+        pts = raw.get("pts")
+        if not isinstance(pts, list) or len(pts) < 2 or len(pts) > min(budget[0], 400):
+            return None
+        clean = [p for p in (_pt(v) for v in pts) if p]
+        if len(clean) < 2 or (kind == "bezier" and len(clean) != 4):
+            return None
+        budget[0] -= len(clean)
+        ent["pts"] = clean
+        if kind == "polyline":
+            ent["closed"] = bool(raw.get("closed"))
+    return ent
+
+
+def _clean_sketch(raw: Any) -> Optional[dict]:
+    """Source sketch of an extrusion (kept only so the user can reopen and edit it)."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("entities"), list):
+        return None
+    budget = [_MAX_PROFILE_POINTS]
+    entities = [e for e in (_clean_entity(e, budget) for e in raw["entities"][:600]) if e]
+    if not entities:
+        return None
+    z = _num(raw.get("z"))
+    out = {
+        "entities": entities,
+        "z": z if z is not None else 0.0,
+        "base": _vec3(raw.get("base"), [1, 1, 1], 0.01, 5000),
+    }
+    if isinstance(raw.get("target"), str) and raw["target"]:
+        out["target"] = raw["target"][:64]
     return out
 
 
@@ -340,6 +547,123 @@ class SceneExecutor:
             except Exception as exc:  # defensive: bad LLM payloads must not kill the loop
                 errors.append(f"{op} #{i + 1}: {exc}")
         return errors
+
+    # ── Sketch based modelling ──────────────────────────────────────────
+
+    def _bbox_of(self, obj_id: Any) -> Optional[tuple[list[float], list[float]]]:
+        obj = self._find(obj_id)
+        return object_bbox(obj) if obj and obj.get("kind") != "sketch" else None
+
+    def _op_sketch(self, a: dict) -> Optional[str]:
+        if len(self.scene) >= MAX_OBJECTS:
+            return "troppi oggetti nella scena"
+        plane, err = sk.resolve_plane(a.get("plane"), a.get("offset"), self._bbox_of)
+        if err:
+            return err
+        cleaned = _clean_sketch({"entities": a.get("entities") or [], "z": 0, "base": [1, 1, 1]})
+        if not cleaned:
+            return "entities mancanti o non valide (vedi formato delle entità)"
+        ids = [e["id"] for e in cleaned["entities"]]
+        if len(set(ids)) != len(ids):
+            return "id delle entità duplicati nello sketch"
+        obj_id = self._unique_id(a.get("id"), "sketch")
+        self.scene.append(sk.sketch_object(obj_id, str(a.get("name") or "Sketch")[:60], plane, cleaned["entities"]))
+        return None
+
+    def _op_sketch_edit(self, a: dict) -> Optional[str]:
+        obj = self._find(a.get("id"))
+        if not obj or obj.get("kind") != "sketch":
+            return f"sketch '{a.get('id')}' non trovato"
+        current = obj["params"]["sketch"]["entities"]
+        remove = set(map(str, a.get("remove") or []))
+        merged = [e for e in current if e["id"] not in remove]
+        if isinstance(a.get("entities"), list):
+            replace = {str(e.get("id")): e for e in a["entities"] if isinstance(e, dict)}
+            merged = [replace.pop(e["id"], e) for e in merged] + list(replace.values())
+        cleaned = _clean_sketch({"entities": merged, "z": 0, "base": [1, 1, 1]})
+        if not cleaned:
+            return "lo sketch resterebbe vuoto"
+        obj["params"]["sketch"]["entities"] = cleaned["entities"]
+        # Features made from this sketch are rebuilt by the browser from the new strokes.
+        for o in self.scene:
+            src = (o.get("params") or {}).get("source") if o.get("kind") in ("extrusion", "revolve") else None
+            if src and src.get("sketchId") == obj["id"]:
+                o["params"].pop("profile", None)
+                o["params"].pop("revolve", None)
+        return None
+
+    def _sketch_for(self, a: dict) -> tuple[Optional[dict], Optional[dict], Optional[str]]:
+        sketch = self._find(a.get("sketch"))
+        if not sketch or sketch.get("kind") != "sketch":
+            return None, None, f"sketch '{a.get('sketch')}' non trovato"
+        return sketch, sk.plane_of(sketch, object_matrix), None
+
+    def _op_extrude(self, a: dict) -> Optional[str]:
+        sketch, plane, err = self._sketch_for(a)
+        if err:
+            return err
+        hole = a.get("mode") in ("hole", "cut")
+        try:
+            if "from" in a or "to" in a:
+                lo, hi = float(a.get("from", 0)), float(a.get("to", 0))
+            else:
+                d = float(a.get("distance", 10))
+                lo, hi = (-abs(d) / 2, abs(d) / 2) if a.get("symmetric") else ((0.0, d) if d >= 0 else (d, 0.0))
+        except (TypeError, ValueError):
+            return "distance / from / to devono essere numeri"
+        lo, hi = min(lo, hi), max(lo, hi)
+        if hi - lo < 0.1:
+            return "profondità troppo piccola"
+        if hole:  # cuts poke slightly out of the face they start from, so the CSG never meets coplanar faces
+            if abs(hi) < 1e-6:
+                hi = 0.1
+            if abs(lo) < 1e-6:
+                lo = -0.1
+        points = [p for p in (a.get("points") or []) if isinstance(p, list) and len(p) == 2][:32]
+        obj_id = self._unique_id(a.get("id"), "estrusione")
+        obj, err = sk.extrusion_object(sketch, plane, lo, hi, obj_id, str(a.get("name") or ("Foro" if hole else "Estrusione"))[:60],
+                                       _color(a.get("color"), "#a3a3a3" if hole else self._next_color()), hole, points)
+        if err:
+            return err
+        self.scene.append(obj)
+        return None
+
+    def _op_revolve(self, a: dict) -> Optional[str]:
+        sketch, plane, err = self._sketch_for(a)
+        if err:
+            return err
+        ents = sketch["params"]["sketch"]["entities"]
+        spec = a.get("axis", "y")
+        axis_id = None
+        if spec in ("x", "y"):
+            axis = {"a": [0.0, 0.0], "d": [1.0, 0.0] if spec == "x" else [0.0, 1.0]}
+        elif isinstance(spec, str):
+            line = next((e for e in ents if e["id"] == spec), None)
+            if not line or line["type"] != "line":
+                return f"asse '{spec}': serve l'id di una linea dello sketch, oppure 'x' / 'y'"
+            axis = {"a": line["a"], "d": [line["b"][0] - line["a"][0], line["b"][1] - line["a"][1]]}
+            axis_id = spec
+        elif isinstance(spec, dict) and isinstance(spec.get("a"), list) and isinstance(spec.get("d"), list):
+            axis = {"a": [float(v) for v in spec["a"][:2]], "d": [float(v) for v in spec["d"][:2]]}
+        else:
+            return "axis non valido"
+        wanted = a.get("entities")
+        entity_ids = [str(i) for i in wanted] if isinstance(wanted, list) and wanted else [
+            e["id"] for e in ents if e["type"] != "point" and e["id"] != axis_id
+        ]
+        try:
+            angle = max(1.0, min(360.0, float(a.get("angle", 360))))
+        except (TypeError, ValueError):
+            angle = 360.0
+        hole = a.get("mode") in ("hole", "cut")
+        obj_id = self._unique_id(a.get("id"), "rivoluzione")
+        obj, err = sk.revolve_object(sketch, plane, entity_ids, axis, angle, obj_id,
+                                     str(a.get("name") or ("Foro" if hole else "Rivoluzione"))[:60],
+                                     _color(a.get("color"), "#a3a3a3" if hole else self._next_color()), hole)
+        if err:
+            return err
+        self.scene.append(obj)
+        return None
 
     def _op_add(self, a: dict) -> Optional[str]:
         if len(self.scene) >= MAX_OBJECTS:
@@ -536,9 +860,16 @@ def build_group(members: list[dict], group_id: str, name: Any = None, color: Any
 
 # ── Observation ───────────────────────────────────────────────────────────
 
+def _is_sketch(obj: dict) -> bool:
+    return obj.get("kind") == "sketch"
+
+
 def describe_scene(scene: list[dict]) -> list[dict]:
     rows = []
     for obj in scene:
+        if _is_sketch(obj):
+            rows.append(sk.describe_sketch(obj))
+            continue
         mn, mx = object_bbox(obj)
         row: dict = {
             "id": obj["id"],
@@ -555,8 +886,12 @@ def describe_scene(scene: list[dict]) -> list[dict]:
                 row["scale"] = [round(s, 3) for s in obj["scale"]]
         else:
             row["size"] = [_r(v) for v in obj["size"]]
-            if obj.get("params"):
-                row["params"] = obj["params"]
+            params = obj.get("params") or {}
+            if obj["kind"] in ("extrusion", "revolve"):
+                src = params.get("source") or {}
+                row["from_sketch"] = {k: src[k] for k in ("sketchId", "op", "lo", "hi", "angle", "entityIds") if k in src}
+            elif params:
+                row["params"] = params
         if any(abs(v) > 1e-6 for v in obj["rotation"]):
             row["rotation"] = [_r(v) for v in obj["rotation"]]
         rows.append(row)
@@ -565,6 +900,7 @@ def describe_scene(scene: list[dict]) -> list[dict]:
 
 def scene_warnings(scene: list[dict], final: bool = False) -> list[str]:
     warnings: list[str] = []
+    scene = [o for o in scene if not _is_sketch(o)]
     boxes = {o["id"]: object_bbox(o) for o in scene}
     solids = [o for o in scene if not o["hole"]]
     holes = [o for o in scene if o["hole"]]
@@ -646,6 +982,12 @@ def summarize_actions(actions: list[dict]) -> list[str]:
             out.append(f"⊕ gruppo {a.get('id')} ← {', '.join(map(str, a.get('ids') or []))}")
         elif op in ("pattern_linear", "pattern_circular"):
             out.append(f"⋯ {op.replace('_', ' ')} {a.get('id')} ×{a.get('count')}")
+        elif op == "sketch":
+            out.append(f"✎ sketch {a.get('id')} ({len(a.get('entities') or [])} tratti)")
+        elif op == "extrude":
+            out.append(f"⇡ estrudi {a.get('sketch')} → {a.get('id')}{' (foro)' if a.get('mode') in ('hole', 'cut') else ''}")
+        elif op == "revolve":
+            out.append(f"⟳ ruota {a.get('sketch')} → {a.get('id')}{' (foro)' if a.get('mode') in ('hole', 'cut') else ''}")
         else:
             out.append(f"{op} {a.get('id') or ''}".strip())
     return out
