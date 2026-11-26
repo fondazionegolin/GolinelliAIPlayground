@@ -27,6 +27,8 @@ const CHROMATIC = [
   'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose',
 ]
 const SCALES = [...NEUTRALS, ...CHROMATIC]
+const LEGACY_SECONDARY_SCALES = ['sky', 'blue', 'cyan']
+const SECONDARY_TINT = { 50: 20, 100: 35, 200: 55, 300: 80, 700: 80, 800: 55, 900: 35, 950: 20 }
 
 // Light-mode source for each scale: slate is replaced by pure neutral grey.
 const LIGHT_SOURCE = { slate: 'neutral' }
@@ -77,12 +79,9 @@ function darkChromaticSurface(scale, shade) {
 }
 
 function darkChromaticText(scale, shade) {
-  // Legacy blue/celeste text follows the same rose-violet ink as semantic secondary text.
-  // Surface/fill palettes remain unchanged, as do authored document and code islands.
-  if (['sky', 'blue', 'cyan'].includes(scale)) {
-    const roseViolet = { 50: '#fcf4ff', 100: '#f6e8fa', 200: '#eed5f3', 300: '#e5c3ec', 400: '#ddb7e6',
-      500: '#ddb7e6', 600: '#ddb7e6', 700: '#e5c3ec', 800: '#eed5f3', 900: '#f6e8fa', 950: '#fcf4ff' }
-    return channels(roseViolet[shade])
+  if (LEGACY_SECONDARY_SCALES.includes(scale)) {
+    const tint = SECONDARY_TINT[shade]
+    return tint ? `color-mix(in srgb, var(--text-secondary) ${tint}%, white)` : 'var(--text-secondary)'
   }
   const s = defaultColors[scale]
   const lighter = { 500: '400', 600: '400', 700: '300', 800: '200', 900: '100', 950: '50' }[shade]
@@ -96,7 +95,7 @@ function buildVars() {
     for (const shade of SHADES) {
       const base = channels(defaultColors[LIGHT_SOURCE[scale] ?? scale][shade])
       light[`--c-${scale}-${shade}`] = base
-      light[`--t-${scale}-${shade}`] = base
+      light[`--t-${scale}-${shade}`] = LEGACY_SECONDARY_SCALES.includes(scale) ? `rgb(${base})` : base
       if (NEUTRALS.includes(scale)) {
         dark[`--c-${scale}-${shade}`] = channels(DARK_NEUTRAL_SURFACE[shade])
         dark[`--t-${scale}-${shade}`] = channels(DARK_NEUTRAL_TEXT[shade])
@@ -126,8 +125,16 @@ function paletteFor(prefix) {
     black: `rgb(var(--${prefix}-black) / <alpha-value>)`,
   }
   for (const scale of SCALES) {
+    const fullColor = prefix === 't' && LEGACY_SECONDARY_SCALES.includes(scale)
     out[scale] = Object.fromEntries(
-      SHADES.map((shade) => [shade, `rgb(var(--${prefix}-${scale}-${shade}) / <alpha-value>)`]),
+      SHADES.map((shade) => {
+        const color = `var(--${prefix}-${scale}-${shade})`
+        // These text variables hold a whole colour so they can reference the semantic ink.
+        const value = fullColor
+          ? ({ opacityValue = '1' }) => `color-mix(in srgb, ${color} calc(${opacityValue} * 100%), transparent)`
+          : `rgb(${color} / <alpha-value>)`
+        return [shade, value]
+      }),
     )
   }
   return out

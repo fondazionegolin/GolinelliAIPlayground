@@ -5,6 +5,7 @@ import axios from 'axios'
 import type { EnvironmentalFootprintResponse } from '@/lib/environmentalImpact'
 import { LANG_STORAGE_KEY, normalizeLanguageCode } from '@/i18n/i18n'
 import { useAuthStore } from '@/stores/auth'
+import type { VibeDocument, VibePlanningAttachments, VibeProjectImage } from '@/lib/vibeAttachments'
 
 let isHandlingUnauthorized = false
 
@@ -275,6 +276,8 @@ export const codingApi = {
     template_key?: string
     initial_prompt?: string
     kb_files?: { path: string; content: string }[]
+    documents?: VibeDocument[]
+    images?: VibeProjectImage[]
   }) => api.post('/coding/projects', data),
   getProject: (projectId: string) =>
     api.get(`/coding/projects/${projectId}`),
@@ -297,7 +300,7 @@ export const codingApi = {
   aiPlaces: (data: { query?: string; lat?: number; lon?: number; limit?: number; country?: string; zoom?: number }) => api.post('/coding/ai/places', data),
   interview: (data: { title?: string; prompt?: string }) =>
     api.post('/coding/ai/interview', data),
-  interviewChat: (data: { title?: string; prompt: string; force_confirm?: boolean; messages: { role: 'user' | 'assistant'; content: string; kind?: string }[] }) =>
+  interviewChat: (data: { title?: string; prompt: string; force_confirm?: boolean; messages: { role: 'user' | 'assistant'; content: string; kind?: string }[] } & VibePlanningAttachments) =>
     api.post('/coding/ai/interview-chat', data),
   spec: (data: { title?: string; prompt: string; messages?: { role: 'user' | 'assistant'; content: string }[] }) =>
     api.post('/coding/ai/spec', data, { timeout: 180000 }),

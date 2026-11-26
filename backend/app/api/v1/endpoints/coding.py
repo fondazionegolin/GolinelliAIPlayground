@@ -2,7 +2,7 @@ import hashlib
 import re
 import httpx
 from app.services.js_imports import module_imports
-from app.services import model_roles, model_selection, vibe_brief, vibe_qa, vibe_styles, vibe_contract, vibe_gate, vibe_verify, vibe_runs, vibe_output, vibe_pipeline, vibe_quality
+from app.services import model_roles, model_selection, vibe_attachments, vibe_brief, vibe_qa, vibe_styles, vibe_contract, vibe_gate, vibe_verify, vibe_runs, vibe_output, vibe_pipeline, vibe_quality
 import io
 import asyncio
 from contextlib import suppress
@@ -15,7 +15,7 @@ import zipfile
 from typing import Annotated, Any, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select, update
@@ -42,6 +42,7 @@ from app.schemas.coding import (
     CodingGenerateRequest,
     CodingGenerateResponse,
     CodingGeneratedFile,
+    CodingPlanningAttachments,
     CodingProjectCreate,
     CodingProjectDataListResponse,
     CodingProjectDataPut,
@@ -931,13 +932,31 @@ def _seed_description_md(title: str, initial_prompt: str = "") -> str:
 
 def _kb_files(files: list[dict]) -> list[dict]:
     """Markdown files act as the project knowledge base (description.md + any user-added .md)."""
-    return [file for file in files if str(file.get("path") or "").lower().endswith(".md")]
+    return [file for file in files if str(file.get("path") or "").lower().endswith(".md")
+            and not vibe_attachments.is_reference(file["path"])]
 
 
 def _kb_content_for_prompt(file: dict) -> str:
     """KB text fed to codegen. spec.md is the project's source of truth, so it gets a far larger window."""
     limit = 30000 if str(file.get("path") or "").lower() == "spec.md" else 8000
     return str(file.get("content") or "")[:limit]
+
+
+def _generation_base(stored: list[dict], editor: list[CodingGeneratedFile] | None) -> list[dict]:
+    if not editor:
+        return stored
+    return [
+        {"path": f.path, "content": f.content, "language": f.language or ""}
+        for f in editor if ".." not in f.path.split("/") and not vibe_attachments.is_attachment(f.path)
+    ] + [f for f in stored if vibe_attachments.is_attachment(str(f.get("path") or ""))]
+
+
+def _planning_attachment_context(body: dict, budget: int) -> str:
+    try:
+        attachments = CodingPlanningAttachments.model_validate(body)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Allegati del progetto non validi") from exc
+    return vibe_attachments.planning_context(attachments, budget)
 
 
 def _append_request_log(description_md: str, request: str) -> str:
@@ -4524,11 +4543,12 @@ async def coding_extract_document(
     with a Vibe Lab request as detailed instructions. Personal data is masked locally."""
     from app.services.document_processor import document_processor
 
-    data = await file.read()
+    max_bytes = 15 * 1024 * 1024
+    data = await file.read(max_bytes + 1)
     filename = (file.filename or "documento")[:200]
     if not data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File vuoto")
-    if len(data) > 15 * 1024 * 1024:
+    if len(data) > max_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File troppo grande (max 15 MB)")
     mime = file.content_type or "application/octet-stream"
     lower = filename.lower()
@@ -4545,7 +4565,7 @@ async def coding_extract_document(
     text = (analysis.raw_text or "").strip()
     if not text:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nessun testo leggibile nel documento (formato non supportato o scansione)")
-    limit = 30_000
+    limit = vibe_attachments.DOCUMENT_LIMIT
     return {"filename": filename, "text": text[:limit], "truncated": len(text) > limit, "pages": analysis.page_count}
 
 
@@ -5015,7 +5035,8 @@ async def coding_ai_interview_chat(
     style_asked = any(t["role"] == "assistant" and t["kind"] == "style" for t in turns)
     must_confirm = force_confirm or n_asked >= INTERVIEW_MAX_QUESTIONS
 
-    opening = f"Titolo: {title or '(senza titolo)'}\n\nIdea iniziale dell'utente:\n{idea}\n\nInizia l'intervista."
+    references = _planning_attachment_context(body, 18_000)
+    opening = f"Titolo: {title or '(senza titolo)'}\n\nIdea iniziale dell'utente:\n{idea}{references}\n\nInizia l'intervista."
     messages = [{"role": "user", "content": opening}]
     for turn in turns:
         entry = {"role": turn["role"], "content": turn["content"]}
@@ -5103,6 +5124,7 @@ async def _run_spec(db: AsyncSession, actor: StudentOrTeacher, body: dict) -> di
             if text:
                 transcript_lines.append(("Utente" if item["role"] == "user" else "Intervistatore") + ": " + text)
     content = f"Titolo: {title or '(senza titolo)'}\n\nIDEA / SPECIFICA DELL'UTENTE:\n{idea}"
+    content += _planning_attachment_context(body, vibe_attachments.DOCUMENT_LIMIT)
     if transcript_lines:
         content += "\n\nINTERVISTA:\n" + "\n".join(transcript_lines)
     spec_md, milestones, degraded = "", [], False
@@ -5191,6 +5213,10 @@ async def create_project(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported template")
 
     session = await _resolve_session(db, actor, body.session_id)
+    try:
+        attachments = vibe_attachments.initial_files(body.documents, body.images)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     actor_type, actor_id, tenant_id = _actor_identity(actor)
     slug = await _next_slug(db, session.id, body.title)
 
@@ -5246,7 +5272,7 @@ async def create_project(
         project_id=project.id,
         version_number=1,
         prompt_message_id=prompt_message.id if prompt_message else None,
-        source_manifest_json={"files": initial_kb} if initial_kb else {},
+        source_manifest_json={"files": initial_kb + attachments},
         artifact_manifest_json={},
         build_status="pending",
         review_status="pending",
@@ -5686,16 +5712,12 @@ async def _generate_project_code(
 
     # The editor sends its current files (unsaved edits + added knowledge-base .md). Prefer
     # them as the base so the student's instructions and attachments are always respected.
-    if body.files:
-        previous_files = [
-            {"path": f.path, "content": f.content, "language": f.language or ""}
-            for f in body.files
-            if f.path and ".." not in f.path.split("/")
-        ]
+    previous_files = _generation_base(previous_files, body.files)
 
     # Knowledge base: markdown files (description.md + any user-added .md) are authoritative
     # project instructions, always fed to codegen and never owned by the model.
     kb_files = _kb_files(previous_files)
+    references = vibe_attachments.project_context(previous_files)
     if not any(str(f.get("path") or "") == "description.md" for f in kb_files):
         seeded = {"path": "description.md", "language": "markdown", "content": _seed_description_md(project.title, user_prompt)}
         kb_files.insert(0, seeded)
@@ -5712,7 +5734,7 @@ async def _generate_project_code(
     if previous_files:
         snippets = []
         for file in previous_files[:8]:
-            if str(file.get("path") or "").lower().endswith(".md"):
+            if str(file.get("path") or "").lower().endswith(".md") or vibe_attachments.is_image(file["path"]):
                 continue
             snippets.append(f"FILE: {file.get('path')}\n{str(file.get('content') or '')[:6000]}")
         if snippets:
@@ -5721,7 +5743,7 @@ async def _generate_project_code(
     llm_response = await _coding_generate(
         messages=[{
             "role": "user",
-            "content": f"Titolo progetto: {project.title}\n\nRichiesta studente:\n{user_prompt}{kb_context}{context}",
+            "content": f"Titolo progetto: {project.title}\n\nRichiesta studente:\n{user_prompt}{kb_context}{references}{context}",
         }],
         system_prompt=CODEGEN_SYSTEM_PROMPT + "\n- Esistono file .md di knowledge base (es. description.md): trattali come istruzioni autorevoli, NON modificarli e NON includerli tra i file dell'output.",
         temperature=0.35,
@@ -5752,7 +5774,8 @@ async def _generate_project_code(
 
     # The model must not own the knowledge base: drop any .md it emitted, carry forward ours,
     # and auto-append the student's request to description.md.
-    files = [f for f in files if not str(f.get("path") or "").lower().endswith(".md")]
+    files = [f for f in files if not str(f.get("path") or "").lower().endswith(".md") and not vibe_attachments.is_image(f["path"])]
+    files.extend(f for f in previous_files if vibe_attachments.is_attachment(f["path"]))
     for kb in kb_files:
         if str(kb.get("path") or "") == "description.md":
             kb = {**kb, "content": _append_request_log(str(kb.get("content") or ""), user_prompt if (body.prompt or "").strip() else "")}
@@ -5993,13 +6016,8 @@ async def _generate_project_code_stream(
             previous_files = previous_manifest.get("files") or []
             previous_collaboration = previous_manifest.get("collaboration") or {}
 
-    if body.files:
-        previous_files = [
-            {"path": f.path, "content": f.content, "language": f.language or ""}
-            for f in body.files
-            if f.path and ".." not in f.path.split("/")
-        ]
-
+    previous_files = _generation_base(previous_files, body.files)
+    project_attachments = [f for f in previous_files if vibe_attachments.is_attachment(f["path"])]
     kb_files = _kb_files(previous_files)
     # BRIEF GUARANTEE: description.md and spec.md are recovered from the project's history and the original
     # prompt whenever the client/version lacks them or description.md is still empty/placeholder — a generation
@@ -6030,7 +6048,8 @@ async def _generate_project_code_stream(
     if brief_notes:
         logger.info("vibe brief repaired for %s: %s", project_pk, "; ".join(brief_notes))
     stack_request = original_prompt + "\n" + user_prompt + "\n" + next((str(f.get("content") or "") for f in kb_files if f.get("path") == "description.md"), "")
-    if not is_fix and not any(not str(f.get("path") or "").endswith(".md") for f in previous_files) and vibe_output.requires_unsupported_stack(stack_request):
+    prev_code_files = [f for f in previous_files if not f["path"].lower().endswith(".md") and not vibe_attachments.is_image(f["path"])]
+    if not is_fix and not prev_code_files and vibe_output.requires_unsupported_stack(stack_request):
         raise HTTPException(422, "Vibe Lab genera app React nel browser. Per un programma Python usa i Notebook; per una web app chiedi esplicitamente la versione React.")
 
 
@@ -6041,7 +6060,8 @@ async def _generate_project_code_stream(
     brief_reminder = vibe_contract.brief_reminder(kb_files)
 
     request_label = "Revisione visiva" if is_visual else "Esito dell'esecuzione" if is_fix else "Richiesta studente"
-    base_context = f"Titolo progetto: {project_title}{brief_context}\n\n{request_label}:\n{user_prompt}{brief_reminder}"
+    references = vibe_attachments.project_context(project_attachments)
+    base_context = f"Titolo progetto: {project_title}{brief_context}\n\n{request_label}:\n{user_prompt}{references}{brief_reminder}"
     architect_pair, writer_pair = await _vibe_team(db, actor.is_student)
     gen_provider, gen_model = writer_pair
     fallback_pair = architect_pair
@@ -6056,7 +6076,6 @@ async def _generate_project_code_stream(
 
     # Existing code files (for edits) — passed WHOLE so the model edits coherently. We also tell it
     # to behave agentically: change only what's needed and re-emit ONLY the files that change.
-    prev_code_files = [f for f in previous_files if not str(f.get("path") or "").lower().endswith(".md")]
     is_edit = bool(prev_code_files)
     react_expected = not is_edit or _is_react_files(prev_code_files)
     if is_edit:
@@ -6161,6 +6180,7 @@ async def _generate_project_code_stream(
                 # (createRoot) are injected by the preview; KB markdown belongs to the platform.
                 if (
                     lower.endswith((".html", ".htm", ".md"))
+                    or vibe_attachments.is_attachment(path)
                     or ".." in path.split("/")
                     or lower in {"index.tsx", "index.ts", "index.jsx", "index.js", "main.tsx", "main.ts", "main.jsx", "main.js", "golinelli-bridge.ts"}
                 ):
@@ -6427,7 +6447,8 @@ async def _generate_project_code_stream(
 
             # Knowledge base ownership: drop any .md the model emitted, carry forward ours,
             # and append the student's request to description.md.
-            files = [f for f in files if not str(f.get("path") or "").lower().endswith(".md")]
+            files = [f for f in files if not f["path"].lower().endswith(".md") and not vibe_attachments.is_attachment(f["path"])]
+            files.extend(project_attachments)
             for kb in kb_files:
                 if str(kb.get("path") or "") == "description.md":
                     kb = {**kb, "content": _append_request_log(str(kb.get("content") or ""), user_prompt if explicit_prompt else "")}
@@ -6753,9 +6774,8 @@ async def _refine_project_stream(project_id: UUID, body: CodingGenerateRequest, 
             manifest = current_version.source_manifest_json or {}
             previous_files = manifest.get("files") or []
             previous_collaboration = manifest.get("collaboration") or {}
-    if body.files:  # unsaved editor state is the base, like a normal generation
-        previous_files = [{"path": f.path, "content": f.content, "language": f.language or ""} for f in body.files if f.path and ".." not in f.path.split("/")]
-    code_files = [f for f in previous_files if not str(f.get("path") or "").lower().endswith(".md")]
+    previous_files = _generation_base(previous_files, body.files)
+    code_files = [f for f in previous_files if not f["path"].lower().endswith(".md") and not vibe_attachments.is_image(f["path"])]
     if not code_files:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Non c'è ancora codice da rifinire: genera prima il progetto")
     if not _is_react_files(previous_files):
@@ -6763,7 +6783,7 @@ async def _refine_project_stream(project_id: UUID, body: CodingGenerateRequest, 
 
     kb_files = _kb_files(previous_files)
     spec_text = next((str(f.get("content") or "") for f in kb_files if str(f.get("path") or "").lower() == "spec.md"), "")
-    brief_context = ("\n\n" + vibe_contract.brief_block(kb_files)) if kb_files else ""
+    brief_context = (("\n\n" + vibe_contract.brief_block(kb_files)) if kb_files else "") + vibe_attachments.project_context(previous_files)
     brief_reminder = vibe_contract.brief_reminder(kb_files)
     architect_pair, writer_pair = await _vibe_team(db, actor.is_student)
     run = vibe_pipeline.Run(writer_pair, architect_pair)
@@ -7556,7 +7576,7 @@ async def get_public_project_payload(
         "slug": publication.publication_slug,
         "url_path": publication.url_path,
         "version_id": str(version.id),
-        "files": files,
+        "files": vibe_attachments.public_files(files),
     }
 
 
@@ -7601,7 +7621,7 @@ async def _serve_published_project_html(
 
     _publication, project, version = row
     files = (version.source_manifest_json or {}).get("files") or []
-    html = _build_static_html(files, project.title, entry_path)
+    html = _build_static_html(vibe_attachments.public_files(files), project.title, entry_path)
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",

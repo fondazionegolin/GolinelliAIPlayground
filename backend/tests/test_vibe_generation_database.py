@@ -1,4 +1,6 @@
 """Opt-in regression of the whole generation pipeline, rolled back; no real model calls."""
+import base64
+import io
 import json
 import os
 from contextlib import asynccontextmanager
@@ -7,9 +9,12 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
+import fitz
+from fastapi import HTTPException, UploadFile
+from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
+from starlette.datastructures import Headers
 
 from app.api.deps import StudentOrTeacher
 from app.api.v1.endpoints import coding
@@ -19,7 +24,7 @@ from app.models.enums import UserRole, SessionStatus
 from app.models.session import Class, Session
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.schemas.coding import CodingGenerateRequest, CodingVersionCreate
+from app.schemas.coding import CodingGenerateRequest, CodingProjectCreate, CodingVersionCreate
 from app.services import background_jobs, vibe_pipeline, vibe_quality, vibe_runs
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(os.getenv('VIBE_DB_TESTS') != '1', reason='Opt-in development database')]
@@ -79,6 +84,64 @@ def install_models(monkeypatch, mode):
     monkeypatch.setattr(background_jobs,'start_stream_job',inline)
     monkeypatch.setattr(background_jobs,'stream_response',lambda *args:None)
     return events,state,repairs
+
+
+async def test_new_project_uses_pdf_and_image_after_reload(monkeypatch):
+    events, _, _ = install_models(monkeypatch, 'canonical')
+    prompts = []
+    rule = "Ogni giocatore parte con sette gettoni."
+    image_filename = 'Tabellone.png'
+    image_path = 'vibe-images/tabellone-1.ts'
+
+    async def write_app(**kwargs):
+        prompts.append(kwargs['messages'][0]['content'])
+        yield f"""=== FILE: App.tsx ===
+import boardImage from './vibe-images/tabellone-1'
+export default function App() {{ return <img src={{boardImage}} alt="Tabellone" /> }}
+=== END ===
+=== FILE: styles.css ===
+body {{ margin: 0; }}
+=== END ==="""
+
+    monkeypatch.setattr(vibe_pipeline.llm_service, 'generate_stream', write_app)
+    with fitz.open() as source:
+        source.new_page().insert_text((72, 72), rule)
+        pdf_bytes = source.tobytes()
+    encoded = io.BytesIO()
+    Image.new('RGBA', (8, 8), (10, 20, 30, 128)).save(encoded, format='PNG')
+    image_url = 'data:image/png;base64,' + base64.b64encode(encoded.getvalue()).decode()
+
+    async with isolated() as (db, actor, example):
+        document = await coding.coding_extract_document(actor, UploadFile(
+            file=io.BytesIO(pdf_bytes), filename='Regole.pdf', headers=Headers({'content-type': 'application/pdf'}),
+        ))
+        assert rule in document['text']
+        reference = {'name': document['filename'], 'text': document['text']}
+        planning = coding._planning_attachment_context({'documents': [reference], 'image_names': [image_filename]}, 18000)
+        assert rule in planning and image_filename in planning
+        project = await coding.create_project(CodingProjectCreate(
+            title='Gioco originale', session_id=example.session_id, initial_prompt='Usa le regole e mostra Tabellone.png',
+            documents=[reference], images=[{'name': image_filename, 'data_url': image_url}, {'name': 'Bozza.png', 'data_url': image_url}],
+        ), db, actor)
+        await coding.generate_project_code_stream(project['id'], CodingGenerateRequest(
+            prompt='Crea il gioco', files=[{'path': 'description.md', 'content': 'Usa le regole allegate'}],
+        ), db, actor)
+        assert any(event['type'] == 'done' and not event['needs_review'] for event in events)
+        assert prompts and all(rule in prompt and image_filename in prompt and image_url not in prompt for prompt in prompts)
+
+        detail = await coding.get_project(project['id'], db, actor)
+        files = detail.versions[-1].source_manifest_json['files']
+        assert any(f['path'] == image_path and image_url in f['content'] for f in files)
+        assert any(f['path'].startswith('vibe-references/') and rule in f['content'] for f in files)
+        prompts.clear()
+        await coding.generate_project_code_stream(project['id'], CodingGenerateRequest(prompt='Migliora il tabellone'), db, actor)
+        assert any(rule in prompt and image_filename in prompt and image_url not in prompt for prompt in prompts)
+
+        publication = await coding.publish_project(project['id'], db, actor)
+        public = await coding.get_public_project_payload(publication['slug'], db)
+        assert any(f['path'] == image_path and image_url in f['content'] for f in public['files'])
+        assert not any(f['path'] == 'vibe-images/bozza-2.ts' for f in public['files'])
+        assert not any(rule in f['content'] for f in public['files'])
 
 
 @pytest.mark.parametrize('mode',['canonical','no_end','json','repair','unusable','bad_export','missing_root'])

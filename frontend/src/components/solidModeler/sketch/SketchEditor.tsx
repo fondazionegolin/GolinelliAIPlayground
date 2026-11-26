@@ -2,10 +2,11 @@ import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { createPortal } from 'react-dom'
 import { Button } from '@/design/primitives/Button'
 import { IconButton } from '@/design/primitives/IconButton'
-import { Box, Check, Grid3x3, Magnet, Maximize, Redo2, Ruler, Trash2, Undo2 } from '@/components/icons'
+import { Box, Check, Grid3x3, Magnet, Maximize, PencilLine, Redo2, Ruler, Trash2, Undo2 } from '@/components/icons'
 import { cornerCandidates, dragVertex, entitiesOfRegion, entityInRect, entityVertices, filletCorner, pushEdge, mirrorEntity, mirrorEntities, segmentMidpoint, trimEntity, type MirrorAxis } from './edit2d'
 import { DEFAULT_MODES, MODE_OPTIONS, drawNeed, drawPreview, type DrawModes, type DrawTool, type ModeTool } from './drawModes'
 import { inferPoint } from './infer'
+import { circularPattern, defaultStep, rectPattern, sourceCenter, MAX_COPIES, type PatternMode } from './pattern'
 import { profileFromSelection, type RevolveAxis } from './revolve'
 import { tl } from '@/i18n/tl'
 import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
@@ -16,7 +17,7 @@ import {
   translateEntity, arcEnds, arcSweep, type P, type Region, type SketchEntity, type SnapKind,
 } from './geom2d'
 
-type Tool = 'select' | DrawTool | 'offset' | 'trim' | 'fillet' | 'mid' | 'mirror' | 'revolve'
+type Tool = 'select' | DrawTool | 'offset' | 'trim' | 'fillet' | 'mid' | 'mirror' | 'pattern' | 'revolve'
 const DRAW_TOOLS: Tool[] = ['line', 'arc', 'rect', 'circle', 'ellipse', 'polygon', 'curve']
 const MODE_TOOLS: Tool[] = ['rect', 'circle', 'arc', 'curve']
 
@@ -90,6 +91,7 @@ const TOOL_ICONS: Record<Exclude<Tool, 'select'>, ReactNode> = {
   fillet: svg(<><path d="M4 4v6a6 6 0 0 0 6 6h10" /><path d="M4 20V4" strokeDasharray="0.1 3" /></>),
   mid: svg(<><path d="M4 18 20 6" /><path d="M12 8.2 15 12.6H9Z" fill="currentColor" transform="translate(0 0.4)" /><circle cx="4" cy="18" r="1.4" fill="currentColor" /><circle cx="20" cy="6" r="1.4" fill="currentColor" /></>),
   offset: svg(<><rect x="3" y="3" width="18" height="18" rx="3" strokeDasharray="3 2.4" /><rect x="7.5" y="7.5" width="9" height="9" rx="0.5" /></>),
+  pattern: svg(<><rect x="3" y="3" width="7" height="7" rx="1.2" /><rect x="14" y="3" width="7" height="7" rx="1.2" strokeDasharray="2.6 2" /><rect x="3" y="14" width="7" height="7" rx="1.2" strokeDasharray="2.6 2" /><rect x="14" y="14" width="7" height="7" rx="1.2" strokeDasharray="2.6 2" /></>),
   mirror: svg(<><path d="M12 3v18" strokeDasharray="2.4 2" /><path d="M9 7 4 17h5Z" /><path d="m15 7 5 10h-5Z" fill="currentColor" fillOpacity="0.25" /></>),
   revolve: svg(<><path d="M12 2.5v19" strokeDasharray="2.4 2" /><ellipse cx="12" cy="7" rx="7" ry="2.2" /><path d="M5 7v10c0 1.2 3.1 2.2 7 2.2s7-1 7-2.2V7" /><path d="m15.5 4.4 2.2.5-1.3 1.8" /></>),
 }
@@ -107,13 +109,14 @@ const TOOLS: { id: Tool; label: string; key: string; group: number }[] = [
   { id: 'fillet', label: tl("Raccordo angolo (fillet)"), key: 'B', group: 2 },
   { id: 'mid', label: tl("Punto medio"), key: 'M', group: 2 },
   { id: 'mirror', label: tl("Specchio (asse o punto di simmetria)"), key: 'X', group: 3 },
+  { id: 'pattern', label: tl("Ripetizione rettangolare o circolare"), key: 'N', group: 2 },
   { id: 'revolve', label: tl("Solido di rotazione (profilo + asse)"), key: 'W', group: 3 },
 ]
 const SHORT_LABEL: Record<Tool, string> = {
   select: tl("Seleziona"), line: tl("Linea"), rect: tl("Rettangolo"), circle: tl("Cerchio"), arc: tl("Arco"), curve: tl("Curva"), ellipse: tl("Ellisse"),
-  polygon: tl("Poligono"), offset: tl("Offset"), trim: tl("Taglia"), fillet: tl("Raccordo"), mid: tl("Punto medio"), mirror: tl("Specchio"), revolve: tl("Rotazione"),
+  polygon: tl("Poligono"), offset: tl("Offset"), trim: tl("Taglia"), fillet: tl("Raccordo"), mid: tl("Punto medio"), mirror: tl("Specchio"), pattern: tl("Ripeti"), revolve: tl("Rotazione"),
 }
-const TOOL_KEYS: Record<string, Tool> = { s: 'select', v: 'select', l: 'line', a: 'arc', r: 'rect', c: 'circle', e: 'ellipse', p: 'polygon', u: 'curve', o: 'offset', t: 'trim', b: 'fillet', m: 'mid', x: 'mirror', w: 'revolve' }
+const TOOL_KEYS: Record<string, Tool> = { s: 'select', v: 'select', l: 'line', a: 'arc', r: 'rect', c: 'circle', e: 'ellipse', p: 'polygon', u: 'curve', o: 'offset', t: 'trim', b: 'fillet', m: 'mid', x: 'mirror', n: 'pattern', w: 'revolve' }
 
 function isValid(e: SketchEntity): boolean {
   switch (e.type) {
@@ -331,6 +334,8 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
   const [moveDrag, setMoveDrag] = useState<{ from: P; delta: P; ids: string[] } | null>(null)
   const [handleDrag, setHandleDrag] = useState<{ id: string; key: string; p: P } | null>(null)
   const [mirrorKeep, setMirrorKeep] = useState(true)
+  const [pat, setPat] = useState<{ mode: PatternMode; nx: number; ny: number; dx: number | null; dy: number | null; count: number; angle: number; centre: P | null }>({ mode: 'rect', nx: 3, ny: 1, dx: null, dy: null, count: 6, angle: 360, centre: null })
+  const [patDrag, setPatDrag] = useState<'x' | 'y' | null>(null)
   const [rev, setRev] = useState<{ axis: RevolveAxis | null; label: string; angle: string; mode: 'solid' | 'cut'; error: string | null; step: 'shape' | 'axis' }>({ axis: null, label: '', angle: '360', mode: 'solid', error: null, step: 'shape' })
   const [marquee, setMarquee] = useState<{ a: P; b: P; moved: boolean } | null>(null)
   const [quickEdit, setQuickEdit] = useState<{ id: string; text: string[] } | null>(null)
@@ -625,6 +630,47 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
     if (mp) addPoint(mp)
   }
 
+  // ── Pattern (rectangular / circular repetition of the selection) ──
+  const patSrc = useMemo(() => (tool === 'pattern' ? entities.filter(e => selected.includes(e.id)) : []), [tool, entities, selected])
+  const patC = useMemo(() => sourceCenter(patSrc), [patSrc])
+  const patStep = useMemo(() => defaultStep(patSrc), [patSrc])
+  const patDx = pat.dx ?? patStep[0]
+  const patDy = pat.dy ?? patStep[1]
+  const patCopies = useMemo(() => {
+    if (tool !== 'pattern' || !patSrc.length) return []
+    if (pat.mode === 'rect') return rectPattern(patSrc, pat.nx, pat.ny, patDx, patDy)
+    return pat.centre ? circularPattern(patSrc, pat.centre, pat.count, pat.angle) : []
+  }, [tool, patSrc, pat, patDx, patDy])
+  /** Arrow handles of the rectangular pattern: they sit on the last copy of the row / column. */
+  const patHandles = (): { x: P; y: P } => ({ x: [patC[0] + Math.max(pat.nx - 1, 1) * patDx, patC[1]], y: [patC[0], patC[1] + Math.max(pat.ny - 1, 1) * patDy] })
+  /** Points of the source that can be the centre of a circular pattern (vertices, centres, quadrants, midpoints). */
+  const patCandidates = useMemo(() => {
+    const seen = new Set<string>(); const out: P[] = []
+    for (const e of patSrc) for (const kp of keyPoints(e)) {
+      const key = `${kp.p[0].toFixed(3)},${kp.p[1].toFixed(3)}`
+      if (!seen.has(key)) { seen.add(key); out.push(kp.p) }
+    }
+    return out
+  }, [patSrc])
+  const patCandidateAt = (raw: P): P | null => {
+    let best: P | null = null, bd = 16 / view.k
+    for (const q of patCandidates) { const d = dist(q, raw); if (d < bd) { bd = d; best = q } }
+    return best
+  }
+  const patHandleAt = (raw: P): 'x' | 'y' | null => {
+    if (tool !== 'pattern' || pat.mode !== 'rect' || !patSrc.length) return null
+    const h = patHandles()
+    if (dist(h.x, raw) * view.k < 16) return 'x'
+    if (dist(h.y, raw) * view.k < 16) return 'y'
+    return null
+  }
+  const applyPattern = () => {
+    if (!patCopies.length) return
+    commit([...entities, ...patCopies])
+    setSelected(patCopies.map(e => e.id))
+    setTool('select')
+  }
+
   // ── Mirror ──
   const mirrorAxisAt = (raw: P, snap: SnapResult): { axis: MirrorAxis; axisId?: string } | null => {
     const hit = hitEntity(raw)
@@ -745,6 +791,15 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
       if (c) applyMirror(c.axis, c.axisId ? [c.axisId] : [])
       return
     }
+    if (tool === 'pattern') {
+      if (pat.mode === 'rect' && patSrc.length) {
+        const g = patHandleAt(raw)
+        if (g) { setPatDrag(g); ;(e.target as Element).setPointerCapture(e.pointerId); return }
+      } else if (pat.mode === 'circ' && patSrc.length) {
+        setPat(p => ({ ...p, centre: patCandidateAt(raw) ?? snap.p }))
+      }
+      return
+    }
     if (tool === 'revolve') {
       const hit = hitEntity(raw)
       if (rev.step === 'shape') {
@@ -770,6 +825,13 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
     setShift(e.shiftKey)
     const snap = snapPoint(raw)
     setCursor(snap)
+    if (patDrag) {
+      const n = Math.max((patDrag === 'x' ? pat.nx : pat.ny) - 1, 1)
+      let v = (patDrag === 'x' ? raw[0] - patC[0] : raw[1] - patC[1]) / n
+      if (grid > 0) v = Math.round(v / grid) * grid
+      v = Math.round(v * 100) / 100
+      setPat(p => (patDrag === 'x' ? { ...p, dx: v } : { ...p, dy: v }))
+    }
     if (marquee) setMarquee({ ...marquee, b: raw, moved: marquee.moved || dist(raw, marquee.a) * view.k > 3 })
     if (handleDrag) setHandleDrag({ ...handleDrag, p: snap.p })
     if (editDrag) {
@@ -788,6 +850,11 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
   }
   const onPointerUp = (e: React.PointerEvent) => {
     if (panRef.current) { panRef.current = null; return }
+    if (patDrag) {
+      setPatDrag(null)
+      try { (e.target as Element).releasePointerCapture(e.pointerId) } catch { /* not captured */ }
+      return
+    }
     if (editDrag) {
       if (editPreview) commit(editPreview)
       setEditDrag(null)
@@ -877,6 +944,7 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
         if (tool === 'revolve' && rev.step === 'shape' && selected.length) setRev(r => ({ ...r, step: 'axis', error: null }))
         else if (tool === 'curve' && modes.curve === 'spline' && draft.length) finishSpline(draft)
         else if (tool === 'line' && draft.length) setDraft([])
+        else if (tool === 'pattern') applyPattern()
       }
       else if (e.key === 'Tab') {
         e.preventDefault()
@@ -1126,6 +1194,60 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
         }
       }
     }
+    if (tool === 'pattern' && patSrc.length) {
+      for (const e of patCopies) strokeEntity(e, '#7c3aed', 2, [6, 4])
+      for (const e of patSrc) strokeEntity(e, '#7c3aed', 2.6)
+      // A real grip: white disc with violet rim and a double chevron; grows and fills violet under the pointer.
+      const grip = (from: P, at: P, axis: 'x' | 'y', label: string, active: boolean) => {
+        const a = S(from), b = S(at)
+        ctx.setLineDash([]); ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 2
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke()
+        ctx.fillStyle = '#7c3aed'; ctx.beginPath(); ctx.arc(a[0], a[1], 3.5, 0, Math.PI * 2); ctx.fill()
+        const r = active ? 17 : 14
+        ctx.save()
+        ctx.shadowColor = 'rgba(76, 29, 149, 0.45)'; ctx.shadowBlur = active ? 14 : 8; ctx.shadowOffsetY = 2
+        ctx.beginPath(); ctx.arc(b[0], b[1], r, 0, Math.PI * 2)
+        ctx.fillStyle = active ? '#7c3aed' : '#ffffff'; ctx.fill()
+        ctx.restore()
+        ctx.lineWidth = 2.5; ctx.strokeStyle = '#7c3aed'; ctx.beginPath(); ctx.arc(b[0], b[1], r, 0, Math.PI * 2); ctx.stroke()
+        ctx.strokeStyle = active ? '#ffffff' : '#7c3aed'; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+        const [ux, uy] = axis === 'x' ? [1, 0] : [0, -1]
+        for (const sgn of [-1, 1]) {
+          const tip: P = [b[0] + sgn * ux * 8, b[1] + sgn * uy * 8]
+          const base: P = [b[0] + sgn * ux * 3.5, b[1] + sgn * uy * 3.5]
+          ctx.beginPath()
+          ctx.moveTo(base[0] - uy * 5, base[1] + ux * 5); ctx.lineTo(tip[0], tip[1]); ctx.lineTo(base[0] + uy * 5, base[1] - ux * 5)
+          ctx.stroke()
+        }
+        // Value pill.
+        ctx.font = '700 11px sans-serif'
+        const w = ctx.measureText(label).width + 14
+        const lx = b[0] + (axis === 'x' ? -w / 2 : r + 6), ly = b[1] + (axis === 'x' ? -r - 26 : -10)
+        ctx.fillStyle = '#4c1d95'; ctx.beginPath(); ctx.roundRect(lx, ly, w, 20, 10); ctx.fill()
+        ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'middle'; ctx.fillText(label, lx + 7, ly + 10); ctx.textBaseline = 'alphabetic'
+      }
+      if (pat.mode === 'rect') {
+        const h = patHandles()
+        const over = patDrag ?? (lastRaw.current ? patHandleAt(lastRaw.current) : null)
+        grip(patC, h.x, 'x', `${fmt(patDx)} mm`, over === 'x')
+        grip(patC, h.y, 'y', `${fmt(patDy)} mm`, over === 'y')
+      } else {
+        // Candidate centres: every vertex / centre of the shape to duplicate, the pointed one lit up.
+        const hot = lastRaw.current ? patCandidateAt(lastRaw.current) : null
+        for (const q of patCandidates) {
+          const c = S(q); const isHot = hot === q
+          ctx.setLineDash([]); ctx.beginPath(); ctx.arc(c[0], c[1], isHot ? 10 : 7, 0, Math.PI * 2)
+          ctx.fillStyle = isHot ? 'rgba(124, 58, 237, 0.85)' : 'rgba(255,255,255,0.9)'; ctx.fill()
+          ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 2.2; ctx.stroke()
+        }
+        if (pat.centre) {
+          const c = S(pat.centre)
+          ctx.setLineDash([]); ctx.strokeStyle = '#4c1d95'; ctx.lineWidth = 2.4
+          ctx.beginPath(); ctx.arc(c[0], c[1], 9, 0, Math.PI * 2); ctx.moveTo(c[0] - 15, c[1]); ctx.lineTo(c[0] + 15, c[1]); ctx.moveTo(c[0], c[1] - 15); ctx.lineTo(c[0], c[1] + 15); ctx.stroke()
+          ctx.fillStyle = '#4c1d95'; ctx.beginPath(); ctx.arc(c[0], c[1], 3, 0, Math.PI * 2); ctx.fill()
+        }
+      }
+    }
     if (tool === 'revolve') {
       // The exact shape that will rotate: picked closed shapes, plus open curves closed against the axis (dashed).
       if (revProfile) {
@@ -1238,6 +1360,7 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
       case 'fillet': return filletUi ? tl("Scrivi il raggio e premi Invio · «Tutti gli angoli» raccorda l'intero contorno") : tl("Clic su un angolo tra due linee (rettangoli e poligoni inclusi) per arrotondarlo")
       case 'mid': return draft.length ? tl("Clic sul secondo punto: aggiungo il punto medio tra i due") : tl("Clic su un tratto per segnare il suo punto medio, oppure su due punti per trovare quello in mezzo")
       case 'mirror': return tl("Clic su una linea (asse di simmetria) o su un punto (simmetria centrale) · prima seleziona i tratti da specchiare, altrimenti vale tutto lo sketch")
+      case 'pattern': return !selected.length ? tl("Prima seleziona l'oggetto da ripetere (strumento Seleziona), poi torna qui") : pat.mode === 'rect' ? tl("Trascina le due frecce per distribuire le copie (verso destra/sinistra, alto/basso) o scrivi il passo nel pannello · Invio = applica") : pat.centre ? tl("Cambia il numero di copie o clicca un altro punto per spostare il centro · Invio = applica") : tl("Clicca il vertice (o il punto) attorno a cui ruotare le copie")
       case 'revolve': return rev.step === 'shape' ? tl("Passo 1: seleziona i segmenti e le curve da ruotare (clic, oppure Shift + trascina) · Invio = avanti") : rev.axis ? tl("Passo 3: regola l'angolo e premi «Rivoluziona»") : tl("Passo 2: clicca la linea che farà da asse di rotazione")
     }
   })()
@@ -1279,6 +1402,42 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
           <div className="flex items-center justify-between rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600">
             {tl("{0} tratti selezionati · trascina per spostarli", selected.length)}
             <button type="button" onClick={deleteSelected} className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
+          </div>
+        )}
+
+        {tool === 'pattern' && (
+          <div className="space-y-2 rounded-lg bg-violet-50/70 p-2">
+            {sectionTitle(tl("Ripetizione"))}
+            {!selected.length ? (
+              <p className="text-[11px] leading-4 text-slate-600">{tl("Seleziona prima l'oggetto (o più tratti) da ripetere con lo strumento Seleziona, poi scegli «Ripeti».")}</p>
+            ) : (
+              <>
+                <p className="text-[11px] leading-4 text-slate-600">{tl("Ripeto {0} tratti selezionati.", selected.length)}</p>
+                <Segmented<PatternMode>
+                  value={pat.mode}
+                  onChange={m => setPat(p => ({ ...p, mode: m }))}
+                  options={[['rect', tl("Rettangolare"), tl("Griglia di colonne e righe")], ['circ', tl("Circolare"), tl("Copie equidistanti attorno a un vertice")]]}
+                />
+                {pat.mode === 'rect' ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Num label={tl("Colonne")} value={pat.nx} suffix="" step={1} min={1} onCommit={v => setPat(p => ({ ...p, nx: Math.max(1, Math.min(50, Math.round(v))) }))} />
+                    <Num label={tl("Righe")} value={pat.ny} suffix="" step={1} min={1} onCommit={v => setPat(p => ({ ...p, ny: Math.max(1, Math.min(50, Math.round(v))) }))} />
+                    <Num label={tl("Passo X (− = sinistra)")} value={patDx} step={1} onCommit={v => setPat(p => ({ ...p, dx: v }))} />
+                    <Num label={tl("Passo Y (− = basso)")} value={patDy} step={1} onCommit={v => setPat(p => ({ ...p, dy: v }))} />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-[11px] leading-4 text-slate-600">{pat.centre ? tl("Centro: ({0}, {1})", fmt(pat.centre[0]), fmt(pat.centre[1])) : tl("Clicca nello sketch il vertice attorno a cui ruotare.")}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Num label={tl("Copie totali")} value={pat.count} suffix="" step={1} min={2} onCommit={v => setPat(p => ({ ...p, count: Math.max(2, Math.min(MAX_COPIES, Math.round(v))) }))} />
+                      <Num label={tl("Angolo totale")} value={pat.angle} suffix="°" step={15} onCommit={v => setPat(p => ({ ...p, angle: v }))} />
+                    </div>
+                    <p className="text-[10px] leading-4 text-slate-500">{tl("360° = copie equidistanti su tutto il giro; meno = distribuite tra la prima e l'ultima.")}</p>
+                  </div>
+                )}
+                <Button type="button" tone="accent" surface="solid" density="compact" className="w-full rounded-full" disabled={!patCopies.length} onClick={applyPattern}><Check /> {tl("Applica ({0} copie)", patCopies.length / Math.max(patSrc.length, 1))}</Button>
+              </>
+            )}
           </div>
         )}
 
@@ -1390,7 +1549,7 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
   const GROUPS: { label: string; tools: Tool[] }[] = [
     { label: tl("Seleziona e modifica"), tools: ['select'] },
     { label: tl("Disegna"), tools: ['line', 'rect', 'circle', 'arc', 'curve', 'ellipse', 'polygon'] },
-    { label: tl("Elabora"), tools: ['offset', 'trim', 'fillet', 'mid', 'mirror'] },
+    { label: tl("Elabora"), tools: ['offset', 'trim', 'fillet', 'mid', 'mirror', 'pattern'] },
     { label: tl("Crea solido"), tools: ['revolve'] },
   ]
   const toggle = (on: boolean, label: string, key: string, icon: ReactNode, onClick: () => void) => (
@@ -1399,74 +1558,133 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
       title={`${label} (${key})`}
       aria-pressed={on}
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[11px] font-semibold text-slate-700 hover:bg-slate-100 ${on ? 'ds-selected' : ''}`}
+      className={`flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[11px] font-semibold transition ${on ? 'ds-accent-selected' : 'ds-well-tile text-[var(--text-primary)]'}`}
     >
       <span className="h-5 w-5 shrink-0 [&_svg]:h-5 [&_svg]:w-5">{icon}</span>{label}
     </button>
   )
+  // Mode picker: a floating popover anchored under the selected tool tile, so the tool column never reflows.
+  const toolBtnRefs = useRef<Partial<Record<Tool, HTMLButtonElement | null>>>({})
+  const [modeOpen, setModeOpen] = useState(false)
+  const [modePos, setModePos] = useState<{ left: number; top: number } | null>(null)
+  useEffect(() => { if (!modeTool) setModeOpen(false) }, [modeTool])
+  useLayoutEffect(() => {
+    if (!modeOpen || !modeTool) { setModePos(null); return }
+    const place = () => {
+      const r = toolBtnRefs.current[modeTool]?.getBoundingClientRect()
+      if (!r) return
+      const w = 272
+      setModePos({ left: Math.max(8, Math.min(r.left, window.innerWidth - w - 8)), top: r.bottom + 6 })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [modeOpen, modeTool])
+  useEffect(() => {
+    if (!modeOpen) return
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (t.closest('[data-sketch-mode-popover]') || t.closest('[data-sketch-tool]')) return
+      setModeOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setModeOpen(false) }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey) }
+  }, [modeOpen])
+  const pickTool = (id: Tool) => {
+    if (id === tool && MODE_TOOLS.includes(id)) { setModeOpen(o => !o); return }
+    setTool(id)
+    setModeOpen(MODE_TOOLS.includes(id))
+  }
+  const modePopover = modeOpen && modeTool && modePos && createPortal(
+    <div
+      data-sketch-mode-popover
+      role="radiogroup"
+      aria-label={tl("Modalità di disegno")}
+      style={{ position: 'fixed', left: modePos.left, top: modePos.top, width: 272, zIndex: 80 }}
+      className="ds-popover space-y-0.5 rounded-2xl bg-[var(--ds-popover-solid)] p-1.5 shadow-[var(--ds-shadow-popover)]"
+    >
+      <p className="px-2 pb-0.5 pt-1 text-[10px] font-semibold text-[var(--text-secondary)]">{tl("Modalità")} · {SHORT_LABEL[modeTool]}</p>
+      {MODE_OPTIONS[modeTool].map(o => {
+        const current = modes[modeTool] === o.id
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={current}
+            onClick={() => { setModes(m => ({ ...m, [modeTool]: o.id })); setDraft([]); setDimText([]); setModeOpen(false) }}
+            className={`flex w-full flex-col items-start rounded-xl px-3 py-2 text-left transition ${current ? 'ds-accent-selected' : 'text-[var(--text-primary)] hover:bg-[var(--ds-control-hover)]'}`}
+          >
+            <span className="text-[12px] font-semibold">{o.label}</span>
+            <span className="text-[10.5px] leading-4 opacity-75">{o.hint}</span>
+          </button>
+        )
+      })}
+    </div>,
+    document.body,
+  )
   const toolsPanel = (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3 pt-2">
-      <div className="mb-1 flex items-center justify-between px-1">
-        <p className="text-[11px] font-semibold text-slate-800">{tl("Strumenti sketch")}</p>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
+        <p className="pt-1.5 text-[10px] font-semibold text-[var(--text-secondary)]">{tl("Strumenti sketch")}</p>
         <span className="flex gap-0.5">
           <IconButton type="button" title={tl("Annulla (Ctrl+Z)")} aria-label={tl("Annulla")} onClick={undo} disabled={!hist.past.length} tone="neutral" surface="ghost" size="sm" className="rounded-full"><Undo2 /></IconButton>
           <IconButton type="button" title={tl("Ripeti (Ctrl+Y)")} aria-label={tl("Ripeti")} onClick={redo} disabled={!hist.future.length} tone="neutral" surface="ghost" size="sm" className="rounded-full"><Redo2 /></IconButton>
         </span>
       </div>
-      {GROUPS.map(g => (
-        <div key={g.label} className="mt-2">
-          <p className="px-1 pb-1 text-[10px] font-semibold text-slate-400">{g.label}</p>
-          <div className="grid grid-cols-3 gap-1">
-            {g.tools.map(id => {
-              const t = TOOLS.find(x => x.id === id)!
-              const active = tool === id
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  title={`${t.label} (${t.key})`}
-                  aria-pressed={active}
-                  onClick={() => setTool(id)}
-                  className={`relative flex h-[50px] flex-col items-center justify-center gap-0.5 rounded-lg border px-0.5 text-[10px] font-semibold leading-tight transition hover:-translate-y-0.5 hover:shadow ${active ? 'ds-selected border-transparent' : 'border-slate-200 bg-white text-slate-800'}`}
-                >
-                  <span className="h-5 w-5 [&_svg]:h-5 [&_svg]:w-5">{id === 'select' ? SELECT_ICON : TOOL_ICONS[id as Exclude<Tool, 'select'>]}</span>
-                  <span className="max-w-full truncate px-0.5">{SHORT_LABEL[id]}</span>
-                  <span className="absolute right-0.5 top-0 text-[7px] font-bold text-slate-400">{t.key}</span>
-                </button>
-              )
-            })}
-          </div>
-          {modeTool && g.tools.includes(modeTool) && (
-            <div className="mt-1.5 space-y-0.5 rounded-xl bg-slate-50 p-1" role="radiogroup" aria-label={tl("Modalità di disegno")}>
-              <p className="px-2 pt-0.5 text-[10px] font-semibold text-slate-400">{tl("Modalità")}</p>
-              {MODE_OPTIONS[modeTool].map(o => {
-                const current = modes[modeTool] === o.id
+      {/* Same spot as the «Sketch 2D» button of the shapes column: it turns into the highlighted «Fine sketch». */}
+      <button
+        type="button"
+        onClick={() => onFinish(entities)}
+        title={tl("Torna al 3D: lo sketch resta nella scena")}
+        className="ds-accent-selected mx-2 mb-2 flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[11px] font-semibold leading-tight"
+      >
+        <PencilLine className="h-5 w-5 shrink-0" />
+        <span>{tl("Fine Sketch")}</span>
+      </button>
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">
+        {GROUPS.map(g => (
+          <section key={g.label} className="rounded-2xl bg-[var(--ds-well)] p-1.5">
+            <p className="px-1.5 pb-1 pt-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">{g.label}</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {g.tools.map(id => {
+                const t = TOOLS.find(x => x.id === id)!
+                const active = tool === id
                 return (
                   <button
-                    key={o.id}
+                    key={id}
+                    ref={el => { toolBtnRefs.current[id] = el }}
+                    data-sketch-tool
                     type="button"
-                    role="radio"
-                    aria-checked={current}
-                    onClick={() => { setModes(m => ({ ...m, [modeTool]: o.id })); setDraft([]); setDimText([]) }}
-                    className={`flex w-full flex-col items-start rounded-lg px-2 py-1.5 text-left hover:bg-white ${current ? 'ds-selected' : 'text-slate-700'}`}
+                    title={`${t.label} (${t.key})`}
+                    aria-pressed={active}
+                    aria-haspopup={MODE_TOOLS.includes(id) ? 'true' : undefined}
+                    onClick={() => pickTool(id)}
+                    className={`relative flex h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 text-[10px] font-semibold leading-tight transition ${active ? 'ds-accent-selected' : 'ds-well-tile text-[var(--text-primary)]'}`}
                   >
-                    <span className="text-[11px] font-semibold">{o.label}</span>
-                    <span className="text-[10px] leading-3 opacity-70">{o.hint}</span>
+                    <span className="h-5 w-5 [&_svg]:h-5 [&_svg]:w-5">{id === 'select' ? SELECT_ICON : TOOL_ICONS[id as Exclude<Tool, 'select'>]}</span>
+                    <span className="max-w-full truncate px-0.5">{SHORT_LABEL[id]}</span>
+                    <span className={`absolute right-1 top-0.5 text-[7px] font-bold ${active ? 'opacity-80' : 'text-[var(--text-secondary)]'}`}>{t.key}</span>
                   </button>
                 )
               })}
             </div>
-          )}
-        </div>
-      ))}
-      <p className="mt-3 px-1 pb-1 text-[10px] font-semibold text-slate-400">{tl("Aiuti")}</p>
-      <div className="flex flex-col">
-        {toggle(constrained, tl("Modalità vincolata"), 'F9', <Magnet />, () => setConstrained(c => !c))}
-        {toggle(ortho, tl("Ortogonale"), 'F8', svg(<><path d="M5 4v15h15" /><path d="M5 12h4" strokeDasharray="2 2" /></>), () => setOrtho(o => !o))}
-        {toggle(showDims, tl("Mostra quote"), 'Q', <Ruler />, () => setShowDims(v => !v))}
-        {toggle(show3d, tl("Anteprima 3D"), '3', <Box />, () => onShow3d(!show3d))}
-        {toggle(false, tl("Inquadra"), 'F', <Maximize />, fit)}
+          </section>
+        ))}
+        <section className="rounded-2xl bg-[var(--ds-well)] p-1.5">
+          <p className="px-1.5 pb-1 pt-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">{tl("Aiuti")}</p>
+          <div className="flex flex-col gap-1">
+            {toggle(constrained, tl("Modalità vincolata"), 'F9', <Magnet />, () => setConstrained(c => !c))}
+            {toggle(ortho, tl("Ortogonale"), 'F8', svg(<><path d="M5 4v15h15" /><path d="M5 12h4" strokeDasharray="2 2" /></>), () => setOrtho(o => !o))}
+            {toggle(showDims, tl("Mostra quote"), 'Q', <Ruler />, () => setShowDims(v => !v))}
+            {toggle(show3d, tl("Anteprima 3D"), '3', <Box />, () => onShow3d(!show3d))}
+            {toggle(false, tl("Inquadra"), 'F', <Maximize />, fit)}
+          </div>
+        </section>
       </div>
+      {modePopover}
     </div>
   )
 
@@ -1477,7 +1695,7 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
         <canvas
           ref={canvasRef}
           className="absolute inset-0 h-full w-full"
-          style={{ cursor: panRef.current || editDrag || moveDrag ? 'grabbing' : tool === 'select' ? (lastRaw.current && (vertexAt(lastRaw.current) || hitEntity(lastRaw.current)) ? 'grab' : 'default') : 'none' }}
+          style={{ cursor: panRef.current || editDrag || moveDrag || patDrag ? 'grabbing' : tool === 'pattern' ? (lastRaw.current && patHandleAt(lastRaw.current) ? 'grab' : 'crosshair') : tool === 'select' ? (lastRaw.current && (vertexAt(lastRaw.current) || hitEntity(lastRaw.current)) ? 'grab' : 'default') : 'none' }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -1631,6 +1849,16 @@ export default function SketchEditor({ planeLabel, refs, boundary, resume, panel
           )}
           <span>{hint}</span>
         </div>
+        {tool === 'pattern' && patSrc.length > 0 && pat.mode === 'circ' && (
+          <div className="pointer-events-none absolute bottom-14 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-violet-200 bg-white/95 p-1 shadow-lg">
+            {([[1, tl("Clicca il vertice attorno a cui duplicare"), pat.centre ? 'done' : 'active'], [2, tl("Copie e angolo, poi Invio"), pat.centre ? 'active' : 'todo']] as [number, string, 'todo' | 'active' | 'done'][]).map(([n, text, st]) => (
+              <span key={n} className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold ${st === 'active' ? 'bg-violet-600 text-white' : st === 'done' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-400'}`}>
+                <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] ${st === 'active' ? 'bg-white/25' : st === 'done' ? 'bg-emerald-500 text-white' : 'bg-slate-200'}`}>{st === 'done' ? '✓' : n}</span>
+                {text}
+              </span>
+            ))}
+          </div>
+        )}
         {tool === 'revolve' && (
           <div className="pointer-events-none absolute bottom-14 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5">
             <div className="flex items-center gap-1 rounded-full border border-violet-200 bg-white/95 p-1 shadow-lg">

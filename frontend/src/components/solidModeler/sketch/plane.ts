@@ -269,9 +269,18 @@ export function sketchRegionsOf(obj: PrimitiveObject): { regions: Region[]; enti
 }
 
 /** Interior point of a region (or of the biggest one) in the sketch's local frame, for the extrusion handle. */
-export function sketchHandlePoint(obj: PrimitiveObject, regionIndex: number | null): P | null {
+/** Which closed profiles of a sketch are meant: one index, several (coplanar faces picked together) or all (null). */
+export type RegionSel = number | number[] | null
+
+export function selectedRegions<R>(regions: R[], sel: RegionSel): R[] {
+  if (sel == null) return regions
+  const list = (Array.isArray(sel) ? sel : [sel]).map(i => regions[i]).filter(Boolean)
+  return list.length ? list : regions
+}
+
+export function sketchHandlePoint(obj: PrimitiveObject, regionIndex: RegionSel): P | null {
   const { regions } = sketchRegionsOf(obj)
-  const r = regionIndex != null ? regions[regionIndex] : [...regions].sort((a, b) => b.area - a.area)[0]
+  const r = [...selectedRegions(regions, regionIndex)].sort((a, b) => b.area - a.area)[0]
   return r ? interiorPoint(r.outer) : null
 }
 
@@ -294,13 +303,13 @@ function topLevel(objects: SceneObject[], id: string | undefined): SceneObject |
  * into solids: a hole cut from them. With `preview` the result is a loose, ungrouped object for dragging.
  */
 export function applySketchExtrusion(
-  objects: SceneObject[], sketchId: string, regionIndex: number | null, t: number,
+  objects: SceneObject[], sketchId: string, regionIndex: RegionSel, t: number,
   opts: { symmetric?: boolean; preview?: boolean; dragId?: string } = {},
 ): SketchExtrusionResult | null {
   const sketch = objects.find(o => o.id === sketchId && o.kind === 'sketch') as PrimitiveObject | undefined
   if (!sketch || Math.abs(t) < 0.05) return null
   const { regions, entities } = sketchRegionsOf(sketch)
-  const chosen = regionIndex != null && regions[regionIndex] ? [regions[regionIndex]] : regions
+  const chosen = selectedRegions(regions, regionIndex)
   if (!chosen.length) return null
   const plane = planeOfSketch(sketch)
   const depth = Math.abs(t)

@@ -116,7 +116,6 @@
     /* ── Brand color system (single source of truth — replaces per-user accents) ──
        red    → buttons / primary actions
        lavender/violet → pill selectors / segmented controls / tabs
-       celeste→ secondary text
        yellow → mini pills (e.g. BETA badge) */
     --brand-red: #fe004d;
     --brand-red-text: #b80039;        /* readable red for text */
@@ -125,8 +124,6 @@
     --brand-orange-text: #c2410c;     /* readable orange for text */
     --brand-orange-soft: rgba(249, 115, 22, 0.12);
     --brand-orange-soft-strong: rgba(249, 115, 22, 0.18);
-    --brand-celeste: #3ea9f4;         /* secondary text (logo light blue) */
-    --brand-celeste-ink: #1278bd;     /* higher-contrast fallback */
     --brand-pill-lavender: #ece8ff;
     --brand-pill-lavender-hover: #e4defc;
     --brand-pill-lavender-border: #c8bdf3;
@@ -227,7 +224,9 @@
     --surface-logo-blue: var(--logo-blue-10);
     --surface-logo-violet: var(--logo-violet-10);
     --text-primary: #17151b;
-    --text-secondary: #6f477d;
+    /* Cool slate ink for descriptions, subtitles and contextual help. */
+    --text-secondary-light: #5f646e;
+    --text-secondary: var(--text-secondary-light);
     --text-muted: #6e6679;
     /* Crisper, slightly more visible borders so cards/panels read as one consistent system. */
     --border-subtle: transparent;
@@ -283,7 +282,6 @@
     --icon-tint-amount: 28%;
     --brand-red-text: #ff6b93;
     --brand-orange-text: #fb923c;
-    --brand-celeste-ink: #ddb7e6;
     --brand-pill-lavender: rgba(171, 159, 240, 0.14);
     --brand-pill-lavender-hover: rgba(171, 159, 240, 0.20);
     --brand-pill-lavender-border: rgba(171, 159, 240, 0.30);
@@ -295,7 +293,7 @@
 
     --surface-muted: rgba(171, 159, 240, 0.07);
     --text-primary: #e4e6ea;
-    --text-secondary: #ddb7e6;
+    --text-secondary: #aeb3bc;
     --text-muted: #b8adbf;
     --overlay-soft: rgba(0, 0, 0, 0.30);
     --overlay-modal: rgba(0, 0, 0, 0.62);

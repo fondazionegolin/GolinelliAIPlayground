@@ -7,6 +7,9 @@ export const colorTokens = {
     violet: '#7b69c9',
     ink: '#17151b',
   },
+  text: {
+    secondaryLight: '#5f646e',
+  },
   neutral: {
     50: '#fafafa',
     100: '#f5f5f5',

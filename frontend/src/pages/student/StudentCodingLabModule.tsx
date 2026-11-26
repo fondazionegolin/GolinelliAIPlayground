@@ -1,6 +1,6 @@
 import { SectionHeading, SectionIllustration } from '@/design/primitives/SectionHeading'
 import inspectorSparkles from '@/components/icons/inspector-sparkles.generated'
-import { imageToDataUrl, extractDocument, isImageFile, VIBE_DOC_ACCEPT, VIBE_MAX_DOCS, VIBE_MAX_IMAGES, type VibeDocument } from '@/lib/vibeAttachments'
+import { imageToDataUrl, extractDocument, isImageFile, isVibeProjectAttachment, VIBE_DOC_ACCEPT, VIBE_MAX_DOCS, VIBE_MAX_IMAGES, type VibeDocument, type VibeProjectImage } from '@/lib/vibeAttachments'
 import { vibeValidationLabel, observationVerdict, type VibeValidation } from '@/lib/vibeValidation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -248,6 +248,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [attachedDocs, setAttachedDocs] = useState<VibeDocument[]>([])
   const [attaching, setAttaching] = useState(false)
   const attachInputRef = useRef<HTMLInputElement>(null)
+  const [projectDocuments, setProjectDocuments] = useState<VibeDocument[]>([])
+  const [projectImages, setProjectImages] = useState<VibeProjectImage[]>([])
+  const [readingProjectFiles, setReadingProjectFiles] = useState(false)
+  const projectFilesInput = useRef<HTMLInputElement>(null)
+  const projectAttachmentRun = useRef<{ active: boolean }>({ active: false })
   const [files, setFiles] = useState<GeneratedFile[]>([])
   const queryClient = useQueryClient()
   // Identity exposed to generated apps through GolinelliAI.me(): display name + role only. Read from
@@ -592,6 +597,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
   const startNewProject = () => {
     detailLoadSeq.current += 1
+    projectAttachmentRun.current = { active: false }
+    setReadingProjectFiles(false)
+    setProjectDocuments([])
+    setProjectImages([])
     setSelectedProjectId(null)
     setProjectDetail(null)
     setFiles([])
@@ -1206,6 +1215,45 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
   // Step 1: conversational interview. A failure is surfaced (retry / explicit "generate anyway"),
   // never silently turned into a blind generation.
+  const planningAttachments = () => ({
+    documents: projectDocuments.length ? projectDocuments : undefined,
+    image_names: projectImages.length ? projectImages.map(({ name }) => name) : undefined,
+  })
+
+  const addProjectFiles = async (incoming: File[]) => {
+    const run = projectAttachmentRun.current
+    if (!incoming.length || run.active || creating || interviewing) return
+    run.active = true
+    setReadingProjectFiles(true)
+    setError(null)
+    const documents = [...projectDocuments]
+    const images = [...projectImages]
+    try {
+      for (const file of incoming) {
+        if (projectAttachmentRun.current !== run) return
+        try {
+          if (isImageFile(file)) {
+            if (images.length >= VIBE_MAX_IMAGES) throw new Error(tl("Puoi allegare fino a {0} immagini.", VIBE_MAX_IMAGES))
+            if (file.size > 15 * 1024 * 1024) throw new Error(tl("L’immagine supera 15 MB."))
+            images.push({ name: file.name.slice(0, 200), data_url: await imageToDataUrl(file, true) })
+          } else {
+            if (documents.length >= VIBE_MAX_DOCS) throw new Error(tl("Puoi allegare fino a {0} documenti.", VIBE_MAX_DOCS))
+            documents.push(await extractDocument(file))
+          }
+        } catch (err: any) {
+          if (projectAttachmentRun.current === run) setError(err?.response?.data?.detail || err?.message || tl("Impossibile allegare {0}.", file.name))
+        }
+      }
+    } finally {
+      if (projectAttachmentRun.current === run) {
+        run.active = false
+        setProjectDocuments(documents)
+        setProjectImages(images)
+        setReadingProjectFiles(false)
+      }
+    }
+  }
+
   const askInterviewer = async (turns: InterviewTurn[], forceConfirm = false) => {
     const projectTitle = title.trim() || prompt.trim().slice(0, 56)
     setInterviewing(true)
@@ -1217,6 +1265,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         prompt: prompt.trim(),
         force_confirm: forceConfirm || undefined,
         messages: turns.map(({ role, content, kind }) => ({ role, content, kind })),
+        ...planningAttachments(),
       })
       const data = response.data || {}
       const phase: 'question' | 'confirm' = data.phase === 'confirm' ? 'confirm' : 'question'
@@ -1235,7 +1284,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   const handleStartInterview = async () => {
-    if (!prompt.trim()) return
+    if (!prompt.trim() || projectAttachmentRun.current.active) return
     if (!title.trim()) setTitle(prompt.trim().slice(0, 56))
     setChatInput('')
     setChatStep({ n: 1, max: 5 })
@@ -1244,7 +1293,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
   const sendChatAnswer = async (text: string) => {
     const value = text.trim()
-    if (!value || interviewing || !chatTurns) return
+    if (!value || interviewing || projectAttachmentRun.current.active || !chatTurns) return
     setChatInput('')
     await askInterviewer([...chatTurns, { role: 'user', content: value }])
   }
@@ -1260,7 +1309,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         headers: { 'Content-Type': 'application/json', ...getApiAuthHeaders() },
         credentials: 'include',
         signal: controller.signal,
-        body: JSON.stringify({ title: projectTitle, prompt: idea, messages: turns.map(({ role, content }) => ({ role, content })) }),
+        body: JSON.stringify({ title: projectTitle, prompt: idea, messages: turns.map(({ role, content }) => ({ role, content })), ...planningAttachments() }),
       })
       if (!response.ok || !response.body) return null
       const reader = response.body.getReader()
@@ -1317,10 +1366,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   const createAndGenerate = async (turns: InterviewTurn[] = []) => {
-    if (!prompt.trim()) return
+    if (!prompt.trim() || projectAttachmentRun.current.active || creating) return
     const idea = prompt.trim()
     const projectTitle = title.trim() || idea.slice(0, 56)
-    const needsSpec = turns.length > 0 || idea.length > SPEC_PROMPT_THRESHOLD
+    const needsSpec = turns.length > 0 || idea.length > SPEC_PROMPT_THRESHOLD || projectDocuments.length > 0 || projectImages.length > 0
     setCreating(true)
     setError(null)
     try {
@@ -1351,12 +1400,16 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         template_key: 'vite-react',
         initial_prompt: constrainGenerationPrompt(idea),
         kb_files: kbFiles,
+        documents: projectDocuments,
+        images: projectImages,
       })
       const project = response.data as CodingProject
       setProjects((prev) => [project, ...prev.filter((item) => item.id !== project.id)])
       setSelectedProjectId(project.id)
       setCreatePanelOpen(false)
       setChatTurns(null)
+      setProjectDocuments([])
+      setProjectImages([])
       // Keep any context files the student added with "+ File"; refresh description.md and spec.md.
       const initialFiles: GeneratedFile[] = [
         { path: 'description.md', content: description, language: 'markdown' },
@@ -1501,7 +1554,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     cancelObservation()
     setVerifyState('idle')
     try {
-      const baseFiles = filesOverride ?? filesRef.current
+      const baseFiles = (filesOverride ?? filesRef.current).filter((file) => !isVibeProjectAttachment(file.path))
       // Streamed (SSE) generation: keeps the connection alive while the LLM writes the app,
       // so a 90-180s generation survives the Cloudflare ~100s proxy timeout.
       const response = await fetch(codingApi.generateProjectStreamUrl(projectId), {
@@ -2394,6 +2447,52 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     className="min-h-40 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 shadow-inner outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[var(--logo-violet)] focus:bg-white focus:shadow-[var(--ds-shadow-focus)] md:text-sm"
                   />
                 </div>
+                <div
+                  className="mt-3 space-y-2"
+                  onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) event.preventDefault() }}
+                  onDrop={(event) => {
+                    const incoming = Array.from(event.dataTransfer.files)
+                    if (incoming.length) { event.preventDefault(); void addProjectFiles(incoming) }
+                  }}
+                >
+                  <input
+                    ref={projectFilesInput}
+                    type="file"
+                    multiple
+                    accept={`image/*,${VIBE_DOC_ACCEPT}`}
+                    className="hidden"
+                    onChange={(event) => { void addProjectFiles(Array.from(event.target.files || [])); event.target.value = '' }}
+                  />
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <Button type="button" variant="ghost" density="compact" disabled={readingProjectFiles || creating || interviewing} onClick={() => projectFilesInput.current?.click()}>
+                      {readingProjectFiles ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                      {readingProjectFiles ? tl("Leggo gli allegati…") : tl("Allega documenti e immagini")}
+                    </Button>
+                    <p className="text-xs text-[var(--text-secondary)]">{tl("I documenti fanno da riferimento. Indica nel brief come usare le immagini.")}</p>
+                  </div>
+                  {(projectDocuments.length > 0 || projectImages.length > 0) && (
+                    <ul aria-label={tl("Allegati del progetto")} className="flex flex-wrap gap-2">
+                      {projectDocuments.map((doc, index) => (
+                        <li key={`doc-${index}`} className="ds-well flex max-w-full items-center gap-2 rounded-xl px-2 py-1 text-xs text-[var(--text-primary)]">
+                          <FileCode2 className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
+                          <span className="min-w-0"><span className="block truncate" title={doc.name}>{doc.name}</span>{doc.truncated && <small className="block text-[var(--text-secondary)]">{tl("Testo letto parzialmente")}</small>}</span>
+                          <Button type="button" variant="ghost" density="compact" disabled={readingProjectFiles || creating || interviewing} aria-label={tl("Rimuovi {0}", doc.name)} onClick={() => setProjectDocuments((current) => current.filter((_, i) => i !== index))}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </li>
+                      ))}
+                      {projectImages.map((image, index) => (
+                        <li key={`image-${index}`} className="ds-well flex max-w-full items-center gap-2 rounded-xl px-2 py-1 text-xs text-[var(--text-primary)]">
+                          <img src={image.data_url} alt="" className="h-8 w-8 shrink-0 rounded-md object-contain" />
+                          <span className="min-w-0 truncate" title={image.name}>{image.name}</span>
+                          <Button type="button" variant="ghost" density="compact" disabled={readingProjectFiles || creating || interviewing} aria-label={tl("Rimuovi {0}", image.name)} onClick={() => setProjectImages((current) => current.filter((_, i) => i !== index))}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 {showDeepSeekDisclaimer && deepSeekConsent && (
                   <DeepSeekDisclaimer consent={deepSeekConsent} onAccept={acceptDeepSeekConsent} className="mt-3" />
                 )}
@@ -2402,7 +2501,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     <button
                       type="button"
                       onClick={handleStartInterview}
-                      disabled={interviewing || creating || !prompt.trim()}
+                      disabled={interviewing || creating || readingProjectFiles || !prompt.trim()}
                       className="ui-cta inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold transition disabled:opacity-40 md:h-11 md:min-h-0 md:flex-none"
                     >
                       {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
@@ -2411,7 +2510,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     <button
                       type="button"
                       onClick={() => createAndGenerate([])}
-                      disabled={interviewing || creating || !prompt.trim()}
+                      disabled={interviewing || creating || readingProjectFiles || !prompt.trim()}
                       className="inline-flex h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:border-slate-400 disabled:opacity-40"
                       title={tl("Il brief viene comunque analizzato e scomposto in milestone se è lungo")}
                     >
@@ -2492,7 +2591,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                                 <button
                                   type="button"
                                   onClick={() => createAndGenerate(chatTurns)}
-                                  disabled={creating || generating || interviewing}
+                                  disabled={creating || generating || interviewing || readingProjectFiles}
                                   className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-semibold text-[var(--selection-active-text)] transition disabled:opacity-40"
                                 >
                                   {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}

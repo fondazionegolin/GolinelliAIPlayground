@@ -4,10 +4,13 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { applyMaterialPreset, materialById } from './materials'
 import { renderScene, type RenderOptions } from './render'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { editableEdges, edgeLength, eulerDegFromQuaternion, objectGeometry, objectMatrix, regionGeometry, scaleOf, sketchLines, worldBox } from './geometry'
 import { sceneBox } from './sceneOps'
 import type { PrimitiveDef, PrimitiveObject, SceneObject, Vec3 } from './types'
-import { applySketchExtrusion, planeOfSketch, sketchHandlePoint, sketchRegionsOf, type SketchPlane } from './sketch/plane'
+import { applySketchExtrusion, planeOfSketch, selectedRegions, sketchHandlePoint, sketchRegionsOf, type RegionSel, type SketchPlane } from './sketch/plane'
 import { PLATE_SIZE, PRIMITIVES } from './types'
 import { tl } from '@/i18n/tl'
 
@@ -31,6 +34,8 @@ export interface PlanePick {
 export interface FacePick extends PlanePick {
   /** World point under the pointer (tells which closed outline of the face is meant). */
   point: THREE.Vector3
+  /** Shift / Ctrl / Cmd held: add (or remove) this face to the faces already picked. */
+  additive?: boolean
 }
 
 export interface ViewportApi {
@@ -67,7 +72,7 @@ interface Props {
   /** Objects not drawn (e.g. the sketch being edited). */
   hiddenIds?: string[]
   /** Closed region of the selected sketch the extrusion handle works on (null = all). */
-  sketchRegion?: number | null
+  sketchRegion?: RegionSel
   onSketchRegion?: (id: string, index: number | null) => void
   /** Extrude mode: a planar face of a solid was clicked. */
   onPickFace?: (pick: FacePick) => void
@@ -384,6 +389,7 @@ export default function SolidModelerViewport({
       const w = host.clientWidth || 1
       const h = host.clientHeight || 1
       renderer.setSize(w, h)
+      three.current?.selBoxes.children.forEach(ch => { const lm = (ch as LineSegments2).material; if (lm instanceof LineMaterial) lm.resolution.set(w, h) })
       camera.aspect = w / h
       camera.updateProjectionMatrix()
     }
@@ -623,7 +629,7 @@ export default function SolidModelerViewport({
       mesh.userData.hole = obj.hole
       if (mat.userData.ghost !== ghost) { mat.userData.ghost = ghost; mat.needsUpdate = true }
       mat.emissive.set(selected ? '#1d4ed8' : highlight.has(obj.id) ? '#7c3aed' : '#000000')
-      mat.emissiveIntensity = selected ? 0.18 : highlight.has(obj.id) ? 0.25 : 0
+      mat.emissiveIntensity = selected ? 0.22 : highlight.has(obj.id) ? 0.25 : 0
       mesh.castShadow = !obj.hole
       // Holes get crisp edges so they read like Tinkercad's hatched shapes.
       const existingEdges = mesh.children.find(c => c.userData.edges)
@@ -679,17 +685,29 @@ export default function SolidModelerViewport({
     dispose(t.selBoxes)
     const selected = objects.filter(o => selection.includes(o.id) && !o.hidden)
     for (const obj of selected) {
-      const helper = new THREE.Box3Helper(worldBox(obj), new THREE.Color('#2563eb'))
-      ;(helper.material as THREE.LineBasicMaterial).transparent = true
-      ;(helper.material as THREE.LineBasicMaterial).opacity = 0.55
-      helper.raycast = () => {}
-      t.selBoxes.add(helper)
+      // Selection outline: a fine glowing box that stays visible through other objects.
+      const b = worldBox(obj)
+      const { min: a, max: c } = b
+      const pts = [
+        [a.x, a.y, a.z, c.x, a.y, a.z], [c.x, a.y, a.z, c.x, c.y, a.z], [c.x, c.y, a.z, a.x, c.y, a.z], [a.x, c.y, a.z, a.x, a.y, a.z],
+        [a.x, a.y, c.z, c.x, a.y, c.z], [c.x, a.y, c.z, c.x, c.y, c.z], [c.x, c.y, c.z, a.x, c.y, c.z], [a.x, c.y, c.z, a.x, a.y, c.z],
+        [a.x, a.y, a.z, a.x, a.y, c.z], [c.x, a.y, a.z, c.x, a.y, c.z], [c.x, c.y, a.z, c.x, c.y, c.z], [a.x, c.y, a.z, a.x, c.y, c.z],
+      ].flat()
+      // A fine crisp line plus two soft, wider passes: reads as a glow rather than a heavy frame.
+      const size = t.renderer.getSize(new THREE.Vector2())
+      for (const [linewidth, opacity] of [[10, 0.1], [5, 0.18], [1.6, 0.9]] as const) {
+        const mat = new LineMaterial({ color: '#3b82f6', linewidth, transparent: true, opacity, depthTest: false, depthWrite: false, resolution: size })
+        const helper = new LineSegments2(new LineSegmentsGeometry().setPositions(pts), mat)
+        helper.renderOrder = 20
+        helper.raycast = () => {}
+        t.selBoxes.add(helper)
+      }
     }
     if (selected.length === 1 && selected[0].kind === 'sketch' && !readOnly) {
       const sk = selected[0] as PrimitiveObject
       const m = objectMatrix(sk)
       const { regions } = sketchRegionsOf(sk)
-      const chosen = sketchRegion != null && regions[sketchRegion] ? [regions[sketchRegion]] : []
+      const chosen = sketchRegion != null ? selectedRegions(regions, sketchRegion) : []
       for (const r of chosen) {
         const fill = new THREE.Mesh(regionGeometry(r).translate(0, 0, 0.08), new THREE.MeshBasicMaterial({ color: '#2563eb', transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }))
         fill.applyMatrix4(m)
@@ -889,12 +907,12 @@ export default function SolidModelerViewport({
         }
       }
       const handle = !live.current.edgeMode && sel.length >= 1 ? hitHandle() : undefined
-      if (live.current.transformMode === 'extrude' && !handle && !e.shiftKey) {
+      if (live.current.transformMode === 'extrude' && !handle) {
         const fh = hitObject()
         if (fh && fh.faceIndex != null && !fh.object.userData.sketch) {
           e.stopImmediatePropagation()
           const { normal, triangles } = coplanarTriangles(fh.object as THREE.Mesh, fh.faceIndex)
-          live.current.onPickFace?.({ objectId: fh.object.userData.objectId as string, normal, triangles, point: fh.point.clone() })
+          live.current.onPickFace?.({ objectId: fh.object.userData.objectId as string, normal, triangles, point: fh.point.clone(), additive: e.shiftKey || e.ctrlKey || e.metaKey })
           return
         }
       }

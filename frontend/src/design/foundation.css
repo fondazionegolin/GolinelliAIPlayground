@@ -776,7 +776,7 @@
   --mix-base: #ffffff;
   --text-primary: #17151b;
   --text-muted: #6e6679;
-  --text-secondary: #1278bd;
+  --text-secondary: var(--text-secondary-light);
   --foreground: 260 13% 9%;
   --muted-foreground: 215 16% 47%;
   --border: 214 32% 91%;
@@ -841,3 +841,19 @@ nav.shell-nav > div { padding-right: 3rem; }
   box-shadow: var(--ds-board-card-shadow);
 }
 .ds-board-col .ds-board-card:hover { background-color: var(--ds-board-card-hover); }
+
+/* Selection highlight (3D Lab sketch tools, object list, share rows): a violet tone over whatever surface it sits on
+   (lighter on dark surfaces, darker on light ones) with violet ink — the highlight colour of the product. */
+:root { --ds-hl-bg: rgba(109, 76, 230, 0.14); --ds-hl-ink: #5b3fd1; }
+.dark { --ds-hl-bg: rgba(171, 159, 240, 0.2); --ds-hl-ink: #c9bfff; }
+.ds-accent-selected {
+  background-color: var(--ds-hl-bg) !important;
+  background-image: none !important;
+  color: var(--ds-hl-ink) !important;
+  box-shadow: none !important;
+}
+.ds-accent-selected * { color: inherit !important; }
+.ds-accent-soft {
+  background-color: var(--ds-hl-bg);
+  color: var(--ds-hl-ink);
+}

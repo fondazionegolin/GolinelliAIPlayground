@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -15,6 +15,21 @@ class CodingKbFile(BaseModel):
     content: str = Field(default="", max_length=60000)
 
 
+class CodingAttachedDocument(BaseModel):
+    name: str = Field(max_length=200)
+    text: str = Field(max_length=60000)
+
+
+class CodingProjectImage(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    data_url: str = Field(max_length=180000)
+
+
+class CodingPlanningAttachments(BaseModel):
+    documents: list[CodingAttachedDocument] = Field(default_factory=list, max_length=4)
+    image_names: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=3)
+
+
 class CodingProjectCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     session_id: Optional[UUID] = None
@@ -23,6 +38,8 @@ class CodingProjectCreate(BaseModel):
     initial_prompt: Optional[str] = Field(default=None, max_length=30000)
     # Brief files (description.md, spec.md) persisted with the project at creation.
     kb_files: Optional[list[CodingKbFile]] = Field(default=None, max_length=4)
+    documents: list[CodingAttachedDocument] = Field(default_factory=list, max_length=4)
+    images: list[CodingProjectImage] = Field(default_factory=list, max_length=3)
 
 
 class CodingBriefCreate(BaseModel):
@@ -47,11 +64,6 @@ class CodingGeneratedFile(BaseModel):
     path: str = Field(min_length=1, max_length=300)
     content: str = Field(max_length=200000)
     language: Optional[str] = None
-
-
-class CodingAttachedDocument(BaseModel):
-    name: str = Field(max_length=200)
-    text: str = Field(max_length=60000)
 
 
 class CodingGenerateRequest(BaseModel):

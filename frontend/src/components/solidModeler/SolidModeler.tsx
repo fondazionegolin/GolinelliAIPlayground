@@ -4,9 +4,9 @@ import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/design/primitives/Button'
 import { IconButton } from '@/design/primitives/IconButton'
 import {
-  ArrowUp, Camera, ChevronDown, ChevronLeft, ChevronRight, Folder, AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical,
-  ArrowDownToLine, Box, Circle, Cloud, CloudOff, Download, Grid3x3, Loader2, Share2, Smartphone, Cone, Copy, Cylinder, Donut, Eye, EyeOff, FileDown, FilePlus2, FileUp, FlipHorizontal2, FlipVertical2,
-  FolderOpen, Group, Home, Layers, Maximize, MousePointer2, Move, RotateCw, Scale, PencilLine, PenTool, Pyramid, Redo2, Sparkles, Star, Torus, Trash2, Triangle, Type, Undo2, Ungroup,
+  Camera, ChevronDown, ChevronLeft, ChevronRight, Folder, AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical,
+  ArrowDownToLine, Box, Circle, Cloud, CloudOff, Download, Grid3x3, Loader2, Share2, Smartphone, Cone, Copy, Cylinder, Donut, Eye, EyeOff, FileDown, FileUp, FlipHorizontal2, FlipVertical2,
+  FolderOpen, Minimize, Search, Group, Home, Layers, Maximize, MousePointer2, Move, RotateCw, PencilLine, PenTool, Pyramid, Redo2, Sparkles, Star, Torus, Trash2, Triangle, Type, Undo2, Ungroup,
   type LucideIcon,
 } from '@/components/icons'
 import { shapePreviewUrl } from './shapePreview'
@@ -14,11 +14,12 @@ import SolidModelerViewport, { type FacePick, type PlanePick, type TransformMode
 import SketchEditor, { type RevolveRequest } from './sketch/SketchEditor'
 import {
   applySketchExtrusion, applySketchRevolve, coplanarSketchRefs, materializeFeatures, depthThrough, faceFrame, findSketchOnPlane, planeOfSketch, planeReferences, regenerateFeatures, revolveFromSelection,
-  sketchFromExtrusion, sketchRegionsOf, smallestRegionAt, STANDARD_PLANES, toPlane, upsertSketch, type SketchPlane,
+  sketchFromExtrusion, sketchRegionsOf, type RegionSel, smallestRegionAt, STANDARD_PLANES, toPlane, upsertSketch, type SketchPlane,
 } from './sketch/plane'
-import { analyzeSketch, regionContains, type P, type SketchEntity } from './sketch/geom2d'
+import { analyzeSketch, interiorPoint, regionContains, type P, type SketchEntity } from './sketch/geom2d'
 import SolidModelerAIPanel from './SolidModelerAIPanel'
 import SolidModelShareDialog from './SolidModelShareDialog'
+import SolidModelLibrary from './SolidModelLibrary'
 import PresenceAvatars from '@/components/PresenceAvatars'
 import { useResourcePresence } from '@/hooks/useResourcePresence'
 import SolidModelArDialog from './SolidModelArDialog'
@@ -119,28 +120,64 @@ function NumField({ label, value, onCommit, step = 1, min, suffix }: {
   )
 }
 
+/** Scale: a frame with a grab handle on each corner. */
+const ScaleHandlesIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+    <rect x="5" y="5" width="14" height="14" />
+    {[[2.5, 2.5], [18, 2.5], [2.5, 18], [18, 18]].map(([x, y]) => <rect key={`${x}-${y}`} x={x} y={y} width="3.5" height="3.5" rx="0.5" fill="currentColor" />)}
+  </svg>
+)
+/** Extrude: wireframe cube with its top face selected. */
+const ExtrudeFaceIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+    <path d="M12 12v9M4 16.5l8 4.5 8-4.5V7.5" opacity="0.85" />
+    <path d="M4 7.5v9" opacity="0.85" />
+    <path d="M12 3 20 7.5 12 12 4 7.5Z" fill="currentColor" fillOpacity="0.4" />
+  </svg>
+)
+
 const MODE_BUTTONS = [
   ['select', MousePointer2, tl("Seleziona"), 'Esc'],
   ['move', Move, tl("Muovi: frecce sugli assi, dischi sulle facce"), 'M'],
   ['rotate', RotateCw, tl("Ruota: anelli sui tre assi (Shift = passi di 1°)"), 'R'],
-  ['scale', Scale, tl("Scala: angoli proporzionali, facce simmetriche"), 'S'],
-  ['extrude', ArrowUp, tl("Estrudi: clic su una faccia (solido, sketch o linea chiusa), poi scrivi la quota"), 'E'],
+  ['scale', ScaleHandlesIcon, tl("Scala: angoli proporzionali, facce simmetriche"), 'S'],
+  ['extrude', ExtrudeFaceIcon, tl("Estrudi: clic su una faccia (solido, sketch o linea chiusa), poi scrivi la quota"), 'E'],
 ] as const
 
 /** Always-visible, translucent list of the scene in the viewport: folders (3D bodies / holes / sketches) of small buttons, collapsible. */
 function SceneOutliner({ objects, selection, onSelect, onToggleHidden }: { objects: SceneObject[]; selection: string[]; onSelect: (ids: string[]) => void; onToggleHidden: (ids: string[], hidden: boolean) => void }) {
   const [open, setOpen] = useState(true)
   const [closed, setClosed] = useState<Record<string, boolean>>({})
+  const [searching, setSearching] = useState(false)
+  const [query, setQuery] = useState('')
+  const anchor = useRef<string | null>(null)
+  const q = query.trim().toLocaleLowerCase('it')
+  const matches = (o: SceneObject) => !q || o.name.toLocaleLowerCase('it').includes(q) || KIND_LABEL[o.kind as keyof typeof KIND_LABEL]?.toLocaleLowerCase('it').includes(q)
   const folders = [
-    { id: 'bodies', label: tl("Corpi 3D"), items: objects.filter(o => o.kind !== 'sketch' && !o.hole) },
-    { id: 'holes', label: tl("Fori"), items: objects.filter(o => o.kind !== 'sketch' && o.hole) },
-    { id: 'sketches', label: tl("Sketch"), items: objects.filter(o => o.kind === 'sketch') },
+    { id: 'bodies', label: tl("Corpi 3D"), items: objects.filter(o => o.kind !== 'sketch' && !o.hole && matches(o)) },
+    { id: 'holes', label: tl("Fori"), items: objects.filter(o => o.kind !== 'sketch' && o.hole && matches(o)) },
+    { id: 'sketches', label: tl("Sketch"), items: objects.filter(o => o.kind === 'sketch' && matches(o)) },
   ].filter(f => f.items.length)
-  const chip = 'pointer-events-auto bg-white/70 backdrop-blur-sm'
+  // Visible order (folders top to bottom): the range for Shift + click.
+  const order = folders.filter(f => !closed[f.id]).flatMap(f => f.items.map(o => o.id))
+  const visibleIds = folders.flatMap(f => f.items.map(o => o.id))
+  const clickItem = (e: React.MouseEvent, id: string) => {
+    const from = anchor.current ?? selection[0] ?? null
+    if (e.shiftKey && from && order.includes(from) && order.includes(id)) {
+      const a = order.indexOf(from), b = order.indexOf(id)
+      const range = order.slice(Math.min(a, b), Math.max(a, b) + 1)
+      onSelect(e.ctrlKey || e.metaKey ? [...new Set([...selection, ...range])] : range)
+      return
+    }
+    anchor.current = id
+    if (e.shiftKey || e.ctrlKey || e.metaKey) onSelect(selection.includes(id) ? selection.filter(x => x !== id) : [...selection, id])
+    else onSelect([id])
+  }
+  const chip = 'pointer-events-auto bg-[rgba(255,255,255,0.72)] text-[#374151] backdrop-blur-sm'
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} title={tl("Mostra gli oggetti")} aria-label={tl("Mostra gli oggetti")}
-        className={`${chip} absolute left-3 top-14 z-10 flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-2 text-[11px] font-semibold text-slate-600 hover:bg-white/90`}>
+        className={`${chip} absolute left-3 top-14 z-10 flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-2 text-[11px] font-semibold text-[#4b5563] hover:bg-[rgba(255,255,255,0.92)]`}>
         <Layers className="h-3.5 w-3.5" /> {objects.length} <ChevronRight className="h-3.5 w-3.5" />
       </button>
     )
@@ -148,21 +185,37 @@ function SceneOutliner({ objects, selection, onSelect, onToggleHidden }: { objec
   return (
     <div className="pointer-events-none absolute bottom-14 left-3 top-14 z-10 flex w-48 flex-col">
       <div className="mb-1 flex items-center justify-between">
-        <p className={`${chip} flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold text-slate-600`}><Layers className="h-3 w-3" /> {tl("Oggetti")} ({objects.length})</p>
-        <button type="button" onClick={() => setOpen(false)} title={tl("Comprimi gli oggetti")} aria-label={tl("Comprimi gli oggetti")} className={`${chip} rounded-full p-1 text-slate-600 hover:bg-white/90`}><ChevronLeft className="h-3.5 w-3.5" /></button>
+        <p className={`${chip} flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold text-[#4b5563]`}><Layers className="h-3 w-3" /> {tl("Oggetti")} ({objects.length})</p>
+        <button type="button" onClick={() => { setSearching(s => !s); if (searching) setQuery('') }} title={tl("Cerca tra gli oggetti")} aria-label={tl("Cerca tra gli oggetti")} aria-pressed={searching} className={`${chip} ml-auto mr-1 rounded-full p-1 text-[#4b5563] hover:bg-[rgba(255,255,255,0.92)] ${searching ? '!bg-[#2a2c33] !text-white' : ''}`}><Search className="h-3.5 w-3.5" /></button>
+        <button type="button" onClick={() => setOpen(false)} title={tl("Comprimi gli oggetti")} aria-label={tl("Comprimi gli oggetti")} className={`${chip} rounded-full p-1 text-[#4b5563] hover:bg-[rgba(255,255,255,0.92)]`}><ChevronLeft className="h-3.5 w-3.5" /></button>
       </div>
+      {searching && (
+        <div className="pointer-events-auto mb-1 flex items-center gap-1">
+          <input
+            autoFocus
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { setSearching(false); setQuery('') } }}
+            placeholder={tl("Cerca oggetti…")}
+            aria-label={tl("Cerca oggetti")}
+            className="ds-field min-w-0 flex-1 px-3 py-1.5 text-[11px] font-semibold"
+          />
+          <button type="button" disabled={!visibleIds.length} onClick={() => onSelect(visibleIds)} title={tl("Seleziona tutti i risultati")} className={`${chip} shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold text-[#4b5563] hover:bg-[rgba(255,255,255,0.92)] disabled:opacity-40`}>{tl("Tutti")} ({visibleIds.length})</button>
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto pb-2 pr-1">
-        {!objects.length && <p className={`${chip} rounded-xl px-2 py-1.5 text-[11px] leading-4 text-slate-500`}>{tl("Scena vuota: aggiungi una forma, parti da uno sketch 2D o chiedi all'assistente AI.")}</p>}
+        {q && !visibleIds.length && <p className={`${chip} rounded-xl px-2 py-1.5 text-[11px] text-[#4b5563]`}>{tl("Nessun oggetto trovato.")}</p>}
+        {!objects.length && <p className={`${chip} rounded-xl px-2 py-1.5 text-[11px] leading-4 text-[#4b5563]`}>{tl("Scena vuota: aggiungi una forma, parti da uno sketch 2D o chiedi all'assistente AI.")}</p>}
         {folders.map(f => {
           const allHidden = f.items.every(o => o.hidden)
           return (
             <div key={f.id} className="mb-1.5">
               <div className="flex items-center gap-1">
-                <button type="button" onClick={() => setClosed(c => ({ ...c, [f.id]: !c[f.id] }))} aria-expanded={!closed[f.id]} className={`${chip} flex min-w-0 flex-1 items-center gap-1 rounded-full px-2 py-1 text-left text-[10px] font-semibold text-slate-600 hover:bg-white/90`}>
+                <button type="button" onClick={() => setClosed(c => ({ ...c, [f.id]: !c[f.id] }))} aria-expanded={!closed[f.id]} className={`${chip} flex min-w-0 flex-1 items-center gap-1 rounded-full px-2 py-1 text-left text-[10px] font-semibold text-[#4b5563] hover:bg-[rgba(255,255,255,0.92)]`}>
                   {closed[f.id] ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  <Folder className="h-3 w-3" /> <span className="truncate">{f.label}</span> <span className="ml-auto font-normal text-slate-400">{f.items.length}</span>
+                  <Folder className="h-3 w-3" /> <span className="truncate">{f.label}</span> <span className="ml-auto font-normal text-[#4b5563]">{f.items.length}</span>
                 </button>
-                <button type="button" title={allHidden ? tl("Mostra tutti") : tl("Nascondi tutti")} aria-label={allHidden ? tl("Mostra tutti") : tl("Nascondi tutti")} onClick={() => onToggleHidden(f.items.map(o => o.id), !allHidden)} className={`${chip} rounded-full p-1 text-slate-500 hover:bg-white/90`}>
+                <button type="button" title={allHidden ? tl("Mostra tutti") : tl("Nascondi tutti")} aria-label={allHidden ? tl("Mostra tutti") : tl("Nascondi tutti")} onClick={() => onToggleHidden(f.items.map(o => o.id), !allHidden)} className={`${chip} rounded-full p-1 text-[#4b5563] hover:bg-[rgba(255,255,255,0.92)]`}>
                   {allHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                 </button>
               </div>
@@ -172,18 +225,18 @@ function SceneOutliner({ objects, selection, onSelect, onToggleHidden }: { objec
                     const Icon = ICONS[o.kind]
                     const sel = selection.includes(o.id)
                     return (
-                      <div key={o.id} className={`pointer-events-auto flex items-center rounded-full backdrop-blur-sm ${sel ? 'ds-selected' : 'bg-white/70 text-slate-700 hover:bg-white/90'} ${o.hidden ? 'opacity-55' : ''}`}>
+                      <div key={o.id} className={`pointer-events-auto flex items-center rounded-full backdrop-blur-sm ${sel ? 'bg-[#2a2c33] text-white' : 'bg-[rgba(255,255,255,0.72)] text-[#374151] hover:bg-[rgba(255,255,255,0.92)]'} ${o.hidden ? 'opacity-55' : ''}`}>
                         <button
                           type="button"
                           title={o.name}
-                          onClick={e => onSelect(e.shiftKey || e.ctrlKey || e.metaKey ? (sel ? selection.filter(x => x !== o.id) : [...selection, o.id]) : [o.id])}
+                          onClick={e => clickItem(e, o.id)}
                           className={`flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-2 text-left text-[11px] ${sel ? 'font-semibold' : ''}`}
                         >
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: o.hole ? '#a3a3a3' : o.color }} />
-                          <Icon className="h-3 w-3 shrink-0 text-slate-400" />
+                          <Icon className="h-3 w-3 shrink-0 opacity-70" />
                           <span className="truncate">{o.name}</span>
                         </button>
-                        <button type="button" title={o.hidden ? tl("Mostra") : tl("Nascondi")} aria-label={o.hidden ? tl("Mostra") : tl("Nascondi")} aria-pressed={!!o.hidden} onClick={() => onToggleHidden([o.id], !o.hidden)} className="rounded-full p-1.5 text-slate-500 hover:text-slate-900">
+                        <button type="button" title={o.hidden ? tl("Mostra") : tl("Nascondi")} aria-label={o.hidden ? tl("Mostra") : tl("Nascondi")} aria-pressed={!!o.hidden} onClick={() => onToggleHidden([o.id], !o.hidden)} className={`rounded-full p-1.5 ${sel ? "text-white/80 hover:text-white" : "text-[#4b5563] hover:text-[#111827]"}`}>
                           {o.hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                         </button>
                       </div>
@@ -236,13 +289,14 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
   const [panel, setPanel] = useState<'shape' | 'ai'>('ai')
   const [libraryCollapsed, setLibraryCollapsed] = useSidebarCollapsed('solid-modeler-library')
   const [hover, setHover] = useState<string | null>(null)
-  const [projectsOpen, setProjectsOpen] = useState(false)
+  const [inLibrary, setInLibrary] = useState(true)
+  const [fullWindow, setFullWindow] = useState(false)
   const [shareId, setShareId] = useState<string | null>(null)
   const [arOpen, setArOpen] = useState<{ id: string | null } | null>(null)
   const [aiHighlight, setAiHighlight] = useState<string[]>([])
   const [sketch, setSketch] = useState<SketchSession | null>(null)
   const [pickingPlane, setPickingPlane] = useState(false)
-  const [regionPick, setRegionPick] = useState<{ id: string; index: number | null } | null>(null)
+  const [regionPick, setRegionPick] = useState<{ id: string; index: RegionSel } | null>(null)
   const [extrudeDepth, setExtrudeDepth] = useState('10')
   const [extrudeSym, setExtrudeSym] = useState(false)
   const [renderOpen, setRenderOpen] = useState(false)
@@ -295,6 +349,24 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
     setSearchParams(next, { replace: true })
   }, [searchParams, setSearchParams])
   const project = useSolidProject({ objects, resetScene, snapshot, student, initialId })
+  // Landing = library of saved projects; a deep link (?model=) goes straight to the editor.
+  useEffect(() => { if (initialId) setInLibrary(false) }, [initialId])
+  const inLibraryRef = useRef(true)
+  inLibraryRef.current = inLibrary
+  const openFromLibrary = async (id: string) => {
+    await project.openProject(id)
+    setInLibrary(false)
+  }
+  const newFromLibrary = async () => {
+    await project.newProject()
+    setInLibrary(false)
+  }
+  const goLibrary = async () => {
+    setSketch(null)
+    setPickingPlane(false)
+    await project.save()
+    setInLibrary(true)
+  }
   const modelPresence = useResourcePresence('model3d', project.projectId, student ? 'student' : 'teacher')
 
   // Drop selection ids that no longer exist (undo, AI edits).
@@ -554,13 +626,45 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
     const list = objectsRef.current
     const obj = list.find(o => o.id === pick.objectId)
     if (!obj) return
-    const plane = faceFrame(obj, pick.normal, pick.triangles)
+    const facePlane = faceFrame(obj, pick.normal, pick.triangles)
+    // A plane that already holds a sketch keeps ITS 2D frame: every coplanar face is expressed in that frame.
+    const existing = findSketchOnPlane(list, facePlane)
+    const plane = existing ? planeOfSketch(existing) : facePlane
     const at = toPlane(plane, pick.point).p
     const indexAt = (sk: PrimitiveObject) => {
       const r = smallestRegionAt(sketchRegionsOf(sk).regions, at)
       return r ? sketchRegionsOf(sk).regions.indexOf(r) : -1
     }
-    const existing = findSketchOnPlane(list, plane)
+    // Shift / Ctrl + click: add (or remove) a coplanar face to the faces already picked, to extrude them together.
+    const cur = regionPick ? list.find(o => o.id === regionPick.id && o.kind === 'sketch') as PrimitiveObject | undefined : undefined
+    if (pick.additive && cur) {
+      if (!existing || existing.id !== cur.id) { setNotice(tl("Per estrudere più facce insieme devono essere complanari (sullo stesso piano).")); return }
+      const prevIdx = regionPick!.index == null ? [] : Array.isArray(regionPick!.index) ? regionPick!.index : [regionPick!.index]
+      const prevPts = prevIdx.map(i => sketchRegionsOf(cur).regions[i]).filter(Boolean).map(r => interiorPoint(r.outer) as P)
+      let sk = cur
+      let work = list
+      if (indexAt(sk) < 0) {
+        const refs2 = planeReferences(list, plane)
+        const flat2: SketchEntity[] = refs2.slice(0, 600).map(([a, b], i) => ({ id: `f${i}`, type: 'line', a, b }))
+        const hit2 = smallestRegionAt(analyzeSketch(flat2).regions.filter(r => regionContains(r, at)), at)
+        if (!hit2) { setNotice(tl("Questa faccia non ha un contorno chiuso che si possa estrudere.")); return }
+        const add: SketchEntity[] = [hit2.outer, ...hit2.holes].map(pts => ({ id: uid('e'), type: 'polyline', pts: pts.map(q => [q[0], q[1]] as P), closed: true }) as SketchEntity)
+        const made2 = upsertSketch(list, plane, [...(cur.params.sketch?.entities ?? []), ...add], cur.id, refs2)
+        if (!made2.id) return
+        work = made2.objects
+        apply(work)
+        sk = work.find(o => o.id === made2.id) as PrimitiveObject
+      }
+      const regs = sketchRegionsOf(sk).regions
+      const idxOf = (pt: P) => { const r = smallestRegionAt(regs.filter(q => regionContains(q, pt)), pt); return r ? regs.indexOf(r) : -1 }
+      const next = new Set(prevPts.map(idxOf).filter(i => i >= 0))
+      const here = indexAt(sk)
+      if (here >= 0) { if (next.has(here) && next.size > 1) next.delete(here); else next.add(here) }
+      const arr = [...next].sort((a, b) => a - b)
+      setSelection([sk.id])
+      setRegionPick({ id: sk.id, index: arr.length === 1 ? arr[0] : arr })
+      return
+    }
     if (existing) {
       const i = indexAt(existing)
       if (i >= 0) { setSelection([existing.id]); setRegionPick({ id: existing.id, index: i }); return }
@@ -578,7 +682,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
     setSelection([made.id])
     const sk = next.find(o => o.id === made.id) as PrimitiveObject
     setRegionPick({ id: made.id, index: Math.max(0, indexAt(sk)) })
-  }, [apply]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [apply, regionPick]) // eslint-disable-line react-hooks/exhaustive-deps
   /** A solid made from a sketch that is moved / rotated / scaled in 3D is no longer tied to it (else the next sketch edit would put it back). */
   const onViewportChange = useCallback((next: SceneObject[], record?: boolean) => {
     const prev = objectsRef.current
@@ -599,6 +703,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
   // ── Keyboard ──
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (inLibraryRef.current) return
       if (pickingPlane && e.key === 'Escape') { setPickingPlane(false); return }
       if (sketch || pickingPlane) return
       const el = e.target as HTMLElement
@@ -613,7 +718,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
       else if (mod && k === 'd') { e.preventDefault(); doDuplicate() }
       else if (mod && k === 'a') { e.preventDefault(); setSelection(objects.map(o => o.id)) }
       else if (k === 'delete' || k === 'backspace') { e.preventDefault(); doDelete() }
-      else if (k === 'escape') { if (transformMode !== 'select') setTransformMode('select'); else setSelection([]) }
+      else if (k === 'escape') { if (transformMode !== 'select') setTransformMode('select'); else if (selection.length) setSelection([]); else if (fullWindow) setFullWindow(false) }
       else if (e.key === 'Tab' && single && single.kind !== 'sketch') { e.preventDefault(); viewport.current?.focusDimensions() }
       else if (k === 'm' && !mod) setTransformMode(m => (m === 'move' ? 'select' : 'move'))
       else if (k === 'r' && !mod) setTransformMode(m => (m === 'rotate' ? 'select' : 'rotate'))
@@ -670,12 +775,26 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
     updateSelected(o => (o.kind === 'group' ? o : { ...o, params: { ...o.params, [key]: value } }))
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-50">
+    <>
+    {inLibrary && (
+      <SolidModelLibrary
+        projects={project.projects}
+        loading={project.projectsLoading}
+        onOpen={id => void openFromLibrary(id)}
+        onNew={() => void newFromLibrary()}
+        onDelete={p => { if (window.confirm(tl("Eliminare \"{0}\"? Anche i link condivisi smetteranno di funzionare.", p.name))) void project.deleteProject(p.id) }}
+        legacyCount={project.legacy.length}
+        onImportLegacy={() => void project.importLegacy()}
+        onDismissLegacy={project.dismissLegacy}
+        leading={leading}
+      />
+    )}
+    <div className={`flex min-h-0 flex-col bg-slate-50 ${fullWindow && !inLibrary ? 'fixed inset-0 z-[55] h-screen' : 'h-full'} ${inLibrary ? 'hidden' : ''}`}>
       {/* Toolbar */}
       <div className="flex flex-nowrap items-center gap-1 border-b border-slate-200 bg-white/90 px-3 py-1.5">
         {leading && <><div className="flex shrink-0 items-center gap-1">{leading}</div><Divider /></>}
         <div className="relative flex min-w-0 items-center gap-1">
-          <ToolButton icon={FolderOpen} label={tl("Progetti")} onClick={() => setProjectsOpen(o => !o)} />
+          <ToolButton icon={FolderOpen} label={tl("Progetti")} onClick={() => void goLibrary()} />
           <SectionIllustration section="/teacher/3d-lab" compact />
           <input
             value={project.name}
@@ -684,46 +803,6 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
             className="w-28 min-w-0 rounded-full border border-transparent bg-transparent px-2 py-1 text-sm font-semibold text-slate-900 hover:border-slate-200 focus:border-[color:var(--selection-border-hover)] focus:outline-none xl:w-44"
           />
           <SaveBadge status={project.status} />
-          {projectsOpen && (
-            <div className="absolute left-0 top-10 z-30 w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-              <button type="button" onClick={() => { setProjectsOpen(false); void project.newProject() }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50">
-                <FilePlus2 className="h-4 w-4" /> {tl("Nuovo progetto")}
-              </button>
-              {project.legacy.length > 0 && (
-                <div className="mt-1 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">
-                  <p>{project.legacy.length} {tl("progetti sono salvati solo in questo browser.")}</p>
-                  <div className="mt-1 flex gap-2">
-                    <button type="button" onClick={() => void project.importLegacy()} className="font-semibold text-amber-800 underline">{tl("Importali sul server")}</button>
-                    <button type="button" onClick={project.dismissLegacy} className="text-amber-700">{tl("Ignora")}</button>
-                  </div>
-                </div>
-              )}
-              <div className="my-1 h-px bg-slate-100" />
-              <div className="max-h-80 overflow-y-auto">
-                {project.projectsLoading && <p className="px-2 py-3 text-xs text-slate-400">{tl("Carico…")}</p>}
-                {!project.projectsLoading && !project.projects.length && <p className="px-2 py-3 text-xs text-slate-400">{tl("Nessun progetto salvato.")}</p>}
-                {project.projects.map(p => (
-                  <div key={p.id} className={`group flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${p.id === project.projectId ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>
-                    <button type="button" onClick={() => { setProjectsOpen(false); void project.openProject(p.id) }} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                      <span className="h-9 w-14 shrink-0 overflow-hidden rounded-md bg-slate-100">
-                        {p.thumbnail ? <img src={p.thumbnail} alt="" className="h-full w-full object-cover" /> : <Box className="m-auto mt-2 h-5 w-5 text-slate-300" />}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate font-semibold text-slate-800">{p.name}</span>
-                        <span className="block text-[10px] text-slate-400">
-                          {p.object_count} {tl("oggetti ·")} {new Date(p.updated_at).toLocaleString('it-IT')}
-                          {(p.public_enabled || p.shared_class_ids.length > 0) && tl(" · condiviso")}
-                        </span>
-                      </span>
-                    </button>
-                    <button type="button" title={tl("Elimina progetto")} onClick={() => { if (window.confirm(tl("Eliminare \"{0}\"? Anche i link condivisi smetteranno di funzionare.", p.name))) void project.deleteProject(p.id) }} className="rounded p-1 text-slate-400 opacity-0 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
         <Divider />
         <ToolButton icon={Undo2} label={tl("Annulla")} shortcut="Ctrl+Z" onClick={undo} disabled={!hist.past.length} />
@@ -750,17 +829,6 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
         <ToolButton icon={Trash2} label={tl("Elimina")} shortcut="Canc" onClick={doDelete} disabled={!selection.length} />
         <Divider />
         {!sketch && <ToolButton icon={Camera} label={tl("Render: immagine con materiali, luci e ombre morbide")} onClick={() => setRenderOpen(true)} disabled={!objects.some(o => o.kind !== 'sketch' && !o.hole && !o.hidden)} />}
-        <Button
-          type="button"
-          onClick={sketchButton}
-          title={tl("Disegna uno sketch 2D quotato sul piano o sulla faccia di un oggetto, poi estrudilo o scavalo")}
-          tone="neutral"
-          surface={pickingPlane || sketch ? 'soft' : 'ghost'}
-          density="compact"
-          className={`shrink-0 rounded-full ${pickingPlane || sketch ? 'ds-selected' : ''}`}
-        >
-          <PencilLine /> {tl("Sketch 2D")}
-        </Button>
         {selection.length > 1 && (
           <>
             <Divider />
@@ -774,6 +842,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <input ref={fileInput} type="file" accept="application/json,.json" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) importJson(f); e.target.value = '' }} />
+          <ToolButton icon={fullWindow ? Minimize : Maximize} label={fullWindow ? tl("Esci dalla finestra intera (Esc)") : tl("Editor a tutta finestra")} onClick={() => setFullWindow(f => !f)} />
           <ToolButton icon={FileUp} label={tl("Importa JSON")} onClick={() => fileInput.current?.click()} />
           <ToolButton icon={FileDown} label={tl("Esporta JSON")} onClick={exportJson} disabled={!objects.length} />
           <Button
@@ -828,7 +897,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
             label={tl("Forme e oggetti")}
             expandLabel={tl("Espandi forme e oggetti")}
             onExpand={() => setLibraryCollapsed(false)}
-            items={PRIMITIVES.map((def, i) => {
+            items={[{ id: 'sketch2d', title: tl("Sketch 2D"), icon: <PencilLine className="h-4 w-4 text-slate-700" />, marker: '', onClick: sketchButton }, ...PRIMITIVES.map((def, i) => {
               const PrimitiveIcon = ICONS[def.kind]
               return {
                 id: `${def.kind}-${i}`,
@@ -837,7 +906,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                 marker: '',
                 onClick: () => addPrimitive(def),
               }
-            })}
+            })]}
           />
         )}
         <aside className={`flex w-40 shrink-0 flex-col border-r border-slate-200 bg-white/80 ${libraryCollapsed || sketch ? 'hidden' : ''}`}>
@@ -848,7 +917,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
           <button
             type="button"
             onClick={sketchButton}
-            className="mx-2 mb-2 flex items-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50/60 px-2.5 py-2 text-left text-[11px] font-semibold leading-tight text-blue-800 hover:bg-blue-50"
+            className={`mx-2 mb-2 flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[11px] font-semibold leading-tight transition ${pickingPlane ? 'ds-accent-selected' : 'ds-accent-soft hover:brightness-95'}`}
           >
             <PencilLine className="h-5 w-5 shrink-0" />
             <span>{tl("Sketch 2D")}</span>
@@ -981,7 +1050,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                   <span className="max-w-[170px] leading-3 text-slate-400">{tl("Valori negativi: verso il basso")}</span>
                 </>
               ) : (
-                <span className="font-semibold text-slate-600">{tl("Clicca una faccia di un solido, di uno sketch o una linea chiusa da estrudere")}</span>
+                <span className="font-semibold text-slate-600">{tl("Clicca una faccia di un solido, di uno sketch o una linea chiusa da estrudere (Maiusc + clic: aggiungi facce complanari)")}</span>
               )}
             </div>
           )}
@@ -1098,7 +1167,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                           <p className="text-[11px] leading-4 text-slate-500">
                             {tl("Attiva «Estrudi» (E) nella barra 3D: la freccia sul profilo (o la quota scritta) crea un modello unito all'oggetto della faccia; con valori negativi ottieni una foratura. Clicca su un profilo per usare solo quello.")}
                           </p>
-                          <p className="text-[11px] font-semibold text-blue-700">{regionIndex == null ? tl("Profili: tutti") : tl("Profilo {0}", regionIndex + 1)}</p>
+                          <p className="text-[11px] font-semibold text-blue-700">{regionIndex == null ? tl("Profili: tutti") : Array.isArray(regionIndex) ? tl("Profili: {0} facce complanari", regionIndex.length) : tl("Profilo {0}", regionIndex + 1)}</p>
                           <NumField label={tl("Distanza (negativa = verso l'interno / foro)")} value={Number(extrudeDepth.replace(',', '.')) || 10} suffix="mm" step={1} onCommit={v => setExtrudeDepth(String(v))} />
                           <div className="flex flex-wrap gap-x-3 gap-y-1">
                             <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
@@ -1214,6 +1283,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
       {arOpen && <SolidModelArDialog modelId={arOpen.id} name={project.name} objects={objects} onClose={() => setArOpen(null)} />}
       <SolidRenderDialog open={renderOpen} onClose={() => setRenderOpen(false)} viewport={viewport} name={project.name} />
     </div>
+    </>
   )
 }
 

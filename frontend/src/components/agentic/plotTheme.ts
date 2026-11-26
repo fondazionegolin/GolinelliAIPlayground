@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { colorTokens } from '@/design/tokens/color'
 
-const fallback = { ink: '#17151b', muted: '#6f477d', surface: '#ffffff', grid: '#e4e4e7' }
+const fallback = { ink: '#17151b', muted: colorTokens.text.secondaryLight, surface: '#ffffff', grid: '#e4e4e7' }
 function readPlotTheme() {
   if (typeof document === 'undefined') return fallback
   const style = getComputedStyle(document.documentElement)

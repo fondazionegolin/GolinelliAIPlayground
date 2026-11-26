@@ -1,4 +1,5 @@
 import { extractModuleSpecifiers } from '@/lib/jsImports'
+import { isVibeReference } from '@/lib/vibeAttachments'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   SandpackProvider,
@@ -639,7 +640,7 @@ export default function CodingSandpackPreview({
     for (const file of files) {
       const path = normalizePath(file.path)
       // package.json deps are surfaced via customSetup; the file itself isn't needed by the bundler.
-      if (path === '/package.json') continue
+      if (path === '/package.json' || isVibeReference(path)) continue
       map[path] = { code: file.content }
     }
     // Platform-owned wiring — always overrides whatever the model produced for these paths.

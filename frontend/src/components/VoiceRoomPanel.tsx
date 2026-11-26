@@ -1243,7 +1243,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
               {tl("Chiamata")}
             </p>
           </div>
-          <p className="mt-0.5 text-[10px] leading-tight text-[var(--logo-blue-strong)]/80">
+          <p className="mt-0.5 text-[10px] leading-tight text-[var(--text-secondary)]">
             {tl("Parla e condividi lo schermo con la tua classe")}
           </p>
           <p className="truncate text-[10px] text-[var(--logo-blue-strong)]/70">

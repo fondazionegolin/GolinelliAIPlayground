@@ -7,11 +7,16 @@ const MAX_DATA_URL_CHARS = 1_900_000 // server rejects > 2M chars
 export const VIBE_DOC_ACCEPT = '.pdf,.doc,.docx,.pptx,.xlsx,.xls,.csv,.txt,.md,.json,.html,.css,.js,.jsx,.ts,.tsx,.py,.xml,.yaml,.yml'
 
 export interface VibeDocument { name: string; text: string; truncated?: boolean }
+export interface VibeProjectImage { name: string; data_url: string }
+export interface VibePlanningAttachments { documents?: VibeDocument[]; image_names?: string[] }
+
+export const isVibeReference = (path: string) => path.replace(/^\/+/, '').startsWith('vibe-references/')
+export const isVibeProjectAttachment = (path: string) => isVibeReference(path) || path.replace(/^\/+/, '').startsWith('vibe-images/')
 
 export const isImageFile = (file: File) => file.type.startsWith('image/')
 
 /** Downscales a screenshot to a JPEG data URL small enough for the generate endpoint. */
-export function imageToDataUrl(file: File): Promise<string> {
+export function imageToDataUrl(file: File, projectImage = false): Promise<string> {
   return new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file)
     const img = new Image()
@@ -19,18 +24,20 @@ export function imageToDataUrl(file: File): Promise<string> {
       try {
         let side = 1600
         let quality = 0.82
-        for (let i = 0; i < 6; i += 1) {
+        for (let i = 0; i < (projectImage ? 8 : 6); i += 1) {
           const scale = Math.min(1, side / Math.max(img.width, img.height))
           const canvas = document.createElement('canvas')
           canvas.width = Math.max(1, Math.round(img.width * scale))
           canvas.height = Math.max(1, Math.round(img.height * scale))
           const ctx = canvas.getContext('2d')
           if (!ctx) throw new Error('canvas')
-          ctx.fillStyle = '#ffffff'
-          ctx.fillRect(0, 0, canvas.width, canvas.height)
+          if (!projectImage) {
+            ctx.fillStyle = '#ffffff'
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+          }
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-          const url = canvas.toDataURL('image/jpeg', quality)
-          if (url.length <= MAX_DATA_URL_CHARS) return resolve(url)
+          const url = canvas.toDataURL(projectImage ? 'image/webp' : 'image/jpeg', quality)
+          if (url.length <= (projectImage ? 180_000 : MAX_DATA_URL_CHARS)) return resolve(url)
           side = Math.round(side * 0.75)
           quality = Math.max(0.5, quality - 0.08)
         }

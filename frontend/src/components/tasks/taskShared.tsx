@@ -407,7 +407,7 @@ export function SubmissionFeedbackEditor({ submission, task, sessionId }: { subm
  <div className="flex items-center justify-between gap-3 bg-[var(--surface-logo-blue)] px-3 py-2">
  <div>
  <p className="text-xs font-semibold text-[var(--logo-blue-strong)]">{tl("Feedback del docente")}</p>
- <p className="text-[11px] text-[var(--logo-blue-strong)]">{tl("Salva in bozza oppure pubblica quando è pronto.")}</p>
+ <p className="text-[11px] text-[var(--text-secondary)]">{tl("Salva in bozza oppure pubblica quando è pronto.")}</p>
  </div>
  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${submission.feedback_published_at ? 'bg-[var(--surface-logo-blue)] text-[var(--logo-blue-strong)]' : 'bg-[var(--surface-muted)] text-[var(--text-muted)]'}`}>
  {submission.feedback_published_at ? tl("Pubblicato · {0}", new Date(submission.feedback_published_at).toLocaleDateString('it-IT')) : tl("Non pubblicato")}
